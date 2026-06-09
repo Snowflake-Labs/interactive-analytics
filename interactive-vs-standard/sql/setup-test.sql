@@ -1,0 +1,50 @@
+
+CREATE DATABASE IW_PLAYGROUND;
+USE DATABASE IW_PLAYGROUND;
+
+CREATE SCHEMA IW_TEST;
+USE SCHEMA IW_TEST;
+
+-- Move to 3XL to drastically decrease create interactive table times
+CREATE OR REPLACE WAREHOUSE STD_WH
+WITH WAREHOUSE_SIZE = 'XXXLARGE';
+
+-- Use the standard warehouse to create the interactive tables
+USE WAREHOUSE STD_WH;
+
+-- Total run time on 3XLARGE: less than 1 minute (2.85B ROWS, 191GB compressed data)
+CREATE OR REPLACE INTERACTIVE TABLE IW_TEST.CATALOG_SALES_IT
+CLUSTER BY (CS_ITEM_SK)
+AS
+SELECT * FROM NC_TPCDS_10TB.TPCDS_SF10TCL.CATALOG_SALES CS 
+WHERE CS.CS_SOLD_DATE_SK IN (SELECT D_DATE_SK FROM NC_TPCDS_10TB.TPCDS_SF10TCL.DATE_DIM WHERE D_YEAR=1999);
+
+-- Total run time on 3XLARGE: less than 5 seconds 
+CREATE OR REPLACE INTERACTIVE TABLE IW_TEST.DATE_DIM_IT
+CLUSTER BY(D_YEAR, D_MOY)
+AS
+SELECT * FROM NC_TPCDS_10TB.TPCDS_SF10TCL.DATE_DIM;
+
+-- Back to XSMALL 
+ALTER WAREHOUSE STD_WH
+SET WAREHOUSE_SIZE = 'XSMALL';
+
+SHOW WAREHOUSES LIKE 'STD_WH'
+->> SELECT "state", "type", "size", "min_cluster_count", "max_cluster_count", "started_clusters" FROM $1;
+
+-- View created tables
+SELECT TABLE_NAME, TABLE_TYPE, CLUSTERING_KEY, ROW_COUNT, BYTES / 1024.0 / 1024 / 1024.0 AS SIZE_IN_GB 
+FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_TYPE <> 'VIEW'
+ORDER BY TABLE_SCHEMA, TABLE_NAME;
+
+-- Create interactive warehouse
+CREATE OR REPLACE INTERACTIVE WAREHOUSE IW_WH
+WAREHOUSE_SIZE = XSMALL;
+
+-- Attach interactive tables to interactive warehouse
+ALTER WAREHOUSE IW_WH ADD TABLES (IW_TEST.CATALOG_SALES_IT, IW_TEST.DATE_DIM_IT);
+
+-- View interactive warehouse status
+SHOW WAREHOUSES LIKE 'IW_WH'
+->> SELECT "state", "type", "size", "min_cluster_count", "max_cluster_count", "started_clusters", "tables" FROM $1;
