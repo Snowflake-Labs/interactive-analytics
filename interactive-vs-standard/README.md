@@ -97,10 +97,28 @@ Side-by-side comparison:
 uv run iwtest.py --users 20 --iterations 10 --compare STD_WH,IW_WH
 ```
 
+Example `--compare` summary (20 users × 10 iterations, query1):
+
+```
+metric (s)                   STD_WH (X-Small)                  IW_WH (X-Small)    delta (b-a)
+---------------------------------------------------------------------------------------------
+avg                                     0.326                            0.117         -0.210
+p50                                     0.299                            0.102         -0.197
+p95                                     0.615                            0.230         -0.385
+p99                                     0.946                            0.318         -0.628
+min                                     0.133                            0.064         -0.069
+max                                     1.378                            0.370         -1.008
+throughput                              55.31                           151.36         +96.05
+avg rows/q                             364.00                           364.00          +0.00
+
+errors                                       0                                0
+wall seconds                            36.157                           13.213
+```
+
 Reproducible run with a fixed seed (default is `42`):
 
 ```bash
-uv run iwtest.py --users 20 --iterations 10 --compare STD_WH,IW_WH --seed 42
+uv run iwtest.py --users 20 --iterations 100 --seed 42 --compare STD_WH,IW_WH
 ```
 
 Non-reproducible run (new RNG seed each time):
