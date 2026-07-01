@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local configuration
+.env
+
+# Benchmark output
+results/
+
+# macOS
+.DS_Store
+
+# Cursor Cortex
+.cortex/
