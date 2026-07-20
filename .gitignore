@@ -9,5 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-# Custom
+# Local configuration
 .env
+
+# macOS
+.DS_Store
