@@ -33,6 +33,8 @@ LOOKBACK_DAYS = 15
 TARGETS = ["standard", "interactive"]
 DEFAULT_TARGET = "interactive"
 
+QUERY_TAG = "IW_DEMO_DASHBOARD"
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("dashboard")
 
@@ -235,6 +237,7 @@ class ConnectionPool:
             conn = snowflake.connector.connect(**kwargs)
             with conn.cursor() as cur:
                 cur.execute("ALTER SESSION SET USE_CACHED_RESULT = FALSE")
+                cur.execute(f"ALTER SESSION SET QUERY_TAG = '{QUERY_TAG}'")
             self._connections[key] = conn
             return conn
 
@@ -247,6 +250,7 @@ def execute_query(
 ) -> list[dict[str, Any]]:
     conn = pool.get(target, scale)
     with conn.cursor(DictCursor) as cur:
+        cur.execute(f"ALTER SESSION SET QUERY_TAG = '{QUERY_TAG}'")
         cur.execute(sql, binds or ())
         return cur.fetchall()
 
