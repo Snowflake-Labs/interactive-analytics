@@ -1,0 +1,8 @@
+when deploying in SPCS there should be two separated deployments, one for serving and testing interactive and one for standard, so that the two are completly independent from each otehr
+
+the user provided query should be
+- analyze to see check what tables it is using
+- check if the tables are already interactive tables
+- if not, make sure to create an interactive table, optionally asking for which data should be moved into the interactive table
+- check for all the best pratices (see TDB)
+- run a benchmarking running the query using non-interactive table and then the query using interactive tables (use locust simulating only 1 user, make sure to do a warmup run before doing the real benchmakr)

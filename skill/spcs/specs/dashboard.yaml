@@ -1,16 +1,14 @@
 spec:
   containers:
-    - name: dashboard
+    - name: benchmark
       image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${DASHBOARD_IMAGE}:${IMAGE_TAG}
       env:
         PORT: "${DASHBOARD_PORT}"
-        DEFAULT_SCALE: "${DASHBOARD_DEFAULT_SCALE}"
-        DASHBOARD_DATABASE: "${DASHBOARD_DATABASE}"
-        DASHBOARD_ROLE: "${DASHBOARD_ROLE}"
-        DASHBOARD_WAREHOUSE: "${DASHBOARD_WAREHOUSE}"
         SNOWFLAKE_DATABASE: "${DASHBOARD_DATABASE}"
-        SNOWFLAKE_ROLE: "${DASHBOARD_ROLE}"
-        SNOWFLAKE_WAREHOUSE: "${DASHBOARD_WAREHOUSE}"
+        STANDARD_WAREHOUSE: "${STANDARD_WAREHOUSE}"
+        STANDARD_SCHEMA: "${STANDARD_SCHEMA}"
+        INTERACTIVE_WAREHOUSE: "${INTERACTIVE_WAREHOUSE}"
+        INTERACTIVE_SCHEMA: "${INTERACTIVE_SCHEMA}"
       resources:
         requests:
           memory: 1Gi
@@ -20,9 +18,9 @@ spec:
           cpu: "1000m"
       readinessProbe:
         port: ${DASHBOARD_PORT}
-        path: /api/config
+        path: /api/standard
   endpoints:
-    - name: web
+    - name: api
       port: ${DASHBOARD_PORT}
       public: true
       protocol: HTTP

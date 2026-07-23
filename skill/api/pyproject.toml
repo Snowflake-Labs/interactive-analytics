@@ -1,7 +1,7 @@
 [project]
-name = "dashboard-api"
+name = "benchmark-api"
 version = "0.1.0"
-description = "TPC-H benchmark dashboard API server (Python / Snowflake)"
+description = "TPC-H benchmark API — compares interactive vs standard warehouse query latency"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
