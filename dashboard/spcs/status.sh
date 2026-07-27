@@ -2,8 +2,8 @@
 # Print service status and public ingress URLs.
 #
 # Usage:
-#   status.sh              print status + endpoints for both services
-#   status.sh --wait       poll until both services report state RUNNING
+#   status.sh              print concise status for all services
+#   status.sh --wait       poll until all services are ready for connections
 #   status.sh --urls-only  print only "<service>: https://<url>" lines
 
 set -euo pipefail
@@ -13,27 +13,45 @@ source "$SCRIPT_DIR/_lib.sh"
 
 MODE="${1:-full}"
 
-service_state() {
+# Query SYSTEM$GET_SERVICE_STATUS which returns container-level details.
+service_info() {
   local svc="$1"
-  snow spcs service describe "${DB}.${SCHEMA}.${svc}" \
-    --connection "$CONNECTION" --format json 2>/dev/null \
+  snow sql --connection "$CONNECTION" --format json -q \
+    "SELECT SYSTEM\$GET_SERVICE_STATUS('${DB}.${SCHEMA}.${svc}') AS info" 2>/dev/null \
     | python3 -c '
 import json, sys
 try:
     rows = json.load(sys.stdin)
-except Exception:
-    print("")
-    sys.exit(0)
-if not rows:
-    print("")
-    sys.exit(0)
-row = rows[0] if isinstance(rows, list) else rows
-for key in ("status", "STATUS", "state", "STATE"):
-    if key in row and row[key]:
-        print(row[key])
-        sys.exit(0)
-print("")
-' || true
+    info = json.loads(rows[0]["INFO"] if "INFO" in rows[0] else rows[0].get("info","[]"))
+    for inst in info:
+        status = inst.get("status","UNKNOWN")
+        msg = inst.get("message","")
+        print(f"{status}\t{msg}")
+except Exception as e:
+    print(f"UNKNOWN\t{e}")
+'
+}
+
+# Summarize: READY when all containers are READY, otherwise report actual state.
+service_status() {
+  local svc="$1"
+  local info
+  info="$(service_info "$svc" 2>/dev/null)" || info="UNKNOWN\tservice not found"
+  if [[ -z "$info" ]]; then
+    echo "NOT_FOUND"
+    return
+  fi
+  # Take the first container's status (single-container services)
+  echo "$info" | head -1 | cut -f1
+}
+
+service_message() {
+  local svc="$1"
+  local info
+  info="$(service_info "$svc" 2>/dev/null)" || true
+  if [[ -n "$info" ]]; then
+    echo "$info" | head -1 | cut -f2
+  fi
 }
 
 service_url() {
@@ -55,32 +73,69 @@ for r in rows or []:
 ' || true
 }
 
+print_service_status() {
+  local svc="$1"
+  local status msg url
+  status="$(service_status "$svc")"
+  msg="$(service_message "$svc")"
+  url="$(service_url "$svc")"
+
+  local icon
+  case "$status" in
+    READY)   icon="✓" ;;
+    PENDING) icon="⏳" ;;
+    FAILED)  icon="✗" ;;
+    *)       icon="?" ;;
+  esac
+
+  printf "  %s %-25s %s" "$icon" "$svc" "$status"
+  if [[ -n "$msg" && "$status" != "READY" ]]; then
+    printf "  (%s)" "$msg"
+  fi
+  echo
+  if [[ -n "$url" && "$status" == "READY" ]]; then
+    printf "    └─ https://%s\n" "$url"
+  fi
+}
+
 wait_ready() {
   local svc="$1"
   local tries=60
+  local status
   while (( tries > 0 )); do
-    local state
-    state="$(service_state "$svc")"
-    echo "[$svc] state=${state:-unknown}"
-    if [[ "$state" == "RUNNING" || "$state" == "READY" ]]; then
+    status="$(service_status "$svc")"
+    local msg
+    msg="$(service_message "$svc")"
+    printf "\r  ⏳ %-25s %s" "$svc" "${status}${msg:+ ($msg)}"
+    if [[ "$status" == "READY" ]]; then
+      local url
+      url="$(service_url "$svc")"
+      printf "\r  ✓  %-25s READY\n" "$svc"
+      [[ -n "$url" ]] && printf "    └─ https://%s\n" "$url"
       return 0
     fi
-    if [[ "$state" == "FAILED" ]]; then
-      echo "[$svc] service FAILED — check ./logs.sh $svc" >&2
+    if [[ "$status" == "FAILED" ]]; then
+      printf "\r  ✗  %-25s FAILED (%s)\n" "$svc" "$msg"
+      echo "     Run ./logs.sh to investigate." >&2
       return 1
     fi
     sleep 10
     tries=$((tries-1))
+    # Clear to end of line before next update
+    printf "\033[K"
   done
-  echo "[$svc] did not reach RUNNING within timeout" >&2
+  printf "\r  ✗  %-25s TIMEOUT (did not reach READY in 10 min)\n" "$svc"
   return 1
 }
 
 case "$MODE" in
   --wait)
+    echo "Waiting for services to be ready..."
     wait_ready "$DASHBOARD_SERVICE"
     wait_ready "$LOCUST_API_SERVICE"
     wait_ready "$LOCUST_SERVICE"
+    echo
+    echo "All services ready."
     ;;
   --urls-only)
     du="$(service_url "$DASHBOARD_SERVICE")"
@@ -91,11 +146,11 @@ case "$MODE" in
     [[ -n "$lu" ]] && echo "locust:         https://$lu"
     ;;
   *)
-    for svc in "$DASHBOARD_SERVICE" "$LOCUST_API_SERVICE" "$LOCUST_SERVICE"; do
-      echo "=== $svc ==="
-      snow spcs service describe "${DB}.${SCHEMA}.${svc}" --connection "$CONNECTION" || true
-      snow spcs service list-endpoints "${DB}.${SCHEMA}.${svc}" --connection "$CONNECTION" || true
-      echo
-    done
+    echo "Services in ${DB}.${SCHEMA}:"
+    echo
+    print_service_status "$DASHBOARD_SERVICE"
+    print_service_status "$LOCUST_API_SERVICE"
+    print_service_status "$LOCUST_SERVICE"
+    echo
     ;;
 esac

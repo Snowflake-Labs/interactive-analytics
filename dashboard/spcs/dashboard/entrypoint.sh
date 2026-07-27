@@ -12,7 +12,7 @@
 set -euo pipefail
 
 TOKEN_FILE=/snowflake/session/token
-CONNECTIONS_DIR=${SNOWFLAKE_HOME:-/root/.snowflake}
+CONNECTIONS_DIR=/tmp/.snowflake
 CONNECTIONS_FILE="$CONNECTIONS_DIR/connections.toml"
 
 mkdir -p "$CONNECTIONS_DIR"

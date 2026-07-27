@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from threading import Lock
+from threading import Lock, local as _thread_local
 from typing import Any
 
 import snowflake.connector
@@ -244,14 +244,17 @@ class ConnectionPool:
 
 pool = ConnectionPool()
 
+_thread_state = _thread_local()
+
 
 def execute_query(
     sql: str, target: str, scale: str, binds: list[Any] | None = None
 ) -> list[dict[str, Any]]:
     conn = pool.get(target, scale)
     with conn.cursor(DictCursor) as cur:
-        cur.execute(f"ALTER SESSION SET QUERY_TAG = '{QUERY_TAG}'")
+        t0 = time.perf_counter()
         cur.execute(sql, binds or ())
+        _thread_state.query_elapsed_ms = round((time.perf_counter() - t0) * 1000)
         return cur.fetchall()
 
 
@@ -357,6 +360,9 @@ async def api_logging(request: Request, call_next):
         response = await call_next(request)
         elapsed_ms = round((time.perf_counter() - start) * 1000)
         rows = getattr(request.state, "response_rows", "?")
+        query_ms = getattr(request.state, "query_elapsed_ms", None)
+        if query_ms is not None:
+            response.headers["X-Query-Time-Ms"] = str(query_ms)
         log.info(
             "[api] %s %s%s%s %sms rows=%s",
             request.method,
@@ -383,6 +389,7 @@ async def api_logging(request: Request, call_next):
 
 def json_api(data: Any, request: Request) -> JSONResponse:
     request.state.response_rows = response_row_count(data)
+    request.state.query_elapsed_ms = getattr(_thread_state, "query_elapsed_ms", None)
     return JSONResponse(serialize_rows(data))
 
 

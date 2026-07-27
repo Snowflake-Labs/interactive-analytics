@@ -136,7 +136,7 @@
             <label id="lbl-interactive" class="active" onclick="setWarehouse('interactive')">Interactive WH</label>
             <label id="lbl-standard" onclick="setWarehouse('standard')">Standard WH</label>
         </div>
-        <span>Line items: <span id="stat-rows">—</span> | Queries: <span id="stat-count">0</span> | Avg: <span id="stat-avg">—</span>ms | Min: <span id="stat-min">—</span>ms | Max: <span id="stat-max">—</span>ms</span>
+        <span>Queries: <span id="stat-count">0</span> | Client Avg: <span id="stat-avg">—</span>ms Min: <span id="stat-min">—</span>ms Max: <span id="stat-max">—</span>ms | Query Avg: <span id="stat-qavg">—</span>ms Min: <span id="stat-qmin">—</span>ms Max: <span id="stat-qmax">—</span>ms</span>
     </div>
 
     <h1>TPC-H Benchmark Dashboard</h1>
@@ -204,6 +204,7 @@
         const COLORS = ['#29b5e8','#ff6384','#ffce56','#4caf50','#9c27b0','#ff9800','#00bcd4','#e91e63'];
         let ordersChart, segmentChart, regionChart;
         const latencies = [];
+        const queryTimes = [];
         let currentWarehouse = 'interactive';
         let currentScale = '10';
         let currentSegment = '';
@@ -215,7 +216,9 @@
             document.getElementById('stat-avg').textContent = '—';
             document.getElementById('stat-min').textContent = '—';
             document.getElementById('stat-max').textContent = '—';
-            document.getElementById('stat-rows').textContent = '—';
+            document.getElementById('stat-qavg').textContent = '—';
+            document.getElementById('stat-qmin').textContent = '—';
+            document.getElementById('stat-qmax').textContent = '—';
         }
 
         function panelsForFetch() {
@@ -331,6 +334,7 @@
                 updateChartsLayout();
             }
             latencies.length = 0;
+            queryTimes.length = 0;
             resetStatsDisplay();
             const gen = ++fetchGeneration;
             if (reloadSegments) await loadSegments();
@@ -360,6 +364,8 @@
             const res = await fetch(u.pathname + u.search);
             const data = await res.json();
             latencies.push(performance.now() - start);
+            const qt = res.headers.get('X-Query-Time-Ms');
+            if (qt) queryTimes.push(Number(qt));
             return data;
         }
 
@@ -381,6 +387,12 @@
             document.getElementById('stat-avg').textContent = Math.round(avg);
             document.getElementById('stat-min').textContent = Math.round(Math.min(...latencies));
             document.getElementById('stat-max').textContent = Math.round(Math.max(...latencies));
+            if (queryTimes.length > 0) {
+                const qavg = queryTimes.reduce((a, b) => a + b, 0) / queryTimes.length;
+                document.getElementById('stat-qavg').textContent = Math.round(qavg);
+                document.getElementById('stat-qmin').textContent = Math.round(Math.min(...queryTimes));
+                document.getElementById('stat-qmax').textContent = Math.round(Math.max(...queryTimes));
+            }
         }
 
         function statusClass(status) {
@@ -410,8 +422,6 @@
                 ]);
 
                 if (gen !== fetchGeneration) return;
-
-                document.getElementById('stat-rows').textContent = (tableStats.LINEITEM_ROWS || 0).toLocaleString();
 
                 const suffix = currentSegment ? ` — ${currentSegment}` : '';
                 document.getElementById('h-orders-time').textContent = `Orders & Revenue Over Time — last 7 days (SF${currentScale})` + suffix;
@@ -478,6 +488,7 @@
         document.getElementById('segment-filter').addEventListener('change', (e) => {
             currentSegment = e.target.value;
             latencies.length = 0;
+            queryTimes.length = 0;
             resetStatsDisplay();
             updateChartsLayout();
             const gen = ++fetchGeneration;
