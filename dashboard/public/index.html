@@ -337,6 +337,7 @@
             queryTimes.length = 0;
             resetStatsDisplay();
             const gen = ++fetchGeneration;
+            setPanelsLoading(true);
             if (reloadSegments) await loadSegments();
             if (gen !== fetchGeneration) return;
             fetchData(gen);
