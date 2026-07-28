@@ -5,6 +5,8 @@ import tomllib
 from pathlib import Path
 from typing import TypedDict
 
+import sys
+
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -13,11 +15,6 @@ SQL_DIR = ROOT / "sql"
 RESULTS_DIR = ROOT / "results"
 EXPECTED_RESULTS_1GB_PATH = ROOT / "tpc-h-results-1GB.json"
 
-
-def project_version() -> str:
-    with (ROOT / "pyproject.toml").open("rb") as f:
-        return tomllib.load(f)["project"]["version"]
-
 WORKLOADS = ("original", "modern")
 DEFAULT_WORKLOAD = "original"
 
@@ -25,25 +22,35 @@ load_dotenv(ROOT / ".env", override=False)
 
 DEFAULT_CONNECTION_NAME = os.getenv("CONNECTION_NAME")
 
-SOLUTION_NAME = os.getenv("SOLUTION_NAME", "TPCH")
+SOLUTION_NAME = ""
+BENCHMARK_DATABASE = ""
+INTERACTIVE_WH_PREFIX = ""
+STANDARD_WH_PREFIX = ""
+SCHEMA_PREFIX = "TPCH_SF"
 
-BENCH_DATABASE = f"IW_{SOLUTION_NAME}_BENCH"
-INTERACTIVE_WH_PREFIX = f"IW_{SOLUTION_NAME}_BENCH_WH"
-STANDARD_WH_PREFIX = f"{SOLUTION_NAME}_BENCH_WH"
-
-SCHEMA_PREFIX = f"{SOLUTION_NAME}_SF"
+def project_version() -> str:
+    with (ROOT / "pyproject.toml").open("rb") as f:
+        return tomllib.load(f)["project"]["version"]
 
 
-def reload_solution_name(name: str | None = None) -> None:
+def load_solution_name(name: str | None = None) -> None:
     """Re-derive all name constants from SOLUTION_NAME (env var or explicit override)."""
-    global SOLUTION_NAME, BENCH_DATABASE, INTERACTIVE_WH_PREFIX, STANDARD_WH_PREFIX, SCHEMA_PREFIX
+    global SOLUTION_NAME, BENCHMARK_DATABASE, INTERACTIVE_WH_PREFIX, STANDARD_WH_PREFIX
     if name is not None:
         os.environ["SOLUTION_NAME"] = name
-    SOLUTION_NAME = os.getenv("SOLUTION_NAME", "TPCH")
-    BENCH_DATABASE = f"IW_{SOLUTION_NAME}_BENCH"
-    INTERACTIVE_WH_PREFIX = f"IW_{SOLUTION_NAME}_BENCH_WH"
-    STANDARD_WH_PREFIX = f"{SOLUTION_NAME}_BENCH_WH"
-    SCHEMA_PREFIX = f"{SOLUTION_NAME}_SF"
+    SOLUTION_NAME = os.getenv("SOLUTION_NAME", "")
+    if not SOLUTION_NAME:
+        print(
+            "Error: SOLUTION_NAME is not set.\n"
+            "Set it in your .env file or pass --solution on the command line.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    BENCHMARK_DATABASE = f"{SOLUTION_NAME}_BENCH_DB"
+    INTERACTIVE_WH_PREFIX = f"{SOLUTION_NAME}_BENCH_WH_INT"
+    STANDARD_WH_PREFIX = f"{SOLUTION_NAME}_BENCH_WH_STD"
+
+load_solution_name()
 
 TARGETS = ("interactive", "standard")
 DEFAULT_TARGET = "interactive"
@@ -61,12 +68,14 @@ SCALES: dict[str, ScaleConfig] = {
 DEFAULT_SCALE = os.getenv("DEFAULT_SCALE", "10")
 
 SQL_SCALE = "{{SCALE}}"
+SQL_SOLUTION_NAME = "{{SOLUTION_NAME}}"
 SQL_LOAD_WH_SIZE = "{{LOAD_WH_SIZE}}"
 SQL_BENCH_WH_SIZE = "{{BENCH_WH_SIZE}}"
 
 def sql_substitutions_for_scale(scale: str) -> dict[str, str]:
     config = SCALES[scale]
     return {
+        SQL_SOLUTION_NAME: SOLUTION_NAME,
         SQL_SCALE: scale,
         SQL_LOAD_WH_SIZE: config["load_warehouse"],
         SQL_BENCH_WH_SIZE: config["benchmark_warehouse"],
@@ -102,7 +111,7 @@ def target_context(
 ) -> tuple[str, str, str]:
     """Return (database, schema, warehouse) for the requested target + scale."""
     return (
-        database or BENCH_DATABASE,
+        database or BENCHMARK_DATABASE,
         schema or schema_for_target(target, scale),
         warehouse or warehouse_name_for_target(target, scale),
     )

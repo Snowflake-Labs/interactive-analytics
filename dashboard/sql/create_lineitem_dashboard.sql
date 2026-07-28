@@ -3,13 +3,13 @@
 -- Replace {{SCALE}} with the target scale factor (1, 10, 100, or 1000).
 
 USE ROLE SYSADMIN;
-USE DATABASE IW_TPCH_BENCH;
+USE DATABASE {{SOLUTION_NAME}}_BENCH_DB;
 
 -- Set the schema to the target scale factor (TPCH_SF{{SCALE}})
 USE SCHEMA TPCH_SF{{SCALE}};
 
--- Set the warehouse to the target scale factor (TPCH_BENCH_WH_{{SCALE}})
-USE WAREHOUSE TPCH_BENCH_WH_{{SCALE}};
+-- Set the warehouse to the target scale factor ({{SOLUTION_NAME}}_BENCH_WH_STD_{{SCALE}})
+USE WAREHOUSE {{SOLUTION_NAME}}_BENCH_WH_STD_{{SCALE}};
 
 -- Create the standard table (LINEITEM_DASHBOARD)
 CREATE OR REPLACE TABLE LINEITEM_DASHBOARD CLUSTER BY (L_SHIPDATE)(
@@ -66,7 +66,7 @@ ORDER BY l.L_SHIPDATE;
 -- Set the schema to the target scale factor (TPCH_SF{{SCALE}}_IT)
 USE SCHEMA TPCH_SF{{SCALE}}_IT;
 
--- Create the interactive table (LINEITEM_DASHBOARD in TPCH_SF{{SCALE}}_IT)
+-- Create the interactive table (LINEITEM_DASHBOARD in {{SOLUTION_NAME}}_SF{{SCALE}}_IT)
 CREATE OR REPLACE INTERACTIVE TABLE LINEITEM_DASHBOARD CLUSTER BY (L_SHIPDATE)(
 	L_ORDERKEY NUMBER(38,0) NOT NULL,
 	L_PARTKEY NUMBER(38,0),

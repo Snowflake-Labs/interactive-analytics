@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from src.tpch.config import BENCH_DATABASE, interactive_schema_for_scale, schema_for_scale
+from src.tpch import config as _cfg
+from src.tpch.config import interactive_schema_for_scale, schema_for_scale
 
 
 def split_statements(sql_text: str) -> list[str]:
@@ -38,7 +39,7 @@ def print_setup_tables(conn, scale: str) -> None:
     sql = (
         f"SELECT TABLE_SCHEMA || '.' || TABLE_NAME AS table_name, "
         f"CLUSTERING_KEY, ROW_COUNT "
-        f"FROM {BENCH_DATABASE}.INFORMATION_SCHEMA.TABLES "
+        f"FROM {_cfg.BENCHMARK_DATABASE}.INFORMATION_SCHEMA.TABLES "
         f"WHERE TABLE_SCHEMA IN ('{std_schema}', '{it_schema}') "
         f"ORDER BY TABLE_SCHEMA, TABLE_NAME"
     )

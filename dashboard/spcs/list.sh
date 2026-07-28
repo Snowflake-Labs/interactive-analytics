@@ -49,7 +49,7 @@ echo
 
 echo "--- Compute Pools ---"
 snow sql --connection "$CONNECTION" --format json -q \
-  "SHOW COMPUTE POOLS LIKE 'IW_${SOLUTION_NAME}%'" 2>/dev/null \
+  "SHOW COMPUTE POOLS LIKE '${SOLUTION_NAME}_BENCH%'" 2>/dev/null \
   | python3 -c '
 import json, sys
 rows = json.load(sys.stdin)

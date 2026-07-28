@@ -12,7 +12,7 @@ from src.tpch.config import (
     TARGETS,
     WORKLOADS,
     project_version,
-    reload_solution_name,
+    load_solution_name,
 )
 
 
@@ -136,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     args = build_parser().parse_args(argv)
     if getattr(args, "solution", None):
-        reload_solution_name(args.solution)
-    print(f"iw-tpch {project_version()}")
+        load_solution_name(args.solution)
+    from src.tpch.config import SOLUTION_NAME
+    print(f"iw-tpch {project_version()} [{SOLUTION_NAME}]")
     return COMMANDS[args.command](args)

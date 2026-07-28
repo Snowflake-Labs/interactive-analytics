@@ -72,9 +72,9 @@ def cmd_setup(args) -> int:
     scale = args.scale
     print(
         f"Setup complete. Ready to benchmark:\n"
-        f"  interactive: {_cfg.BENCH_DATABASE}.{interactive_schema_for_scale(scale)} "
+        f"  interactive: {_cfg.BENCHMARK_DATABASE}.{interactive_schema_for_scale(scale)} "
         f"on {warehouse_name_for_target('interactive', scale)}\n"
-        f"  standard   : {_cfg.BENCH_DATABASE}.{schema_for_scale(scale)} "
+        f"  standard   : {_cfg.BENCHMARK_DATABASE}.{schema_for_scale(scale)} "
         f"on {warehouse_name_for_target('standard', scale)}"
     )
     return 0
