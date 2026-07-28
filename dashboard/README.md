@@ -35,14 +35,25 @@ Everything needed to deploy the dashboard and load test to Snowpark Container Se
 
 ## Running the Dashboard Locally
 
-1. Copy `.env.example` to `.env` and set your Snowflake connection name:
+1. Copy `.env.example` to `.env` and configure:
 
    ```
    CONNECTION_NAME=<your_connection>
+   SOLUTION_NAME=<your_solution_name>
    DEFAULT_SCALE=100
    ```
 
    The connection must exist in `~/.snowflake/connections.toml`.
+
+   All Snowflake object names are derived from `SOLUTION_NAME`:
+
+   | Object | Name |
+   |---|---|
+   | Database | `<SOLUTION_NAME>_BENCH_DB` |
+   | Standard warehouse | `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` |
+   | Interactive warehouse | `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` |
+   | Standard schema | `TPCH_SF<scale>` |
+   | Interactive schema | `TPCH_SF<scale>_IT` |
 
 2. Start the server:
 
@@ -73,11 +84,18 @@ Open `http://localhost:8089` to configure the number of users, ramp-up rate, and
 
 ## Deploying to Snowpark Container Services
 
-See [`spcs/README.md`](spcs/README.md) for full deployment instructions. In short:
+See [`spcs/README.md`](spcs/README.md) for full deployment instructions.
+
+The `deploy.sh` script supports two actions:
 
 ```bash
 cd spcs
-./deploy.sh
+
+# Create the LINEITEM_DASHBOARD table (substitutes SOLUTION_NAME and SCALE from .env)
+./deploy.sh sql
+
+# Build images, push to registry, create compute pools and services
+./deploy.sh services
 ```
 
-This builds Docker images, pushes them to the Snowflake image registry, and creates the services across isolated compute pools.
+Run `sql` first to ensure the denormalized table exists, then `services` to deploy the dashboard and load-test containers.
