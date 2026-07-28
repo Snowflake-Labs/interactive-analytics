@@ -26,7 +26,8 @@ from snowflake.connector.compat import IS_LINUX, IS_MACOS, IS_WINDOWS
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
 
-DATABASE = os.environ.get("SNOWFLAKE_DATABASE", "IW_TPCH_BENCH")
+SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "IW_TPCH")
+DATABASE = os.environ.get("SNOWFLAKE_DATABASE", f"{SOLUTION_NAME}_BENCH_DB")
 SCALES = ["1", "10", "100", "1000"]
 CONNECTION_NAME = os.environ.get("CONNECTION_NAME")
 LOOKBACK_DAYS = 15
@@ -89,9 +90,9 @@ def schema_for_target(target: str, scale: str) -> str:
 
 def warehouse_for_target(target: str, scale: str) -> str:
     return (
-        f"IW_TPCH_BENCH_WH_{scale}"
+        f"{SOLUTION_NAME}_BENCH_WH_INT_{scale}"
         if target == "interactive"
-        else f"TPCH_BENCH_WH_{scale}"
+        else f"{SOLUTION_NAME}_BENCH_WH_STD_{scale}"
     )
 
 
