@@ -11,3 +11,4 @@ wheels/
 
 # Snowflake
 snowflake.log
+.snowflake/

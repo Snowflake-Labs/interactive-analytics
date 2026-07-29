@@ -16,7 +16,7 @@ DASHBOARD_COMPUTE_POOL                LOCUST_COMPUTE_POOL
 │  image)                  │          │  image, same /api server)              │
 │   - serves UI            │          │                                        │
 │   - serves /api/* for    │          │             ▲                          │
-│     the browser          │          │             │  http://dashboard_api_   │
+│     the browser          │          │             │  http://dashboard-api-   │
 │                          │          │             │        locust:3000       │
 │                          │          │  DASHBOARD_LOCUST (locust image)       │
 │                          │          │   - generates load                     │
@@ -38,7 +38,8 @@ spcs/
 ├── config.env           # all knobs (connection, names, resources, locust params)
 ├── _lib.sh              # shared helpers sourced by every script
 ├── build-and-push.sh    # docker build + push both images
-├── deploy.sh            # end-to-end: setup + build/push + create services
+├── deploy.sh            # two actions: `sql` (run create_lineitem_dashboard.sql) or `services` (full SPCS deploy)
+├── list.sh              # list all SPCS resources (registries, repos, services, compute pools)
 ├── update.sh            # rebuild + ALTER SERVICE (preserves ingress URLs)
 ├── status.sh            # service state + ingress URLs
 ├── logs.sh              # tail container logs
@@ -58,17 +59,25 @@ are no separate SQL files to keep in sync.
 - The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
   REPOSITORY`, and `CREATE SERVICE`. `ACCOUNTADMIN` works.
 - The dashboard's runtime role (`DASHBOARD_ROLE`) needs `USAGE` on the TPC-H
-  warehouses (`IW_TPCH_BENCH_WH_*`, `TPCH_BENCH_WH_*`) and `SELECT` on the
-  `IW_TPCH_BENCH.TPCH_SF*_*` schemas.
+  warehouses (`${SOLUTION_NAME}_BENCH_WH_*`) and `SELECT` on the
+  `${SOLUTION_NAME}_BENCH_DB.TPCH_SF*_*` schemas.
 
 ## First-time deploy
 
-```
+`deploy.sh` supports two actions:
+
+| Action | What it does |
+|--------|------------------------------------------------------|
+| `sql` | Runs `sql/create_lineitem_dashboard.sql` with `SOLUTION_NAME` and `SCALE` substituted |
+| `services` | Full SPCS deploy (prerequisites + build/push + create services) |
+
+```bash
 cd spcs
-./deploy.sh
+./deploy.sh sql        # set up the benchmark tables first
+./deploy.sh services   # then deploy the SPCS services
 ```
 
-`deploy.sh` will:
+`deploy.sh services` will:
 
 1. Create `DB.SCHEMA`, **two independent compute pools** (one for the
    dashboard, one for locust), and the image repository (idempotent).
@@ -89,8 +98,28 @@ dashboard-pool API server.
 
 Open the locust URL to drive load from the Locust web UI. Its target host is
 pre-set via SPCS internal DNS to the isolated API server on the locust pool
-(`http://dashboard_api_locust:3000`), so the load never hits the same API
+(`http://dashboard-api-locust:3000`), so the load never hits the same API
 process the browser uses.
+
+## Naming convention
+
+All object names are derived from `SOLUTION_NAME` (set in `dashboard/.env`).
+With `SOLUTION_NAME=DMTESTTPCH`, the objects created are:
+
+| Object | Name |
+|--------|------|
+| Database | `DMTESTTPCH_BENCH_DB` |
+| Schema | `SPCS` |
+| Image repository | `DMTESTTPCH_BENCH_IMAGES` |
+| Dashboard compute pool | `DMTESTTPCH_BENCH_DASHBOARD_POOL` |
+| Locust compute pool | `DMTESTTPCH_BENCH_LOCUST_POOL` |
+| Dashboard service | `DASHBOARD` |
+| Locust API service | `DASHBOARD_API_LOCUST` |
+| Locust service | `DASHBOARD_LOCUST` |
+
+The general pattern is `${SOLUTION_NAME}_BENCH_*` for infrastructure objects.
+Change `SOLUTION_NAME` in `dashboard/.env` to deploy multiple independent
+instances in the same account.
 
 ## Compute pools
 
@@ -99,12 +128,12 @@ pools so they can be sized and scaled without affecting each other. Both pools
 are declared in `config.env`:
 
 ```
-DASHBOARD_COMPUTE_POOL=IW_DASHBOARD_POOL
+DASHBOARD_COMPUTE_POOL=${SOLUTION_NAME}_BENCH_DASHBOARD_POOL
 DASHBOARD_INSTANCE_FAMILY=CPU_X64_M
 DASHBOARD_MIN_NODES=1
 DASHBOARD_MAX_NODES=2
 
-LOCUST_COMPUTE_POOL=IW_DASHBOARD_LOCUST_POOL
+LOCUST_COMPUTE_POOL=${SOLUTION_NAME}_BENCH_LOCUST_POOL
 LOCUST_INSTANCE_FAMILY=CPU_X64_M
 LOCUST_MIN_NODES=1
 LOCUST_MAX_NODES=2
@@ -164,6 +193,9 @@ exit when the run completes; check results with `./logs.sh locust`.
 ## Common operations
 
 ```
+./deploy.sh sql             # run create_lineitem_dashboard.sql
+./deploy.sh services        # full SPCS deploy (idempotent)
+./list.sh                   # list all SPCS resources in the schema
 ./status.sh                 # show state + endpoints for all three services
 ./status.sh --urls-only     # just the ingress URLs
 ./logs.sh dashboard         # dashboard API (browser-facing) logs
@@ -175,17 +207,18 @@ exit when the run completes; check results with `./logs.sh locust`.
 ## Granting another role access to the ingress URLs
 
 By default only the service owner role can hit the public ingress URLs. To let
-another role in:
+another role in (substitute your actual `SOLUTION_NAME`):
 
 ```sql
 USE ROLE ACCOUNTADMIN;
-GRANT USAGE ON DATABASE IW_TPCH_BENCH TO ROLE <consumer_role>;
-GRANT USAGE ON SCHEMA IW_TPCH_BENCH.SPCS TO ROLE <consumer_role>;
-GRANT SERVICE ROLE IW_TPCH_BENCH.SPCS.DASHBOARD!ALL_ENDPOINTS_USAGE
+-- With SOLUTION_NAME=DMTESTTPCH the database is DMTESTTPCH_BENCH_DB
+GRANT USAGE ON DATABASE <SOLUTION_NAME>_BENCH_DB TO ROLE <consumer_role>;
+GRANT USAGE ON SCHEMA <SOLUTION_NAME>_BENCH_DB.SPCS TO ROLE <consumer_role>;
+GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD!ALL_ENDPOINTS_USAGE
   TO ROLE <consumer_role>;
-GRANT SERVICE ROLE IW_TPCH_BENCH.SPCS.DASHBOARD_API_LOCUST!ALL_ENDPOINTS_USAGE
+GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_API_LOCUST!ALL_ENDPOINTS_USAGE
   TO ROLE <consumer_role>;
-GRANT SERVICE ROLE IW_TPCH_BENCH.SPCS.DASHBOARD_LOCUST!ALL_ENDPOINTS_USAGE
+GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_LOCUST!ALL_ENDPOINTS_USAGE
   TO ROLE <consumer_role>;
 ```
 
