@@ -27,7 +27,7 @@ See [Sample data: TPC-H](https://docs.snowflake.com/en/user-guide/sample-data-tp
 │   ├── tpch_runner.py      # CLI entry shim
 │   └── tpch/
 │       ├── cli.py          # argparse + main
-│       ├── commands.py     # setup / run / teardown
+│       ├── commands.py     # setup / list / run / teardown
 │       ├── config.py       # paths, env, target context
 │       ├── connection.py   # Snowflake connect + session
 │       ├── execution.py    # query runs
@@ -97,7 +97,10 @@ Use `./iwtpch.sh` as a shorthand for `uv run iw-tpch` (both accept the same argu
 ./iwtpch.sh setup --scale 100
 ./iwtpch.sh setup --scale 1000   # run separately for each scale you want to benchmark
 
-# 2. Run the 22 TPC-H queries (interactive target, scale from DEFAULT_SCALE, original workload are the defaults)
+# 2. List databases and warehouses created for this solution
+./iwtpch.sh list
+
+# 3. Run the 22 TPC-H queries (interactive target, scale from DEFAULT_SCALE, original workload are the defaults)
 ./iwtpch.sh run
 ./iwtpch.sh run --target interactive --scale 10  --workload original
 ./iwtpch.sh run --target interactive --scale 100 --workload modern
@@ -112,7 +115,7 @@ Use `./iwtpch.sh` as a shorthand for `uv run iw-tpch` (both accept the same argu
 ./iwtpch.sh run --repeats 5      # best of 5 executions per query
 ./iwtpch.sh run --iterations 3   # 3 full workload passes
 
-# 3. Optional cleanup (drops benchmark warehouses for a scale)
+# 4. Optional cleanup (drops benchmark warehouses for a scale)
 ./iwtpch.sh teardown --scale 10
 
 # Override connection, database, schema, or warehouse (any subset)
@@ -188,7 +191,7 @@ HAVING nation = 'ALGERIA' AND o_year = 1998;
 
 | Setting | Default | Override |
 |---|---|---|
-| Connection | `CONNECTION_NAME` in `.env` | `--connection` on `setup`, `run`, `teardown` |
+| Connection | `CONNECTION_NAME` in `.env` | `--connection` on `setup`, `list`, `run`, `teardown` |
 | Solution name | `SOLUTION_NAME` in `.env` (default `TPCH`) | `--solution` on any command |
 | Scale | `DEFAULT_SCALE` in `.env` (fallback `10`) | `--scale` on `setup`, `run` |
 | Database | `<SOLUTION_NAME>_BENCH_DB` | `--database` on `run` |

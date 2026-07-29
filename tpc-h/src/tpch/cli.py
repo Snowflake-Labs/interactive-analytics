@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from src.tpch.commands import cmd_run, cmd_setup, cmd_teardown
+from src.tpch.commands import cmd_list, cmd_run, cmd_setup, cmd_teardown
 from src.tpch.config import (
     DEFAULT_SCALE,
     DEFAULT_TARGET,
@@ -55,6 +55,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_connection_arg(teardown_p)
     _add_solution_arg(teardown_p)
+
+    list_p = sub.add_parser("list", help="List databases and warehouses created for this solution")
+    _add_connection_arg(list_p)
+    _add_solution_arg(list_p)
 
     run_p = sub.add_parser("run", help="Run the TPC-H benchmark")
     run_p.add_argument(
@@ -123,6 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "setup": cmd_setup,
+    "list": cmd_list,
     "run": cmd_run,
     "teardown": cmd_teardown,
 }
