@@ -236,7 +236,12 @@ class ConnectionPool:
 
             kwargs = connection_kwargs_for(target, scale)
             conn = snowflake.connector.connect(**kwargs)
+            wh = warehouse_for_target(target, scale)
+            schema = schema_for_target(target, scale)
             with conn.cursor() as cur:
+                cur.execute(f"USE WAREHOUSE {wh}")
+                cur.execute(f"USE DATABASE {DATABASE}")
+                cur.execute(f"USE SCHEMA {schema}")
                 cur.execute("ALTER SESSION SET USE_CACHED_RESULT = FALSE")
                 cur.execute(f"ALTER SESSION SET QUERY_TAG = '{QUERY_TAG}'")
             self._connections[key] = conn
