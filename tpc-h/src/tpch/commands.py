@@ -131,7 +131,8 @@ def cmd_run(args) -> int:
     print(f"  scale     : SF{scale}")
     print(f"  workload  : {workload}")
     print(f"  connection: {connection}")
-    print(f"  database  : {database}.{schema}")
+    print(f"  database  : {database}")
+    print(f"  schema    : {schema}")
 
     results: list[QueryResult] = []
     wh_size = "unknown"
