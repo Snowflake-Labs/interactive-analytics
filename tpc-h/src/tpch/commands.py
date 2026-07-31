@@ -126,7 +126,8 @@ def cmd_run(args) -> int:
         f"Running {len(queries)} TPC-H queries x {args.iterations} iteration(s), "
         f"best of {args.repeats}"
     )
-    print(f"  target    : {target}")
+    if not args.schema and not args.warehouse:
+        print(f"  target    : {target}")
     print(f"  scale     : SF{scale}")
     print(f"  workload  : {workload}")
     print(f"  connection: {connection}")
