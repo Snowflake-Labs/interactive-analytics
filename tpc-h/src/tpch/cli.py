@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from src.tpch.commands import cmd_run, cmd_setup, cmd_teardown
+from src.tpch.commands import cmd_list, cmd_run, cmd_setup, cmd_teardown
 from src.tpch.config import (
     DEFAULT_SCALE,
     DEFAULT_TARGET,
@@ -12,6 +12,7 @@ from src.tpch.config import (
     TARGETS,
     WORKLOADS,
     project_version,
+    load_solution_name,
 )
 
 
@@ -20,6 +21,14 @@ def _add_connection_arg(parser: argparse.ArgumentParser) -> None:
         "--connection",
         default=None,
         help="Snowflake connection name from connections.toml (default: CONNECTION_NAME env var)",
+    )
+
+
+def _add_solution_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--solution",
+        default=None,
+        help="Solution name used to derive all object names (overrides SOLUTION_NAME env var, default: TPCH)",
     )
 
 
@@ -35,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"TPC-H scale factor to load: 1, 10, 100, or 1000 (default {DEFAULT_SCALE})",
     )
     _add_connection_arg(setup_p)
+    _add_solution_arg(setup_p)
 
     teardown_p = sub.add_parser("teardown", help="Drop benchmark warehouses for a scale factor")
     teardown_p.add_argument(
@@ -44,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"TPC-H scale factor to tear down: 1, 10, 100, or 1000 (default {DEFAULT_SCALE})",
     )
     _add_connection_arg(teardown_p)
+    _add_solution_arg(teardown_p)
+
+    list_p = sub.add_parser("list", help="List databases and warehouses created for this solution")
+    _add_connection_arg(list_p)
+    _add_solution_arg(list_p)
 
     run_p = sub.add_parser("run", help="Run the TPC-H benchmark")
     run_p.add_argument(
@@ -105,12 +120,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Snowflake warehouse to use (overrides the default for --target and --scale)",
     )
     _add_connection_arg(run_p)
+    _add_solution_arg(run_p)
 
     return p
 
 
 COMMANDS = {
     "setup": cmd_setup,
+    "list": cmd_list,
     "run": cmd_run,
     "teardown": cmd_teardown,
 }
@@ -123,5 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"iw-tpch {project_version()}")
         return 0
     args = build_parser().parse_args(argv)
-    print(f"iw-tpch {project_version()}")
+    if getattr(args, "solution", None):
+        load_solution_name(args.solution)
+    from src.tpch.config import SOLUTION_NAME
+    print(f"iw-tpch {project_version()} [{SOLUTION_NAME}]")
     return COMMANDS[args.command](args)

@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Snowflake
+snowflake.log
+.snowflake/
+
 # Local configuration
 .env
 

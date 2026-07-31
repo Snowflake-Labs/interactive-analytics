@@ -2,9 +2,11 @@
 
 A small Python harness that runs the [TPC-H query set](https://github.com/Snowflake-Labs/interactive-analytics/tree/main/tpc-h/queries) against a Snowflake **Interactive Warehouse**. Setup copies TPC-H tables from Snowflake's shared [`SNOWFLAKE_SAMPLE_DATA`](https://docs.snowflake.com/en/user-guide/sample-data-tpch) database into your own benchmark database.
 
+All Snowflake object names (database, warehouses) are derived from the `SOLUTION_NAME` setting in `.env` (default `TPCH`). Examples below use `SOLUTION_NAME=TPCH`.
+
 ## Data source
 
-This project reads from [`SNOWFLAKE_SAMPLE_DATA`](https://docs.snowflake.com/en/user-guide/sample-data-tpch), Snowflake's read-only shared database of sample datasets. Within that database, TPC-H data lives in the schemas `TPCH_SF1`, `TPCH_SF10`, `TPCH_SF100`, and `TPCH_SF1000` (scale factors 1, 10, 100, and 1000). Because `SNOWFLAKE_SAMPLE_DATA` is read-only, `setup` CTAS-copies the eight TPC-H tables from the chosen source schema into `IW_TPCH_BENCH` so you can create standard and interactive tables for benchmarking.
+This project reads from [`SNOWFLAKE_SAMPLE_DATA`](https://docs.snowflake.com/en/user-guide/sample-data-tpch), Snowflake's read-only shared database of sample datasets. Within that database, TPC-H data lives in the schemas `TPCH_SF1`, `TPCH_SF10`, `TPCH_SF100`, and `TPCH_SF1000` (scale factors 1, 10, 100, and 1000). Because `SNOWFLAKE_SAMPLE_DATA` is read-only, `setup` CTAS-copies the eight TPC-H tables from the chosen source schema into `<SOLUTION_NAME>_BENCH_DB` so you can create standard and interactive tables for benchmarking.
 
 See [Sample data: TPC-H](https://docs.snowflake.com/en/user-guide/sample-data-tpch) for schema details, query definitions, and Snowflake's benchmarking recommendations.
 
@@ -25,7 +27,7 @@ See [Sample data: TPC-H](https://docs.snowflake.com/en/user-guide/sample-data-tp
 │   ├── tpch_runner.py      # CLI entry shim
 │   └── tpch/
 │       ├── cli.py          # argparse + main
-│       ├── commands.py     # setup / run / teardown
+│       ├── commands.py     # setup / list / run / teardown
 │       ├── config.py       # paths, env, target context
 │       ├── connection.py   # Snowflake connect + session
 │       ├── execution.py    # query runs
@@ -40,7 +42,7 @@ See [Sample data: TPC-H](https://docs.snowflake.com/en/user-guide/sample-data-tp
 
 - `uv` to run python and manage virtual environment and packages. See: [uv Installation](https://docs.astral.sh/uv/getting-started/installation/)
 - A Snowflake connection in `~/.snowflake/connections.toml`, with a role (`SYSADMIN` is used in the setup scripts) that can create databases and warehouses, and read the source schemas in `SNOWFLAKE_SAMPLE_DATA`: `TPCH_SF1`, `TPCH_SF10`, `TPCH_SF100`, and `TPCH_SF1000`. You can use `snow` CLI to [set up the connection](https://docs.snowflake.com/en/developer-guide/snowflake-cli/connecting/configure-connections).
-- Copy `.env.example` to `.env` and set at least `CONNECTION_NAME` (the connection name from `connections.toml`).
+- Copy `.env.example` to `.env` and set at least `CONNECTION_NAME` (the connection name from `connections.toml`) and `SOLUTION_NAME` (used to derive all Snowflake object names).
 
 ```bash
 uv sync
@@ -53,34 +55,36 @@ The benchmark supports four TPC-H scale factors, selected with `--scale {1,10,10
 
 | Scale | Standard target | Interactive target |
 |---|---|---|
-| `1` | `IW_TPCH_BENCH.TPCH_SF1` | `IW_TPCH_BENCH.TPCH_SF1_IT` |
-| `10` | `IW_TPCH_BENCH.TPCH_SF10` | `IW_TPCH_BENCH.TPCH_SF10_IT` |
-| `100` | `IW_TPCH_BENCH.TPCH_SF100` | `IW_TPCH_BENCH.TPCH_SF100_IT` |
-| `1000` | `IW_TPCH_BENCH.TPCH_SF1000` | `IW_TPCH_BENCH.TPCH_SF1000_IT` |
+| `1` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF1` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF1_IT` |
+| `10` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF10` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF10_IT` |
+| `100` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF100` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF100_IT` |
+| `1000` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF1000` | `<SOLUTION_NAME>_BENCH_DB.TPCH_SF1000_IT` |
 
-Standard tables live in `TPCH_SF<scale>`; interactive tables live in `TPCH_SF<scale>_IT`. Both targets use the `IW_TPCH_BENCH` database unless overridden via CLI flags.
+Standard tables live in `TPCH_SF<scale>`; interactive tables live in `TPCH_SF<scale>_IT`. Both targets use the `<SOLUTION_NAME>_BENCH_DB` database unless overridden via CLI flags.
 
 ## Snowflake objects created
 
-`setup --scale N` creates (or reuses) objects in `IW_TPCH_BENCH`. Run setup separately for each scale you want to benchmark.
+`setup --scale N` creates (or reuses) objects in `<SOLUTION_NAME>_BENCH_DB`. Run setup separately for each scale you want to benchmark.
 
 | Object | Type | Notes |
 |---|---|---|
-| `IW_TPCH_BENCH` | Database | shared across scales; created if not exists |
+| `<SOLUTION_NAME>_BENCH_DB` | Database | shared across scales; created if not exists |
 | `TPCH_SF<scale>` | Schema | 8 standard tables (CTAS from `SNOWFLAKE_SAMPLE_DATA.TPCH_SF<scale>`) |
 | `TPCH_SF<scale>_IT` | Schema | 8 interactive tables, clustered for the benchmark workload |
-| `IW_TPCH_LOAD_WH` | Standard warehouse | temporary; sized for the CTAS load and dropped at the end of setup |
-| `TPCH_BENCH_WH_<scale>` | Standard warehouse | used for standard warehouse benchmark|
-| `IW_TPCH_BENCH_WH_<scale>` | Interactive warehouse | used for interactive warehouse benchmark; attached to the eight `TPCH_SF<scale>_IT` tables; `FALLBACK_WAREHOUSE` is `TPCH_BENCH_WH_<scale>` |
+| `<SOLUTION_NAME>_BENCH_WH_LOAD` | Standard warehouse | temporary; sized for the CTAS load and dropped at the end of setup |
+| `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` | Standard warehouse | used for standard warehouse benchmark|
+| `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` | Interactive warehouse | used for interactive warehouse benchmark; attached to the eight `TPCH_SF<scale>_IT` tables; `FALLBACK_WAREHOUSE` is `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` |
 
 Per scale:
 
+With `SOLUTION_NAME=TPCH`:
+
 | Scale | Schemas | Load warehouse | Standard warehouse | Interactive warehouse |
 |---|---|---|---|---|
-| `1` | `TPCH_SF1`, `TPCH_SF1_IT` | `IW_TPCH_LOAD_WH` (SMALL) | `TPCH_BENCH_WH_1` (SMALL) | `IW_TPCH_BENCH_WH_1` (SMALL) |
-| `10` | `TPCH_SF10`, `TPCH_SF10_IT` | `IW_TPCH_LOAD_WH` (LARGE) | `TPCH_BENCH_WH_10` (MEDIUM) | `IW_TPCH_BENCH_WH_10` (MEDIUM) |
-| `100` | `TPCH_SF100`, `TPCH_SF100_IT` | `IW_TPCH_LOAD_WH` (XLARGE) | `TPCH_BENCH_WH_100` (LARGE) | `IW_TPCH_BENCH_WH_100` (LARGE) |
-| `1000` | `TPCH_SF1000`, `TPCH_SF1000_IT` | `IW_TPCH_LOAD_WH` (XXLARGE) | `TPCH_BENCH_WH_1000` (XXLARGE) | `IW_TPCH_BENCH_WH_1000` (XXLARGE) |
+| `1` | `TPCH_SF1`, `TPCH_SF1_IT` | `TPCH_BENCH_WH_LOAD` (SMALL) | `TPCH_BENCH_WH_STD_1` (SMALL) | `TPCH_BENCH_WH_INT_1` (SMALL) |
+| `10` | `TPCH_SF10`, `TPCH_SF10_IT` | `TPCH_BENCH_WH_LOAD` (LARGE) | `TPCH_BENCH_WH_STD_10` (MEDIUM) | `TPCH_BENCH_WH_INT_10` (MEDIUM) |
+| `100` | `TPCH_SF100`, `TPCH_SF100_IT` | `TPCH_BENCH_WH_LOAD` (XLARGE) | `TPCH_BENCH_WH_STD_100` (LARGE) | `TPCH_BENCH_WH_INT_100` (LARGE) |
+| `1000` | `TPCH_SF1000`, `TPCH_SF1000_IT` | `TPCH_BENCH_WH_LOAD` (XXLARGE) | `TPCH_BENCH_WH_STD_1000` (XXLARGE) | `TPCH_BENCH_WH_INT_1000` (XXLARGE) |
 
 ## Usage
 
@@ -93,12 +97,15 @@ Use `./iwtpch.sh` as a shorthand for `uv run iw-tpch` (both accept the same argu
 ./iwtpch.sh setup --scale 100
 ./iwtpch.sh setup --scale 1000   # run separately for each scale you want to benchmark
 
-# 2. Run the 22 TPC-H queries (interactive target, scale from DEFAULT_SCALE, original workload are the defaults)
+# 2. List databases and warehouses created for this solution
+./iwtpch.sh list
+
+# 3. Run the 22 TPC-H queries (interactive target, scale from DEFAULT_SCALE, original workload are the defaults)
 ./iwtpch.sh run
 ./iwtpch.sh run --target interactive --scale 10  --workload original
 ./iwtpch.sh run --target interactive --scale 100 --workload modern
 
-# Same queries on a standard (non-interactive) warehouse, using the standard tables in IW_TPCH_BENCH
+# Same queries on a standard (non-interactive) warehouse, using the standard tables
 ./iwtpch.sh run --target standard --scale 10  --workload original
 ./iwtpch.sh run --target standard --scale 100 --workload modern
 
@@ -108,15 +115,15 @@ Use `./iwtpch.sh` as a shorthand for `uv run iw-tpch` (both accept the same argu
 ./iwtpch.sh run --repeats 5      # best of 5 executions per query
 ./iwtpch.sh run --iterations 3   # 3 full workload passes
 
-# 3. Optional cleanup (drops benchmark warehouses for a scale)
+# 4. Optional cleanup (drops benchmark warehouses for a scale)
 ./iwtpch.sh teardown --scale 10
 
 # Override connection, database, schema, or warehouse (any subset)
 ./iwtpch.sh run \
   --connection PM \
-  --database IW_TPCH_BENCH \
+  --database TPCH_BENCH_DB \
   --schema TPCH_SF100 \
-  --warehouse TPCH_BENCH_WH_100
+  --warehouse TPCH_BENCH_WH_STD_100
 
 # Same connection override on setup / teardown
 ./iwtpch.sh setup --scale 10 --connection PM
@@ -184,11 +191,12 @@ HAVING nation = 'ALGERIA' AND o_year = 1998;
 
 | Setting | Default | Override |
 |---|---|---|
-| Connection | `CONNECTION_NAME` in `.env` | `--connection` on `setup`, `run`, `teardown` |
+| Connection | `CONNECTION_NAME` in `.env` | `--connection` on `setup`, `list`, `run`, `teardown` |
+| Solution name | `SOLUTION_NAME` in `.env` (default `TPCH`) | `--solution` on any command |
 | Scale | `DEFAULT_SCALE` in `.env` (fallback `10`) | `--scale` on `setup`, `run` |
-| Database | `IW_TPCH_BENCH` | `--database` on `run` |
+| Database | `<SOLUTION_NAME>_BENCH_DB` | `--database` on `run` |
 | Schema | `TPCH_SF<scale>` (standard) or `TPCH_SF<scale>_IT` (interactive) | `--schema` on `run` |
-| Warehouse | `<prefix>_<scale>` for the target (e.g. `IW_TPCH_BENCH_WH_10`) | `--warehouse` on `run` |
+| Warehouse | `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` or `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` | `--warehouse` on `run` |
 
 CLI flags take precedence over defaults derived from `--target` and `--scale`. Omit them to keep the built-in naming above.
 
@@ -198,8 +206,8 @@ CLI flags take precedence over defaults derived from `--target` and `--scale`. O
 
 | Target | Database | Schema | Warehouse | Tables |
 |---|---|---|---|---|
-| `interactive` (default) | `IW_TPCH_BENCH` | `TPCH_SF<scale>_IT` | `IW_TPCH_BENCH_WH_<scale>` (interactive) | interactive copies created by `setup` |
-| `standard` | `IW_TPCH_BENCH` | `TPCH_SF<scale>` | `TPCH_BENCH_WH_<scale>` (standard) | standard copies created by `setup` |
+| `interactive` (default) | `<SOLUTION_NAME>_BENCH_DB` | `TPCH_SF<scale>_IT` | `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` (interactive) | interactive copies created by `setup` |
+| `standard` | `<SOLUTION_NAME>_BENCH_DB` | `TPCH_SF<scale>` | `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` (standard) | standard copies created by `setup` |
 
 The query files use unqualified table names, so they resolve via `USE DATABASE`/`USE SCHEMA` and run unchanged on either target and scale. Use `--database`, `--schema`, and `--warehouse` to point at a different Snowflake context without changing the query files.
 
@@ -218,6 +226,6 @@ Each query was analysed for opportunities to use modern Snowflake SQL (window fu
 
 ## Notes
 
-- Interactive warehouses can only query interactive tables, so a standard warehouse (`IW_TPCH_LOAD_WH`) is created for the CTAS load.
+- Interactive warehouses can only query interactive tables, so a standard warehouse (`<SOLUTION_NAME>_BENCH_WH_LOAD`) is created for the CTAS load.
 - `client_elapsed_s` is wall-clock timing measured around `cur.execute` + `fetchall` (so it includes result transfer); `server_elapsed_s` is `TOTAL_ELAPSED_TIME` from Snowflake's query history.
 - Each query is executed `--repeats` times (default 3) and the **best** (minimum) client and server times are kept. The first execution warms the warehouse's local cache, so the best of the later runs reflects warm-cache performance (this replaces a separate warm-up phase). The JSON output also records every attempt's `query_id`. Use `--repeats 1` for a single execution per query.

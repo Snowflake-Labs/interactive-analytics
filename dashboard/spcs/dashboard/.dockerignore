@@ -1,0 +1,17 @@
+# Local build artefacts we never want in the image.
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+**/.env
+snowflake.log
+node_modules
+# Locust code lives in its own image, not the dashboard image.
+locust/
+# Ship the SPCS scripts folder itself only where explicitly needed.
+spcs/locust/
+spcs/specs/
+spcs/sql/
+spcs/*.sh
+spcs/*.md
+spcs/*.env

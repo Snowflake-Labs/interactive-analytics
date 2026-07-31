@@ -5,8 +5,8 @@ from collections.abc import Callable
 
 import snowflake.connector
 
+from src.tpch import config as _cfg
 from src.tpch.config import (
-    BENCH_DATABASE,
     EXPECTED_RESULTS_1GB_PATH,
     SQL_DIR,
     interactive_schema_for_scale,
@@ -20,6 +20,7 @@ from src.tpch.connection import (
     ensure_warehouse_started,
     resolve_connection_name,
     use_benchmark_context,
+    _warehouse_row,
 )
 from src.tpch.execution import run_benchmark_iteration
 from src.tpch.queries import load_queries, parse_query_filter
@@ -72,9 +73,9 @@ def cmd_setup(args) -> int:
     scale = args.scale
     print(
         f"Setup complete. Ready to benchmark:\n"
-        f"  interactive: {BENCH_DATABASE}.{interactive_schema_for_scale(scale)} "
+        f"  interactive: {_cfg.BENCHMARK_DATABASE}.{interactive_schema_for_scale(scale)} "
         f"on {warehouse_name_for_target('interactive', scale)}\n"
-        f"  standard   : {BENCH_DATABASE}.{schema_for_scale(scale)} "
+        f"  standard   : {_cfg.BENCHMARK_DATABASE}.{schema_for_scale(scale)} "
         f"on {warehouse_name_for_target('standard', scale)}"
     )
     return 0
@@ -125,11 +126,13 @@ def cmd_run(args) -> int:
         f"Running {len(queries)} TPC-H queries x {args.iterations} iteration(s), "
         f"best of {args.repeats}"
     )
-    print(f"  target    : {target}")
+    if not args.schema and not args.warehouse:
+        print(f"  target    : {target}")
     print(f"  scale     : SF{scale}")
     print(f"  workload  : {workload}")
     print(f"  connection: {connection}")
-    print(f"  database  : {database}.{schema}")
+    print(f"  database  : {database}")
+    print(f"  schema    : {schema}")
 
     results: list[QueryResult] = []
     wh_size = "unknown"
@@ -202,3 +205,61 @@ def cmd_run(args) -> int:
     print(f"Wrote {csv_path}")
     validation_failed = summary.get("validation_failed", 0)
     return 0 if summary["failed"] == 0 and validation_failed == 0 else 1
+
+
+def cmd_list(args) -> int:
+    try:
+        connection = resolve_connection_name(args.connection)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    print(f"Listing resources for solution '{_cfg.SOLUTION_NAME}' using connection '{connection}'…\n")
+
+    with connect(connection_name=connection) as conn:
+        cur = conn.cursor()
+
+        # Check database
+        cur.execute(f"SHOW DATABASES LIKE '{_cfg.BENCHMARK_DATABASE}'")
+        db_rows = cur.fetchall()
+        if db_rows:
+            print(f"Database: {_cfg.BENCHMARK_DATABASE}")
+            # List schemas in the database
+            cur.execute(f"SHOW SCHEMAS IN DATABASE {_cfg.BENCHMARK_DATABASE}")
+            schema_cols = [c[0].lower() for c in cur.description]
+            schema_rows = cur.fetchall()
+            bench_schemas = [
+                dict(zip(schema_cols, r, strict=False))
+                for r in schema_rows
+                if dict(zip(schema_cols, r, strict=False))["name"].startswith(_cfg.SCHEMA_PREFIX)
+            ]
+            if bench_schemas:
+                print("  Schemas:")
+                for s in bench_schemas:
+                    print(f"    {s['name']}")
+            else:
+                print("  Schemas: (none)")
+        else:
+            print(f"Database: {_cfg.BENCHMARK_DATABASE} (not found)")
+
+        # Check warehouses
+        print()
+        wh_pattern = f"{_cfg.SOLUTION_NAME}_BENCH_WH%"
+        cur.execute(f"SHOW WAREHOUSES LIKE '{wh_pattern}'")
+        wh_cols = [c[0].lower() for c in cur.description]
+        wh_rows = cur.fetchall()
+        if wh_rows:
+            print("Warehouses:")
+            for row in wh_rows:
+                wh = dict(zip(wh_cols, row, strict=False))
+                name = wh["name"]
+                size = str(wh.get("size", "unknown")).upper()
+                state = str(wh.get("state", "unknown")).upper()
+                wh_type = str(wh.get("type", "STANDARD")).upper()
+                print(f"  {name:<40} size={size:<10} state={state:<10} type={wh_type}")
+        else:
+            print("Warehouses: (none found)")
+
+        cur.close()
+
+    return 0
