@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SPCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "$SPCS_DIR/.." && pwd)"
+REPO_DIR="$(cd "$SPCS_DIR/../.." && pwd)"
 
 # shellcheck disable=SC1091
 source "$SPCS_DIR/config.env"

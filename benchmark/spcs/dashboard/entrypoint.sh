@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# SPCS entrypoint for the dashboard container.
+# SPCS entrypoint for the benchmark API container.
 #
 # SPCS injects these env vars into every container:
-#   SNOWFLAKE_ACCOUNT        e.g. myacct
-#   SNOWFLAKE_HOST           e.g. myacct.snowflakecomputing.com
-#   SNOWFLAKE_DATABASE, SNOWFLAKE_SCHEMA (from the service DB/schema)
-# and mounts an OAuth token at /snowflake/session/token that is valid for the
-# service's owner role.  We generate a connections.toml that references that
-# token file, so server.py's normal CONNECTION_NAME code path just works.
+#   SNOWFLAKE_ACCOUNT, SNOWFLAKE_HOST, SNOWFLAKE_DATABASE, SNOWFLAKE_SCHEMA
+# and mounts an OAuth token at /snowflake/session/token.
 
 set -euo pipefail
 
@@ -45,11 +41,10 @@ chmod 600 "$CONNECTIONS_FILE"
 export SNOWFLAKE_HOME="$CONNECTIONS_DIR"
 export CONNECTION_NAME=spcs
 export SNOWFLAKE_DEFAULT_CONNECTION_NAME=spcs
-# OAuth tokens live in the file; don't try to use the OS keyring cache.
 export SNOWFLAKE_CLIENT_STORE_TEMPORARY_CREDENTIAL=false
 export SNOWFLAKE_DATABASE="$DB"
 export PORT="${PORT:-3000}"
 export DEFAULT_SCALE="${DEFAULT_SCALE:-100}"
 
-echo "[entrypoint] Starting dashboard on port ${PORT} (db=${DB}, scale=${DEFAULT_SCALE})."
+echo "[entrypoint] Starting benchmark API on port ${PORT} (db=${DB}, scale=${DEFAULT_SCALE})."
 exec uv run --directory /app/api --no-sync python server.py

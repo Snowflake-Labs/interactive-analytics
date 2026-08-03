@@ -1,4 +1,4 @@
-# Locust load test image for the TPC-H dashboard.
+# Locust load test image for the benchmark API.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,12 +14,15 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY locust/pyproject.toml locust/uv.lock /app/
+COPY benchmark/locust/pyproject.toml benchmark/locust/uv.lock /app/
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY locust/locustfile.py /app/
+COPY benchmark/locust/locustfile.py /app/
 
-COPY spcs/locust/entrypoint.sh /usr/local/bin/entrypoint.sh
+# Include benchmark queries so locust can read them.
+COPY benchmark/test/ /app/test/
+
+COPY benchmark/spcs/locust/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8089
