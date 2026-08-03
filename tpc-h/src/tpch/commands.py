@@ -122,9 +122,10 @@ def cmd_run(args) -> int:
         print("No queries matched the filter.", file=sys.stderr)
         return 2
 
+    mode_label = f"avg of {args.repeats} (+1 warmup)" if args.avg else f"best of {args.repeats}"
     print(
         f"Running {len(queries)} TPC-H queries x {args.iterations} iteration(s), "
-        f"best of {args.repeats}"
+        f"{mode_label}"
     )
     if not args.schema and not args.warehouse:
         print(f"  target    : {target}")
@@ -174,10 +175,11 @@ def cmd_run(args) -> int:
                 iteration=iteration,
                 repeats=args.repeats,
                 cur=cur,
+                use_avg=args.avg,
             )
             results.extend(iter_results)
 
-        enrich_server_elapsed(conn, results)
+        enrich_server_elapsed(conn, results, use_avg=args.avg)
         cur.close()
 
     if scale == "1":

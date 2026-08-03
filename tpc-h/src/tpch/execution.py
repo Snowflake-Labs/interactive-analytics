@@ -92,6 +92,39 @@ def best_result(name: str, iteration: int, attempts: list[AttemptResult]) -> Que
     }
 
 
+def avg_result(name: str, iteration: int, attempts: list[AttemptResult]) -> QueryResult:
+    """Compute average client time across successful attempts."""
+    ok_attempts = [a for a in attempts if a["status"] == "OK"]
+    if ok_attempts:
+        import statistics
+
+        avg_elapsed = statistics.fmean(a["client_elapsed_s"] for a in ok_attempts)
+        last_ok = ok_attempts[-1]
+        return {
+            "query": name,
+            "iteration": iteration,
+            "status": "OK",
+            "row_count": last_ok["row_count"],
+            "client_elapsed_s": avg_elapsed,
+            "query_id": last_ok["query_id"],
+            "attempt_query_ids": [a["query_id"] for a in ok_attempts],
+            "result_columns": last_ok["columns"],
+            "result_rows": last_ok["rows"],
+            "error": None,
+        }
+    last = attempts[-1]
+    return {
+        "query": name,
+        "iteration": iteration,
+        "status": "FAILED",
+        "row_count": 0,
+        "client_elapsed_s": last["client_elapsed_s"],
+        "query_id": last["query_id"],
+        "attempt_query_ids": [a["query_id"] for a in attempts if a["query_id"]],
+        "error": last["error"],
+    }
+
+
 def print_query_finished(result: QueryResult) -> None:
     if result["status"] == "OK":
         print(f" OK ({result['client_elapsed_s']:.3f}s)")
@@ -107,12 +140,21 @@ def run_benchmark_iteration(
     iteration: int,
     repeats: int,
     cur,
+    use_avg: bool = False,
 ) -> list[QueryResult]:
     results: list[QueryResult] = []
     for name, sql in queries:
-        print(f"  running {name} (best of {repeats})…", end="", flush=True)
-        attempts = run_attempts(cur, sql, repeats)
-        result = best_result(name, iteration, attempts)
+        if use_avg:
+            print(f"  running {name} (avg of {repeats}, +1 warmup)…", end="", flush=True)
+            # Warmup run — discard result
+            run_query(cur, sql)
+            # Measured runs
+            attempts = run_attempts(cur, sql, repeats)
+            result = avg_result(name, iteration, attempts)
+        else:
+            print(f"  running {name} (best of {repeats})…", end="", flush=True)
+            attempts = run_attempts(cur, sql, repeats)
+            result = best_result(name, iteration, attempts)
         print_query_finished(result)
         results.append(result)
     return results

@@ -89,6 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Executions per query, keeping the best (min) time (default 3)",
     )
     run_p.add_argument(
+        "--avg",
+        action="store_true",
+        default=False,
+        help="Report average execution time instead of best. Runs a warmup query first, then averages the repeats.",
+    )
+    run_p.add_argument(
         "--iterations", type=int, default=1, help="Number of full passes (default 1)"
     )
     run_p.add_argument(

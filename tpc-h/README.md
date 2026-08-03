@@ -115,6 +115,10 @@ Use `./iwtpch.sh` as a shorthand for `uv run iw-tpch` (both accept the same argu
 ./iwtpch.sh run --repeats 5      # best of 5 executions per query
 ./iwtpch.sh run --iterations 3   # 3 full workload passes
 
+# Average mode: 1 warmup run + N measured runs, report average
+./iwtpch.sh run --avg             # avg of 3 (default repeats) + 1 warmup
+./iwtpch.sh run --avg --repeats 5 # avg of 5 + 1 warmup
+
 # 4. Optional cleanup (drops benchmark warehouses for a scale)
 ./iwtpch.sh teardown --scale 10
 
@@ -229,3 +233,4 @@ Each query was analysed for opportunities to use modern Snowflake SQL (window fu
 - Interactive warehouses can only query interactive tables, so a standard warehouse (`<SOLUTION_NAME>_BENCH_WH_LOAD`) is created for the CTAS load.
 - `client_elapsed_s` is wall-clock timing measured around `cur.execute` + `fetchall` (so it includes result transfer); `server_elapsed_s` is `TOTAL_ELAPSED_TIME` from Snowflake's query history.
 - Each query is executed `--repeats` times (default 3) and the **best** (minimum) client and server times are kept. The first execution warms the warehouse's local cache, so the best of the later runs reflects warm-cache performance (this replaces a separate warm-up phase). The JSON output also records every attempt's `query_id`. Use `--repeats 1` for a single execution per query.
+- With `--avg`, the strategy changes: each query first runs **one explicit warmup** (result discarded), then executes `--repeats` measured runs. The reported time is the **average** of those measured runs (both client and server). This gives a more representative picture of steady-state performance when variance between runs matters.

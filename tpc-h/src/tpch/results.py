@@ -30,13 +30,18 @@ def fetch_server_elapsed(conn, query_ids: Iterable[str]) -> dict[str, float]:
     return out
 
 
-def enrich_server_elapsed(conn, results: list[QueryResult]) -> None:
-    """Attach server_elapsed_s to each result (best attempt server time)."""
+def enrich_server_elapsed(conn, results: list[QueryResult], *, use_avg: bool = False) -> None:
+    """Attach server_elapsed_s to each result (best or avg attempt server time)."""
     all_ids = [qid for r in results for qid in r.get("attempt_query_ids", [])]
     sf_elapsed = fetch_server_elapsed(conn, all_ids)
     for r in results:
         servers = [sf_elapsed[q] for q in r.get("attempt_query_ids", []) if q in sf_elapsed]
-        r["server_elapsed_s"] = min(servers) if servers else None
+        if not servers:
+            r["server_elapsed_s"] = None
+        elif use_avg:
+            r["server_elapsed_s"] = sum(servers) / len(servers)
+        else:
+            r["server_elapsed_s"] = min(servers)
 
 
 def _stats(times: list[float]) -> dict:
