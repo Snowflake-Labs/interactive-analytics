@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import time
@@ -118,6 +119,10 @@ class ConnectionPool:
 
 pool = ConnectionPool()
 
+# Thread pool for asyncio.to_thread — default is min(32, cpu+4) which is too
+# small in a 1-CPU container.  Size it to match total pool capacity.
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=POOL_SIZE * len(TARGETS))
+
 
 def execute_query(sql: str, target: str) -> dict[str, Any]:
     conn = pool.acquire(target)
@@ -140,7 +145,10 @@ def execute_query(sql: str, target: str) -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(_executor)
     log.info("Benchmark API running at http://localhost:%s", PORT)
+    log.info("Pool size: %d per target, executor threads: %d", POOL_SIZE, POOL_SIZE * len(TARGETS))
     log.info("Database: %s", DATABASE)
     log.info(
         "Warehouses: interactive=%s, standard=%s",
