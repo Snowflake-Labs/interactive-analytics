@@ -175,7 +175,7 @@ class RunRequest(BaseModel):
 
 
 @app.get("/api/health")
-def health():
+async def health():
     return {"status": "ok"}
 
 

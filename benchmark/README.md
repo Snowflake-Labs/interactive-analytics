@@ -67,29 +67,11 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
 
 ## Running the Load Test
 
-### Local (against local or remote API)
-
-```bash
-cd locust
-./run-local.sh http://localhost:3000 --users 10 --spawn 5 --run-time 2m --headless
-```
-
-### Interactive mode (Locust web UI)
-
-```bash
-cd locust
-uv run locust -f locustfile.py --host http://localhost:3000
-```
-
-Open `http://localhost:8089` to configure users, ramp-up rate, and duration.
-
-## Deploying to Snowpark Container Services
-
-See [`spcs/README.md`](spcs/README.md) for full deployment instructions.
+The load test runs on SPCS. See [`spcs/README.md`](spcs/README.md) for full deployment instructions.
 
 ```bash
 cd spcs
 ./deploy.sh
 ```
 
-This builds images, pushes to the SPCS registry, creates compute pools and services, then prints ingress URLs.
+This builds images, pushes to the SPCS registry, creates compute pools and services, then prints ingress URLs. Control the Locust load generator via its REST API (curl).
