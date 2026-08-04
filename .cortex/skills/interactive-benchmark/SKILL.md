@@ -160,15 +160,11 @@ Only proceed to the next step if the suitability check passes.
 
 ### Step 7: Save the Benchmark Query
 
-The user provides the query to benchmark as part of their request to CoCo. Write it into the benchmark query file so it gets uploaded to SPCS during the Docker image build:
+The user provides the query to benchmark as part of their request to CoCo. Create `benchmark/test/benchmark-query.sql` from the template file `benchmark/test/benchmark-query.sql.template` by replacing the placeholder content with the actual query:
 
-```bash
-cat > <REPO_ROOT>/benchmark/test/benchmark-query.sql << 'EOF'
-<THE USER'S QUERY>
-EOF
-```
-
-If the `snowflake-interactive` skill produced an optimized version of the query, save the optimized query here instead.
+1. Read `<REPO_ROOT>/benchmark/test/benchmark-query.sql.template`
+2. Replace the placeholder text with the user's query (or the optimized version if the `snowflake-interactive` skill produced one)
+3. Write the result to `<REPO_ROOT>/benchmark/test/benchmark-query.sql`
 
 This file is the single query executed against both warehouse types during the load test.
 
