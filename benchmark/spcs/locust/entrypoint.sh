@@ -10,7 +10,6 @@ set -euo pipefail
 : "${LOCUST_HOST:?LOCUST_HOST must be set (e.g. http://dashboard:3000)}"
 
 export WAREHOUSE="${WAREHOUSE:-${LOCUST_WAREHOUSE:-both}}"
-export SCALE="${SCALE:-${LOCUST_SCALE:-100}}"
 export BENCHMARK_QUERIES_DIR="${BENCHMARK_QUERIES_DIR:-/app/test}"
 
 USERS="${LOCUST_USERS:-10}"
@@ -19,7 +18,7 @@ WEB_PORT="${LOCUST_WEB_PORT:-8089}"
 HEADLESS="${LOCUST_HEADLESS:-0}"
 RUN_TIME="${LOCUST_RUN_TIME:-5m}"
 
-echo "[entrypoint] target=$LOCUST_HOST warehouse=$WAREHOUSE scale=$SCALE users=$USERS spawn=$SPAWN headless=$HEADLESS queries=$BENCHMARK_QUERIES_DIR"
+echo "[entrypoint] target=$LOCUST_HOST warehouse=$WAREHOUSE users=$USERS spawn=$SPAWN headless=$HEADLESS queries=$BENCHMARK_QUERIES_DIR"
 
 if [[ "$HEADLESS" == "1" || "$HEADLESS" == "true" ]]; then
   exec uv run --no-sync locust -f /app/locustfile.py \

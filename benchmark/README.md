@@ -35,7 +35,6 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
    ```
    CONNECTION_NAME=<your_connection>
    SOLUTION_NAME=<your_solution_name>
-   DEFAULT_SCALE=100
    ```
 
    The connection must exist in `~/.snowflake/connections.toml`.
@@ -45,10 +44,12 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
    | Object | Name |
    |---|---|
    | Database | `<SOLUTION_NAME>_BENCH_DB` |
-   | Standard warehouse | `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` |
-   | Interactive warehouse | `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` |
-   | Standard schema | `TPCH_SF<scale>` |
-   | Interactive schema | `TPCH_SF<scale>_IT` |
+   | Standard warehouse | `<SOLUTION_NAME>_BENCH_WH_STD` |
+   | Interactive warehouse | `<SOLUTION_NAME>_BENCH_WH_INT` |
+   | Standard schema | `<SOLUTION_NAME>` |
+   | Interactive schema | `<SOLUTION_NAME>_IT` |
+
+   Override any of these with env vars: `INTERACTIVE_WAREHOUSE`, `STANDARD_WAREHOUSE`, `INTERACTIVE_SCHEMA`, `STANDARD_SCHEMA`.
 
 2. Start the API server:
 
@@ -61,7 +62,7 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
    ```bash
    curl -X POST http://localhost:3000/api/run/interactive \
      -H "Content-Type: application/json" \
-     -d '{"query": "SELECT COUNT(*) FROM LINEITEM", "scale": "100"}'
+     -d '{"query": "SELECT COUNT(*) FROM my_table"}'
    ```
 
 ## Running the Load Test

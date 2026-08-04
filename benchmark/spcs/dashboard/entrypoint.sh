@@ -44,7 +44,6 @@ export SNOWFLAKE_DEFAULT_CONNECTION_NAME=spcs
 export SNOWFLAKE_CLIENT_STORE_TEMPORARY_CREDENTIAL=false
 export SNOWFLAKE_DATABASE="$DB"
 export PORT="${PORT:-3000}"
-export DEFAULT_SCALE="${DEFAULT_SCALE:-100}"
 
-echo "[entrypoint] Starting benchmark API on port ${PORT} (db=${DB}, scale=${DEFAULT_SCALE})."
+echo "[entrypoint] Starting benchmark API on port ${PORT} (db=${DB})."
 exec uv run --directory /app/api --no-sync python server.py

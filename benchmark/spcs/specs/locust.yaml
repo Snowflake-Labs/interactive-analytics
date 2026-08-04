@@ -10,7 +10,6 @@ spec:
         LOCUST_HEADLESS: "${LOCUST_HEADLESS}"
         LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
         WAREHOUSE: "${LOCUST_WAREHOUSE}"
-        SCALE: "${LOCUST_SCALE}"
       resources:
         requests:
           memory: 2Gi
