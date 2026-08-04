@@ -1,7 +1,7 @@
 [project]
-name = "dashboard-locust"
+name = "benchmark-locust"
 version = "0.1.0"
-description = "Locust load tests for the TPC-H benchmark dashboard API"
+description = "Locust load tests for the interactive warehouse benchmark API"
 requires-python = ">=3.11"
 dependencies = [
     "locust>=2.32",

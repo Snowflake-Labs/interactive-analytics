@@ -189,12 +189,11 @@ This file is the single query executed against both warehouse types during the l
 ### Step 9: Deploy to SPCS
 
 ```bash
-cd <REPO_ROOT>/benchmark/spcs && ./deploy.sh services
+cd <REPO_ROOT>/benchmark/spcs && ./deploy.sh
 ```
 
 This deploys:
 - **Benchmark API** — FastAPI server that executes queries against both warehouse types
-- **Locust API** — Isolated copy of the API for load testing
 - **Locust** — Load generator that POSTs queries to the API
 
 ---
@@ -228,7 +227,7 @@ curl -s -X POST <LOCUST_INGRESS_URL>/swarm \
   -d 'user_count=<CONCURRENT_USERS>&spawn_rate=5&host=<LOCUST_API_HOST>'
 ```
 
-Where `<CONCURRENT_USERS>` is the number from Step 1 and `<LOCUST_API_HOST>` is the internal SPCS host for the Locust API service (e.g. `http://dashboard-api-locust:3000`).
+Where `<CONCURRENT_USERS>` is the number from Step 1 and `<LOCUST_API_HOST>` is the internal SPCS host for the API service (e.g. `http://benchmark-api:3000`).
 
 **Poll for completion** (check every 30 seconds):
 ```bash

@@ -11,7 +11,7 @@ tpc-h/
 .cortex/
 .snowflake/
 benchmark/api/
-benchmark/spcs/dashboard/
+benchmark/spcs/api/
 benchmark/spcs/specs/
 benchmark/spcs/sql/
 benchmark/spcs/*.sh

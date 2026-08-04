@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/_lib.sh"
 
-echo "==> [1/6] Setting up database, schema, compute pools, image repo"
+echo "==> [1/5] Setting up database, schema, compute pools, image repo"
 snow_sql_run "prerequisites setup" <<EOF
 USE ROLE $ROLE;
 USE WAREHOUSE $DEPLOY_WAREHOUSE;
@@ -18,13 +18,13 @@ USE DATABASE $DB;
 CREATE SCHEMA IF NOT EXISTS $SCHEMA;
 USE SCHEMA $SCHEMA;
 
-CREATE COMPUTE POOL IF NOT EXISTS $DASHBOARD_COMPUTE_POOL
-  MIN_NODES = $DASHBOARD_MIN_NODES
-  MAX_NODES = $DASHBOARD_MAX_NODES
-  INSTANCE_FAMILY = $DASHBOARD_INSTANCE_FAMILY
+CREATE COMPUTE POOL IF NOT EXISTS $API_COMPUTE_POOL
+  MIN_NODES = $API_MIN_NODES
+  MAX_NODES = $API_MAX_NODES
+  INSTANCE_FAMILY = $API_INSTANCE_FAMILY
   AUTO_RESUME = TRUE;
 
-ALTER COMPUTE POOL $DASHBOARD_COMPUTE_POOL RESUME IF SUSPENDED;
+ALTER COMPUTE POOL $API_COMPUTE_POOL RESUME IF SUSPENDED;
 
 CREATE COMPUTE POOL IF NOT EXISTS $LOCUST_COMPUTE_POOL
   MIN_NODES = $LOCUST_MIN_NODES
@@ -37,7 +37,7 @@ ALTER COMPUTE POOL $LOCUST_COMPUTE_POOL RESUME IF SUSPENDED;
 CREATE IMAGE REPOSITORY IF NOT EXISTS $IMAGE_REPO;
 EOF
 
-echo "==> [2/6] Building and pushing container images"
+echo "==> [2/5] Building and pushing container images"
 "$SCRIPT_DIR/build-and-push.sh"
 
 deploy_service() {
@@ -73,20 +73,17 @@ $rendered
 EOF
 }
 
-echo "==> [3/6] Deploying benchmark API service ($DASHBOARD_SERVICE) on pool $DASHBOARD_COMPUTE_POOL"
-deploy_service "$DASHBOARD_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml" "$DASHBOARD_COMPUTE_POOL"
+echo "==> [3/5] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
+deploy_service "$API_SERVICE" "$SCRIPT_DIR/specs/api.yaml" "$API_COMPUTE_POOL"
 
-echo "==> [4/6] Deploying isolated API server for locust ($LOCUST_API_SERVICE) on pool $LOCUST_COMPUTE_POOL"
-deploy_service "$LOCUST_API_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml" "$LOCUST_COMPUTE_POOL"
-
-echo "==> [5/6] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
+echo "==> [4/5] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
 deploy_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL"
 
-echo "==> [6/6] Waiting for services to become READY (this can take a few minutes)"
+echo "==> [5/5] Waiting for services to become READY (this can take a few minutes)"
 "$SCRIPT_DIR/status.sh" --wait
 
 echo
 echo "==> Ingress URLs"
 "$SCRIPT_DIR/status.sh" --urls-only
 echo
-echo "Benchmark API is ready. Use locust/run-local.sh or the Locust ingress URL to start load testing."
+echo "Benchmark API and Locust are ready."

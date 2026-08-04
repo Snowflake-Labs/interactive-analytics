@@ -131,25 +131,21 @@ wait_ready() {
 case "$MODE" in
   --wait)
     echo "Waiting for services to be ready..."
-    wait_ready "$DASHBOARD_SERVICE"
-    wait_ready "$LOCUST_API_SERVICE"
+    wait_ready "$API_SERVICE"
     wait_ready "$LOCUST_SERVICE"
     echo
     echo "All services ready."
     ;;
   --urls-only)
-    du="$(service_url "$DASHBOARD_SERVICE")"
-    au="$(service_url "$LOCUST_API_SERVICE")"
+    au="$(service_url "$API_SERVICE")"
     lu="$(service_url "$LOCUST_SERVICE")"
-    [[ -n "$du" ]] && echo "dashboard:      https://$du"
-    [[ -n "$au" ]] && echo "locust-api:     https://$au"
+    [[ -n "$au" ]] && echo "api:            https://$au"
     [[ -n "$lu" ]] && echo "locust:         https://$lu"
     ;;
   *)
     echo "Services in ${DB}.${SCHEMA}:"
     echo
-    print_service_status "$DASHBOARD_SERVICE"
-    print_service_status "$LOCUST_API_SERVICE"
+    print_service_status "$API_SERVICE"
     print_service_status "$LOCUST_SERVICE"
     echo
     ;;

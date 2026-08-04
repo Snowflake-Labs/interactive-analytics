@@ -338,7 +338,7 @@ wheels = [
 ]
 
 [[package]]
-name = "dashboard-api"
+name = "benchmark-api"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

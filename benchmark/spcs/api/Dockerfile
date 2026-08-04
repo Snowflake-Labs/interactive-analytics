@@ -25,7 +25,7 @@ COPY benchmark/api/ /app/api/
 COPY benchmark/test/ /app/test/
 
 # Entrypoint writes ~/.snowflake/connections.toml from SPCS-injected env vars.
-COPY benchmark/spcs/dashboard/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY benchmark/spcs/api/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 3000

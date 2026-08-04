@@ -9,18 +9,18 @@ source "$SCRIPT_DIR/_lib.sh"
 echo "==> Logging into SPCS image registry via connection '$CONNECTION'"
 snow spcs image-registry login --connection "$CONNECTION" --role "$ROLE"
 
-DASHBOARD_REF="$(image_ref "$DASHBOARD_IMAGE")"
+API_REF="$(image_ref "$API_IMAGE")"
 LOCUST_REF="$(image_ref "$LOCUST_IMAGE")"
 
-echo "==> Building dashboard image: $DASHBOARD_REF"
+echo "==> Building API image: $API_REF"
 docker build \
   --platform linux/amd64 \
-  -f "$SCRIPT_DIR/dashboard/Dockerfile" \
-  -t "$DASHBOARD_REF" \
+  -f "$SCRIPT_DIR/api/Dockerfile" \
+  -t "$API_REF" \
   "$REPO_DIR"
 
-echo "==> Pushing dashboard image"
-docker push "$DASHBOARD_REF"
+echo "==> Pushing API image"
+docker push "$API_REF"
 
 echo "==> Building locust image: $LOCUST_REF"
 docker build \
@@ -33,5 +33,5 @@ echo "==> Pushing locust image"
 docker push "$LOCUST_REF"
 
 echo "==> Done. Images:"
-echo "    $DASHBOARD_REF"
+echo "    $API_REF"
 echo "    $LOCUST_REF"

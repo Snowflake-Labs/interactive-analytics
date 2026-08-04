@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drop the dashboard + locust services, compute pools, and image repository.
+# Drop the benchmark API + Locust services, compute pools, and image repository.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,13 +11,12 @@ USE ROLE $ROLE;
 USE DATABASE $DB;
 USE SCHEMA $SCHEMA;
 DROP SERVICE IF EXISTS $LOCUST_SERVICE;
-DROP SERVICE IF EXISTS $LOCUST_API_SERVICE;
-DROP SERVICE IF EXISTS $DASHBOARD_SERVICE;
+DROP SERVICE IF EXISTS $API_SERVICE;
 EOF
 
 cat <<EOF | snow_sql_run "teardown compute pools"
 USE ROLE $ROLE;
-DROP COMPUTE POOL IF EXISTS $DASHBOARD_COMPUTE_POOL;
+DROP COMPUTE POOL IF EXISTS $API_COMPUTE_POOL;
 DROP COMPUTE POOL IF EXISTS $LOCUST_COMPUTE_POOL;
 EOF
 
@@ -28,4 +27,4 @@ USE SCHEMA $SCHEMA;
 DROP IMAGE REPOSITORY IF EXISTS $IMAGE_REPO;
 EOF
 
-echo "Dropped services, compute pools ('$DASHBOARD_COMPUTE_POOL', '$LOCUST_COMPUTE_POOL'), and image repo '$IMAGE_REPO'."
+echo "Dropped services, compute pools ('$API_COMPUTE_POOL', '$LOCUST_COMPUTE_POOL'), and image repo '$IMAGE_REPO'."

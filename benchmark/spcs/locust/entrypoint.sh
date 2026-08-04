@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-: "${LOCUST_HOST:?LOCUST_HOST must be set (e.g. http://dashboard:3000)}"
+: "${LOCUST_HOST:?LOCUST_HOST must be set (e.g. http://benchmark-api:3000)}"
 
 export WAREHOUSE="${WAREHOUSE:-${LOCUST_WAREHOUSE:-both}}"
 export BENCHMARK_QUERIES_DIR="${BENCHMARK_QUERIES_DIR:-/app/test}"

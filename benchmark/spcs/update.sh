@@ -24,11 +24,8 @@ $rendered
 EOF
 }
 
-echo "==> Updating dashboard API service"
-alter_service "$DASHBOARD_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml"
-
-echo "==> Updating isolated locust API service"
-alter_service "$LOCUST_API_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml"
+echo "==> Updating API service"
+alter_service "$API_SERVICE" "$SCRIPT_DIR/specs/api.yaml"
 
 echo "==> Updating locust service"
 alter_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml"

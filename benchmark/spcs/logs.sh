@@ -2,9 +2,8 @@
 # Tail logs from one of the services.
 #
 # Usage:
-#   logs.sh dashboard  [container]   default container: dashboard
-#   logs.sh locust-api [container]   default container: dashboard
-#   logs.sh locust     [container]   default container: locust
+#   logs.sh api     [container]   default container: api
+#   logs.sh locust  [container]   default container: locust
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,10 +12,9 @@ source "$SCRIPT_DIR/_lib.sh"
 
 target="${1:-}"
 case "$target" in
-  dashboard)  svc="$DASHBOARD_SERVICE";   default_container="dashboard" ;;
-  locust-api) svc="$LOCUST_API_SERVICE";  default_container="dashboard" ;;
-  locust)     svc="$LOCUST_SERVICE";      default_container="locust" ;;
-  *) echo "Usage: $0 <dashboard|locust-api|locust> [container]" >&2; exit 1 ;;
+  api)    svc="$API_SERVICE";    default_container="api" ;;
+  locust) svc="$LOCUST_SERVICE"; default_container="locust" ;;
+  *) echo "Usage: $0 <api|locust> [container]" >&2; exit 1 ;;
 esac
 
 container="${2:-$default_container}"

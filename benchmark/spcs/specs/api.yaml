@@ -1,16 +1,13 @@
 spec:
   containers:
-    - name: dashboard
-      image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${DASHBOARD_IMAGE}:${IMAGE_TAG}
+    - name: api
+      image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${API_IMAGE}:${IMAGE_TAG}
       env:
-        PORT: "${DASHBOARD_PORT}"
+        PORT: "${API_PORT}"
         SOLUTION_NAME: "${SOLUTION_NAME}"
-        DASHBOARD_DATABASE: "${DASHBOARD_DATABASE}"
-        DASHBOARD_ROLE: "${DASHBOARD_ROLE}"
-        DASHBOARD_WAREHOUSE: "${DASHBOARD_WAREHOUSE}"
-        SNOWFLAKE_DATABASE: "${DASHBOARD_DATABASE}"
-        SNOWFLAKE_ROLE: "${DASHBOARD_ROLE}"
-        SNOWFLAKE_WAREHOUSE: "${DASHBOARD_WAREHOUSE}"
+        SNOWFLAKE_DATABASE: "${API_DATABASE}"
+        SNOWFLAKE_ROLE: "${API_ROLE}"
+        SNOWFLAKE_WAREHOUSE: "${API_WAREHOUSE}"
         INTERACTIVE_WAREHOUSE: "${INTERACTIVE_WAREHOUSE}"
         STANDARD_WAREHOUSE: "${STANDARD_WAREHOUSE}"
         INTERACTIVE_SCHEMA: "${INTERACTIVE_SCHEMA}"
@@ -23,10 +20,10 @@ spec:
           memory: 2Gi
           cpu: "1000m"
       readinessProbe:
-        port: ${DASHBOARD_PORT}
+        port: ${API_PORT}
         path: /api/health
   endpoints:
     - name: web
-      port: ${DASHBOARD_PORT}
+      port: ${API_PORT}
       public: true
       protocol: HTTP

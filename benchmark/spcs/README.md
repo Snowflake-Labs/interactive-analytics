@@ -6,29 +6,21 @@ ingress URLs you can hit from your laptop.
 
 ## Topology
 
-Three services split across two independent compute pools:
+Two services on two independent compute pools:
 
 ```
-DASHBOARD_COMPUTE_POOL                LOCUST_COMPUTE_POOL
+API_COMPUTE_POOL                      LOCUST_COMPUTE_POOL
 ┌──────────────────────────┐          ┌────────────────────────────────────────┐
 │                          │          │                                        │
-│  DASHBOARD (benchmark    │          │  DASHBOARD_API_LOCUST (benchmark       │
-│  API image)              │          │  API image, same server)               │
-│   - serves /api/run/*    │          │                                        │
-│   - serves /api/health   │          │             ▲                          │
-│                          │          │             │  http://dashboard-api-   │
-│                          │          │             │        locust:3000       │
-│                          │          │  DASHBOARD_LOCUST (locust image)       │
-│                          │          │   - generates load                     │
+│  BENCHMARK_API           │          │  BENCHMARK_LOCUST (locust image)       │
+│  (benchmark API image)   │          │   - generates load                     │
+│   - serves /api/run/*    │◀─────────│   - targets http://benchmark-api:3000  │
+│   - serves /api/health   │          │                                        │
+│                          │          │                                        │
 └──────────────────────────┘          └────────────────────────────────────────┘
        ▲                                     ▲
-       │ local locust / curl (public)        │ locust web UI (public)
+       │ curl (public ingress)               │ locust REST API (public ingress)
 ```
-
-The API server that handles benchmark requests and the API server that
-Locust hits are the **same image running as two separate SPCS services on
-different compute pools**. They cannot compete for CPU or memory, so the load
-test never becomes a bottleneck for direct API usage.
 
 ```
 spcs/
@@ -41,7 +33,7 @@ spcs/
 ├── status.sh            # service state + ingress URLs
 ├── logs.sh              # tail container logs
 ├── teardown.sh          # drop services, compute pools, and image repo
-├── dashboard/           # benchmark API image (Dockerfile, entrypoint, .dockerignore)
+├── api/                 # benchmark API image (Dockerfile, entrypoint, .dockerignore)
 ├── locust/              # locust image (Dockerfile, entrypoint, .dockerignore)
 └── specs/               # SPCS service YAML specs
 ```
@@ -55,9 +47,8 @@ are no separate SQL files to keep in sync.
 - `snow` CLI configured with the connection listed in `config.env` (`PM` by default).
 - The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
   REPOSITORY`, and `CREATE SERVICE`. `ACCOUNTADMIN` works.
-- The API's runtime role (`DASHBOARD_ROLE`) needs `USAGE` on the benchmark
-  warehouses (`${SOLUTION_NAME}_BENCH_WH_*`) and `SELECT` on the
-  `${SOLUTION_NAME}_BENCH_DB.TPCH_SF*_*` schemas.
+- The API's runtime role (`API_ROLE`) needs `USAGE` on the benchmark
+  warehouses and `SELECT` on the benchmark schemas.
 
 ## Deploying
 
@@ -69,32 +60,29 @@ cd spcs
 `deploy.sh` will:
 
 1. Create `DB.SCHEMA`, **two independent compute pools** (one for the
-   API, one for locust), and the image repository (idempotent).
+   API, one for Locust), and the image repository (idempotent).
 2. Build and push both images to the SPCS image repo.
 3. `CREATE SERVICE` for:
-   - `DASHBOARD_SERVICE` on `DASHBOARD_COMPUTE_POOL` — the benchmark API.
-   - `LOCUST_API_SERVICE` on `LOCUST_COMPUTE_POOL` — an isolated copy of the
-     API that Locust hits (never contends with direct usage).
+   - `API_SERVICE` on `API_COMPUTE_POOL` — the benchmark API.
    - `LOCUST_SERVICE` on `LOCUST_COMPUTE_POOL` — the Locust load generator.
    Or `ALTER SERVICE` if they already exist.
-4. Poll `SYSTEM$GET_SERVICE_STATUS` until all three report `READY`.
+4. Poll `SYSTEM$GET_SERVICE_STATUS` until both report `READY`.
 5. Print the public ingress URLs.
 
 ## Naming convention
 
 All object names are derived from `SOLUTION_NAME` (set in `benchmark/.env`).
-With `SOLUTION_NAME=DMTESTTPCH`, the objects created are:
+With `SOLUTION_NAME=IW_TPCH`, the objects created are:
 
 | Object | Name |
 |--------|------|
-| Database | `DMTESTTPCH_BENCH_DB` |
+| Database | `IW_TPCH_BENCH_DB` |
 | Schema | `SPCS` |
-| Image repository | `DMTESTTPCH_BENCH_IMAGES` |
-| Dashboard compute pool | `DMTESTTPCH_BENCH_DASHBOARD_POOL` |
-| Locust compute pool | `DMTESTTPCH_BENCH_LOCUST_POOL` |
-| Dashboard service | `DASHBOARD` |
-| Locust API service | `DASHBOARD_API_LOCUST` |
-| Locust service | `DASHBOARD_LOCUST` |
+| Image repository | `IW_TPCH_BENCH_IMAGES` |
+| API compute pool | `IW_TPCH_BENCH_API_POOL` |
+| Locust compute pool | `IW_TPCH_BENCH_LOCUST_POOL` |
+| API service | `BENCHMARK_API` |
+| Locust service | `BENCHMARK_LOCUST` |
 
 Change `SOLUTION_NAME` in `benchmark/.env` to deploy multiple independent
 instances in the same account.
@@ -118,34 +106,35 @@ Every SPCS container gets:
 - An OAuth token file at `/snowflake/session/token` scoped to the service's
   owner role.
 
-`dashboard/entrypoint.sh` writes a small `~/.snowflake/connections.toml`
+`api/entrypoint.sh` writes a small `~/.snowflake/connections.toml`
 pointing at that token file and sets `CONNECTION_NAME=spcs`. The unchanged
 `api/server.py` picks it up via its normal `connections.toml` path.
 
-## Running Locust headlessly
+## Running Locust via REST API
 
-Web UI mode is the default so you can start/stop runs from the browser. For a
-one-shot timed run, set in `config.env`:
+The Locust service exposes a public ingress URL. Control it via curl:
 
+```bash
+# Start a test
+curl -s -X POST <LOCUST_URL>/swarm \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'user_count=10&spawn_rate=5&host=http://benchmark-api:3000'
+
+# Check stats
+curl -s <LOCUST_URL>/stats/requests
+
+# Stop the test
+curl -s <LOCUST_URL>/stop
 ```
-LOCUST_HEADLESS=1
-LOCUST_RUN_TIME=5m
-LOCUST_USERS=10
-LOCUST_SPAWN=5
-```
-
-Then `./update.sh` (or `./deploy.sh` on a fresh deploy). The container will
-exit when the run completes; check results with `./logs.sh locust`.
 
 ## Common operations
 
 ```
 ./deploy.sh                 # full SPCS deploy (idempotent)
 ./list.sh                   # list all SPCS resources in the schema
-./status.sh                 # show state + endpoints for all three services
+./status.sh                 # show state + endpoints for both services
 ./status.sh --urls-only     # just the ingress URLs
-./logs.sh dashboard         # benchmark API logs
-./logs.sh locust-api        # isolated API server that locust hits
+./logs.sh api               # benchmark API logs
 ./logs.sh locust            # locust load-generator logs
 ./teardown.sh               # drop services, compute pools, and image repo
 ```
@@ -159,11 +148,9 @@ another role in:
 USE ROLE ACCOUNTADMIN;
 GRANT USAGE ON DATABASE <SOLUTION_NAME>_BENCH_DB TO ROLE <consumer_role>;
 GRANT USAGE ON SCHEMA <SOLUTION_NAME>_BENCH_DB.SPCS TO ROLE <consumer_role>;
-GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD!ALL_ENDPOINTS_USAGE
+GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.BENCHMARK_API!ALL_ENDPOINTS_USAGE
   TO ROLE <consumer_role>;
-GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_API_LOCUST!ALL_ENDPOINTS_USAGE
-  TO ROLE <consumer_role>;
-GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_LOCUST!ALL_ENDPOINTS_USAGE
+GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.BENCHMARK_LOCUST!ALL_ENDPOINTS_USAGE
   TO ROLE <consumer_role>;
 ```
 
@@ -171,9 +158,9 @@ GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_LOCUST!ALL_ENDPOINTS_
 
 - `snow spcs image-registry login` errors: re-run manually with
   `--connection $CONNECTION --role $ROLE`; tokens expire after ~1h.
-- Service stuck in `PENDING`: `./logs.sh dashboard` (or `locust-api` /
-  `locust`) — usually a missing grant on the runtime warehouse.
-- Locust web UI shows "0 requests" or logs `gaierror(-2, 'Name or service not known')`:
+- Service stuck in `PENDING`: `./logs.sh api` (or `locust`)
+  — usually a missing grant on the runtime warehouse.
+- Locust shows "0 requests" or logs `gaierror(-2, 'Name or service not known')`:
   the `LOCUST_HOST` DNS label is wrong. **SPCS converts underscores in the
-  service name to hyphens in the DNS name** (e.g. `DASHBOARD_API_LOCUST` →
-  `dashboard-api-locust`). Both services must live in the same schema.
+  service name to hyphens in the DNS name** (e.g. `BENCHMARK_API` →
+  `benchmark-api`). Both services must live in the same schema.
