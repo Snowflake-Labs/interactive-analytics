@@ -44,6 +44,8 @@ deploy_service() {
   local svc="$1"
   local spec_file="$2"
   local pool="$3"
+  local min_instances="${4:-1}"
+  local max_instances="${5:-1}"
 
   local rendered
   rendered="$(render_spec "$spec_file")"
@@ -63,8 +65,8 @@ CREATE SERVICE IF NOT EXISTS $svc
   FROM SPECIFICATION \$\$
 $rendered
 \$\$
-  MIN_INSTANCES = 1
-  MAX_INSTANCES = 1
+  MIN_INSTANCES = ${min_instances}
+  MAX_INSTANCES = ${max_instances}
   COMMENT = 'Managed by benchmark/spcs/';
 
 ALTER SERVICE $svc FROM SPECIFICATION \$\$
@@ -74,10 +76,10 @@ EOF
 }
 
 echo "==> [3/5] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
-deploy_service "$API_SERVICE" "$SCRIPT_DIR/specs/api.yaml" "$API_COMPUTE_POOL"
+deploy_service "$API_SERVICE" "$SCRIPT_DIR/specs/api.yaml" "$API_COMPUTE_POOL" "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
 
 echo "==> [4/5] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
-deploy_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL"
+deploy_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL" 1 1
 
 echo "==> [5/5] Waiting for services to become READY (this can take a few minutes)"
 "$SCRIPT_DIR/status.sh" --wait

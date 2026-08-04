@@ -12,6 +12,7 @@ spec:
         STANDARD_WAREHOUSE: "${STANDARD_WAREHOUSE}"
         INTERACTIVE_SCHEMA: "${INTERACTIVE_SCHEMA}"
         STANDARD_SCHEMA: "${STANDARD_SCHEMA}"
+        POOL_SIZE: "${POOL_SIZE}"
       resources:
         requests:
           memory: 1Gi

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -71,6 +72,10 @@ def connection_kwargs_for(target: str) -> dict[str, Any]:
         "warehouse": warehouse_for_target(target),
         "database": DATABASE,
         "schema": schema_for_target(target),
+        "session_parameters": {
+            "QUERY_TAG": "IW_BENCHMARK",
+            "USE_CACHED_RESULT": False,
+        },
     }
 
 
@@ -91,14 +96,6 @@ class ConnectionPool:
     def _new_connection(self, target: str) -> snowflake.connector.SnowflakeConnection:
         kwargs = connection_kwargs_for(target)
         conn = snowflake.connector.connect(**kwargs)
-        wh = warehouse_for_target(target)
-        schema = schema_for_target(target)
-        with conn.cursor() as cur:
-            cur.execute(f"USE WAREHOUSE {wh}")
-            cur.execute(f"USE DATABASE {DATABASE}")
-            cur.execute(f"USE SCHEMA {schema}")
-            cur.execute("ALTER SESSION SET USE_CACHED_RESULT = FALSE")
-            cur.execute("ALTER SESSION SET QUERY_TAG = 'IW_BENCHMARK'")
         return conn
 
     def acquire(self, target: str) -> snowflake.connector.SnowflakeConnection:
@@ -181,12 +178,12 @@ async def health():
 
 @app.post("/api/run/interactive")
 async def run_interactive(body: RunRequest):
-    return execute_query(body.query, "interactive")
+    return await asyncio.to_thread(execute_query, body.query, "interactive")
 
 
 @app.post("/api/run/standard")
 async def run_standard(body: RunRequest):
-    return execute_query(body.query, "standard")
+    return await asyncio.to_thread(execute_query, body.query, "standard")
 
 
 def main() -> None:
