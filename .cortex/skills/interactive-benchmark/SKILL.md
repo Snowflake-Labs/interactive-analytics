@@ -41,7 +41,7 @@ The user provides the SQL query to benchmark as part of their request to CoCo. C
 
 Before proceeding, ask the user for:
 
-1. **Benchmark name** — A short name for this benchmark (used as the `SOLUTION_NAME`). If the user provides a name longer than 20 characters or containing special characters, generate a concise alphanumeric name yourself (e.g. abbreviations, acronyms). The name is used to prefix all created resources (warehouses, databases, schemas).
+1. **Benchmark name** — A short name for this benchmark (used as the `SOLUTION_NAME`). Suggest `IWBENCH` as the default and ask the user to confirm or provide an alternative. If the user provides a name longer than 20 characters or containing special characters, generate a concise alphanumeric name yourself (e.g. abbreviations, acronyms). The name is used to prefix all created resources (warehouses, databases, schemas).
 2. **Connection name** — Which Snowflake connection (from `~/.snowflake/connections.toml`) should be used?
 3. **Database** — Which database should the query run against?
 4. **Standard warehouse** — Which existing warehouse should be used as the reference for running the benchmark against standard tables?
