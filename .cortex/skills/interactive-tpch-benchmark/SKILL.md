@@ -1,6 +1,6 @@
 ---
 name: interactive-tpch-benchmark
-description: "Deploy and run the TPC-H benchmark on Snowflake Interactive Warehouses, and deploy the dashboard to SPCS. Use when: setting up the benchmark, running TPC-H queries, deploying the dashboard, tearing down resources, checking service status. Triggers: tpc-h, benchmark, interactive warehouse, interactive tables, deploy dashboard, spcs dashboard, locust, load test, setup benchmark, teardown."
+description: "Deploy and run the TPC-H sample benchmark on Snowflake Interactive Warehouses, and deploy the TPC-H dashboard to SPCS. Use ONLY when the user explicitly mentions TPC-H, the TPC-H sample, or the TPC-H dashboard. Do NOT use for generic benchmarking of user queries — that is handled by the interactive-benchmark skill. Triggers: tpc-h, tpch, TPC-H benchmark, TPC-H sample, TPC-H dashboard, deploy tpch, setup tpch, teardown tpch, run tpch queries, iwtpch."
 ---
 
 # Interactive Analytics TPC-H Benchmark
