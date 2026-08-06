@@ -547,7 +547,15 @@ Include these diagnostics in the HTML report (Step 14) under a "Query Profile He
 
 ### Step 14: Generate HTML Report
 
-Use the `html-authoring` skill to create a comprehensive HTML report at `<REPO_ROOT>/benchmark/report.html`. The report must include:
+Use the `html-authoring` skill to create a comprehensive HTML report in the `<REPO_ROOT>/benchmark/reports/` folder. The filename must follow this template:
+
+```
+YYYY-MM-DD-<SOLUTION_NAME>-benchmark-report.html
+```
+
+Where `YYYY-MM-DD` is the current date and `<SOLUTION_NAME>` is the benchmark name from Step 1 (e.g. `2026-08-06-IWBENCH-benchmark-report.html`). Create the `reports` directory if it does not already exist.
+
+The report must include:
 
 1. **Benchmark Summary** — Date, connection, database, warehouse sizes (standard and interactive), number of users, duration
 2. **Query** — The SQL query that was benchmarked (formatted with syntax highlighting)
