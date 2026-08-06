@@ -125,6 +125,66 @@ Capture the output:
 
 ---
 
+### Step 5b: Validate Interactive Setup
+
+After the `snowflake-interactive` skill completes, validate that the setup is correct before proceeding.
+
+**1. Verify interactive tables are attached to the interactive warehouse:**
+
+```sql
+SHOW INTERACTIVE TABLES IN SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
+```
+
+Confirm that each table referenced by the query appears in the output and that the `warehouse_name` column shows the `INTERACTIVE_WAREHOUSE`. If any table is missing or attached to a different warehouse, re-run the attachment or inform the user.
+
+**2. Verify predicates align with clustering keys:**
+
+For each interactive table, check its clustering key:
+
+```sql
+SHOW TABLES LIKE '<TABLE_NAME>' IN SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
+```
+
+Compare the `cluster_by` column against the columns used in the query's WHERE/JOIN predicates. If the query filters on columns that are NOT part of the clustering key, warn the user that performance may be suboptimal. Suggest either:
+- Rewriting the query to filter on clustered columns
+- Adjusting the clustering key on the interactive table to match the query's access pattern
+
+**3. Validate working set sizing:**
+
+Check the total data size of the interactive tables:
+
+```sql
+SELECT TABLE_NAME, BYTES / (1024*1024*1024) AS SIZE_GB
+FROM <DATABASE>.INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = '<INTERACTIVE_SCHEMA>';
+```
+
+Compare the total working set size against the interactive warehouse size. Guidance:
+- XS: up to ~350 GB working set
+- S: up to ~600 GB
+- M: up to ~1200 GB
+- L: up to ~2500 GB
+- XL+: larger working sets
+
+If the working set exceeds the warehouse's effective cache capacity, warn the user that not all data will fit in cache, leading to cache misses and higher latency. Suggest upsizing the warehouse or reducing the working set.
+
+**Data scan volume guidance:** Monitor the total volume of data scanned by the query. Effective partition pruning should handle the heavy lifting — ideally the execution footprint should be well under 100 GB of scanned data even if the table is much larger. If the scanned volume cannot be further reduced (e.g. an aggregation over 100 GB is unavoidable), consider scaling up the warehouse to increase parallel processing capacity via additional cores rather than trying to shrink the data.
+
+**4. Auto-suspend warning:**
+
+Check the auto-suspend setting on the interactive warehouse:
+
+```sql
+SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
+```
+
+The minimum auto-suspend for interactive warehouses is 24 hours (86400 seconds). Warn the user:
+- Suspending or resuming reintroduces cache warm-up delays (all cached data is lost)
+- Each resume starts a new minimum billable period
+- For benchmarking, ensure the warehouse has been running long enough for the cache to be warm before collecting measurements
+
+---
+
 ### Step 6: Evaluate MWC Before Scaling Up
 
 **CRITICAL: Before scaling up interactive warehouse, you MUST evaluate Multi-Warehouse Concurrency (MWC) capacity for both the interactive and standard warehouses.**
@@ -146,6 +206,8 @@ MWC determines how many concurrent queries a warehouse can handle before queuein
 3. Only after confirming adequate warehouse concurrency should you proceed with deploying higher user counts or adding API replicas.
 
 This prevents a common mistake: increasing the size of a warehouse which is not actually resource constrained (in terms of CPU or Memory), but it is just limited in how many concurrent request it can handle, producing misleading benchmark numbers.
+
+**Horizontal vs vertical scaling principle:** When the working set already resides in cache, horizontal scaling (multi-cluster) is more effective than vertical scaling (upsizing) for increasing throughput. Upsizing adds more compute but doesn't help if the bottleneck is concurrency slots. If the user needs to handle more concurrent queries, recommend adding clusters rather than increasing warehouse size.
 
 ---
 
@@ -193,8 +255,8 @@ Compare the two elapsed times. Present the results to the user:
 
 **Decision gate:**
 - If the interactive warehouse is significantly faster (≥1.5× speedup), proceed with the full SPCS load test.
-- If the interactive query exceeds 5 seconds, treat this as a **fit warning**: interactive warehouses cancel SELECT statements after 5 seconds by design. The query is not suitable for interactive execution without further optimization or simplification.
-- If performance is similar or the standard warehouse is faster, **stop here** and inform the user: the query is not a good candidate for interactive warehouses. Explain why (e.g., the query does a full table scan, aggregation pattern doesn't benefit from interactive caching, query is too complex, for example with many joins and many subqueries). Suggest query characteristics that work well with interactive warehouses (point lookups, selective filters, dashboard-style queries on hot data). A good workload for interactive is query that is selective, such ones used for dashboards, APIs, alerting, or agentic workloads, not broad exploratory scans or long-running ad hoc analytics. At least more than 100GB in data size is needed for interactive analytics to be really effective. The expected query shapes are narrow and selective: few columns, targeted predicates, bounded time windows, small result sets. Avoid SELECT *, year-wide scans, and expensive patterns that force large reads or heavy compute. The ideal latency range for interactive workloads is 30ms–5sec.
+- If the interactive query exceeds 5 seconds, treat this as a **fit warning**: interactive warehouses cancel SELECT statements after 5 seconds by design. The query is not suitable for interactive execution without further optimization or simplification. If the workload contains a mix of queries where *some* need more than 5 seconds, recommend setting a **fallback warehouse**: configure a standard warehouse as the fallback so that queries exceeding the interactive ceiling are automatically routed there. Ensure the querying role has USAGE on both the interactive warehouse and the fallback warehouse.
+- If performance is similar or the standard warehouse is faster, **stop here** and inform the user: the query is not a good candidate for interactive warehouses. Explain why (e.g., the query does a full table scan, aggregation pattern doesn't benefit from interactive caching, query is too complex, for example with many joins and many subqueries). Suggest query characteristics that work well with interactive warehouses (point lookups, selective filters, dashboard-style queries on hot data). A good workload for interactive is query that is selective, such ones used for dashboards, APIs, alerting, or agentic workloads, not broad exploratory scans or long-running ad hoc analytics. At least more than 100GB in data size is needed for interactive analytics to be really effective. The expected query shapes are narrow and selective: few columns, targeted predicates, bounded time windows, small result sets. Queries should be parameterized (e.g. date ranges, customer IDs) so the same shape is executed repeatedly with different bind values — this is the pattern that benefits most from interactive caching. Avoid SELECT *, year-wide scans, and expensive patterns that force large reads or heavy compute. The ideal latency range for interactive workloads is 30ms–5sec.
 
 Only proceed to the next step if the suitability check passes.
 
@@ -266,17 +328,31 @@ This deploys:
 
 ### Step 11: Warm the Cache
 
-Before collecting benchmark measurements, run the query once against each warehouse to warm caches. This ensures the load test measures steady-state performance rather than cold-start latency.
+Before collecting benchmark measurements, warm the interactive warehouse cache. This ensures the load test measures steady-state performance rather than cold-start latency.
+
+**Cache warming guidance:**
+- If the warehouse was recently resumed, do NOT expect immediate sub-second latency. The cache must be populated first.
+- XS warehouses warm at roughly 300–400 MB/s; larger warehouses warm faster.
+- For a 100 GB working set on XS, expect ~4–5 minutes of warming time before the cache is fully populated.
+- Run the query multiple times (3–5 iterations) to ensure the relevant data pages are cached, not just once.
+
+**Warm-up procedure:**
 
 ```bash
-curl -s -X POST <SPCS_API_INGRESS_URL>/api/run/interactive \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "<THE USER QUERY>"}'
+# Run multiple warm-up iterations
+for i in 1 2 3 4 5; do
+  curl -s -X POST <SPCS_API_INGRESS_URL>/api/run/interactive \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "<THE USER QUERY>"}'
+done
 
+# Also warm the standard warehouse for fair comparison
 curl -s -X POST <SPCS_API_INGRESS_URL>/api/run/standard \
   -H 'Content-Type: application/json' \
   -d '{"query": "<THE USER QUERY>"}'
 ```
+
+Check that the last warm-up iteration shows latency close to expected steady-state (e.g. sub-second for a well-fitted workload). If latency is still high on the final iteration, run additional warm-up calls or wait for background cache population to complete.
 
 Discard the results from these warm-up calls — they are not part of the benchmark.
 
@@ -329,6 +405,29 @@ Then invoke the `snowflake-interactive` skill again to analyze the benchmark res
 - Are there join or filter patterns that could benefit from search optimization?
 
 Capture these recommendations for the report.
+
+---
+
+### Step 13b: Post-Benchmark Query Profile Diagnostics
+
+After collecting load test metrics, inspect the Snowsight Query Profile for a sample of interactive warehouse queries to validate steady-state health. Use the query IDs returned by the API during the load test (or query `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY`).
+
+Check the following metrics:
+
+| Metric | Target | What it means if bad |
+|--------|--------|---------------------|
+| **Remote read %** | 0% | Query is reading from remote storage instead of cache. Causes: poor clustering, undersized working-set cache, cold cache, or cache thrashing from too many concurrent queries touching different partitions. |
+| **Bytes scanned** | Minimal (ideally <100 GB) | Partition pruning is not effective. Check clustering keys and predicate alignment. |
+| **Compile time** | Low (< 50 ms) | Query is complex or not parameterized. Consider simplifying or using prepared statements. |
+| **Queueing time** | 0 ms | Warehouse concurrency is saturated. Scale out with multi-cluster (see Step 6). |
+
+**Treat high remote read percentage as a first-class smell.** If remote reads are > 0% for steady-state queries (after cache is warm), investigate:
+1. **Poor clustering** — predicates don't align with clustering keys (see Step 5b)
+2. **Undersized cache** — working set doesn't fit in warehouse cache (see Step 5b sizing)
+3. **Cold cache** — warehouse was recently resumed or cache hasn't fully populated yet (see Step 11 warming)
+4. **Cache thrashing** — too many diverse query patterns competing for cache space; consider reducing concurrency or narrowing the hot data set
+
+Include these diagnostics in the HTML report (Step 14) under a "Query Profile Health" section.
 
 ---
 
@@ -431,6 +530,21 @@ cd <REPO_ROOT>/benchmark/spcs && ./teardown.sh
 - After suitability check — stop if query shows no interactive benefit
 - Before `deploy.sh services` — warn about compute pool cost implications
 - Before teardown — confirm which resources to drop
+
+## Minimal "Good Setup" Checklist
+
+Before considering a benchmark complete, verify all of the following are true:
+
+- [ ] Interactive table created with a **deliberate CLUSTER BY** matching the query's predicate columns
+- [ ] Interactive warehouse created, resumed, and **explicitly used** (not accidentally falling back to a standard warehouse)
+- [ ] Hot tables **attached** to the interactive warehouse with ADD TABLES (verified via `SHOW INTERACTIVE TABLES`)
+- [ ] Warehouse **sized to working set** and expected concurrency (cache fits the data; MWC handles the user count)
+- [ ] Query shapes are **selective, parameterized, and benchmarked after warm-up** (not cold-start measurements)
+- [ ] Query Profile shows **low remote reads** (0% ideal), **low compile time** (< 50 ms), and **low queueing** (0 ms) for steady-state traffic
+
+If any item fails, address it before drawing conclusions from benchmark numbers.
+
+---
 
 ## Troubleshooting
 
