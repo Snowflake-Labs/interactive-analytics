@@ -70,6 +70,37 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
      -d '{"query": "SELECT COUNT(*) FROM my_table"}'
    ```
 
+## Sample Prompt
+
+Below is a sample prompt you can use with the `interactive-benchmark` CoCo skill. It works against a TPC-H database that can be created using the setup script in the [`tpc-h/`](../tpc-h/) folder (run `./iwtpch.sh setup --scale 100`).
+
+```
+hi, I have the following query
+
+SELECT
+	N_NAME,
+	COUNT(*) AS ORDERS
+FROM ORDERS AS O
+INNER JOIN CUSTOMER AS C ON O_CUSTKEY = C_CUSTKEY
+INNER JOIN NATION   AS N ON C_NATIONKEY = N_NATIONKEY
+WHERE O_ORDERDATE BETWEEN '1996-01-01' AND '1996-12-31'
+GROUP BY ROLLUP (N_NAME)
+ORDER BY N_NAME NULLS LAST;
+
+and I want understand how it can benefit from interactive analytics. The query is
+used in Dashboard along with other queries. The query must answer in less than a
+second. The database with the table used by the query is DM_TESTTPCH_BENCH_DB and
+the schema is TPCH_SF100. The filter on order date will be different and also it
+might happen that users filter data for specific nation or region or even market.
+How can I make sure that I can obtain the performance I need? Use the "PM"
+connection to connect to Snowflake.
+
+Please also run a benchmark so that I can see how it performs when there are 50
+concurrent users
+```
+
+Adapt the database name, schema, scale factor, and connection name to match your own environment.
+
 ## Running the Load Test
 
 The load test runs on SPCS. See [`spcs/README.md`](spcs/README.md) for full deployment instructions.
