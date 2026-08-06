@@ -1,0 +1,37 @@
+spec:
+  containers:
+    - name: locust
+      image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${LOCUST_IMAGE}:${IMAGE_TAG}
+      env:
+        LOCUST_HOST: "${LOCUST_HOST}"
+        LOCUST_WEB_PORT: "${LOCUST_WEB_PORT}"
+        LOCUST_USERS: "${LOCUST_USERS}"
+        LOCUST_SPAWN: "${LOCUST_SPAWN}"
+        LOCUST_HEADLESS: "${LOCUST_HEADLESS}"
+        LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
+        WAREHOUSE: "${LOCUST_WAREHOUSE}"
+        SCALE: "${LOCUST_SCALE}"
+      resources:
+        requests:
+          memory: 2Gi
+          cpu: "1000m"
+        limits:
+          # Ample memory ceiling so a large user count can't OOM-kill the
+          # container (which SPCS restarts, killing the in-progress test run).
+          memory: 4Gi
+          # CPU: cap high — locust is single-process and greenlet-based, so
+          # letting it use a full core keeps the web UI responsive to the
+          # readinessProbe under load.
+          cpu: "2000m"
+      readinessProbe:
+        port: ${LOCUST_WEB_PORT}
+        # /stats/requests is a cheap JSON endpoint that stays responsive
+        # even when many virtual users are running. Probing "/" hits the
+        # full web UI render and can time out under load, causing SPCS to
+        # kill+restart the container mid-run (looks like someone hit STOP).
+        path: /stats/requests
+  endpoints:
+    - name: web
+      port: ${LOCUST_WEB_PORT}
+      public: true
+      protocol: HTTP
