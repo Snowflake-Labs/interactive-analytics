@@ -41,11 +41,12 @@ The user provides the SQL query to benchmark as part of their request to CoCo. C
 
 Before proceeding, ask the user for:
 
-1. **Benchmark name** — A short name for this benchmark (used as the `SOLUTION_NAME`). Suggest `IWBENCH` as the default and ask the user to confirm or provide an alternative. If the user provides a name longer than 20 characters or containing special characters, generate a concise alphanumeric name yourself (e.g. abbreviations, acronyms). The name is used to prefix all created resources (warehouses, databases, schemas).
+1. **Benchmark name** — A short name for this benchmark (used as the `SOLUTION_NAME`). Suggest `IWBENCH` as the default and ask the user to confirm or provide an alternative. If the user provides a name longer than 20 characters or containing special characters, generate a concise alphanumeric name yourself (e.g. abbreviations, acronyms). The name is used to prefix all created resources (warehouses, databases, schemas). Check if there is an `.env` file already that has a `SOLUTION_NAME` specified, and, if yes, ask user for confirmation.
 2. **Connection name** — Which Snowflake connection (from `~/.snowflake/connections.toml`) should be used?
 3. **Database** — Which database should the query run against?
 4. **Standard warehouse** — Which existing warehouse should be used as the reference for running the benchmark against standard tables?
-5. **Concurrent users** — How many concurrent users should the load test simulate? This sets the Locust user count (`LOCUST_USERS`). Default: 10.
+5. **Concurrent users** — How many concurrent users should the load test simulate? This sets the Locust user count (`LOCUST_USERS`). Default: 50.
+6. **Latency goal (P95)** — What is the target P95 latency for the benchmark? (e.g. "under 1 seconds"). If the user does not volunteer a latency goal, you MUST ask for one. This value is used to evaluate pass/fail in the final report and to determine whether the interactive warehouse meets the user's requirements. Default suggestion: 1 second. Note: interactive warehouses are designed for the 30ms–5sec latency range. If the user's target exceeds 5 seconds, warn them that the workload may not be a good fit for interactive warehouses.
 
 Use `SHOW WAREHOUSES LIKE '<warehouse_name>'` to determine the size of the provided standard warehouse. This size will be used later when creating the benchmark standard warehouse so the comparison is fair.
 
@@ -73,7 +74,7 @@ Ask the user what they want to do:
 
 1. **Setup + Benchmark** — Full flow: create interactive tables, optimize query, deploy, run benchmark
 2. **Deploy benchmark API** — Deploy the FastAPI + Locust services to SPCS
-3. **Run load test** — Execute Locust locally against the deployed API
+3. **Run load test** — Run load test against the deployed API
 4. **Check status** — Show SPCS service status and ingress URLs
 5. **Teardown** — Remove SPCS services and compute pools
 
@@ -124,9 +125,49 @@ Capture the output:
 
 ---
 
-### Step 6: Quick Suitability Check
+### Step 6: Evaluate MWC Before Scaling Up
 
-Before deploying the full SPCS benchmark infrastructure, run the query once against each warehouse type to verify the query actually benefits from an interactive warehouse. This avoids spending time on a full load test for queries that show no improvement.
+**CRITICAL: Before scaling up interactive warehouse, you MUST evaluate Multi-Warehouse Concurrency (MWC) capacity for both the interactive and standard warehouses.**
+
+MWC determines how many concurrent queries a warehouse can handle before queueing. Scaling the API and Locust to 100+ users is pointless — and produces misleading results — if the warehouse itself starts queueing at 30 concurrent queries.
+
+1. Check the current MWC setting for both warehouses:
+   ```sql
+   SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
+   SHOW WAREHOUSES LIKE '<STANDARD_WAREHOUSE>';
+   ```
+   Look at the `max_concurrency_level` column (or `MAX_CLUSTERS` for multi-cluster warehouses).
+
+2. Compare the planned user count against the warehouse's effective concurrency limit. If the target user count exceeds the warehouse's MWC capacity:
+   - Inform the user that the warehouse will queue queries beyond its MWC limit
+   - Suggest increasing MWC or using a multi-cluster warehouse before scaling up the load test
+   - If the user proceeds anyway, note in the final report that results may reflect warehouse queueing rather than true query performance
+
+3. Only after confirming adequate warehouse concurrency should you proceed with deploying higher user counts or adding API replicas.
+
+This prevents a common mistake: increasing the size of a warehouse which is not actually resource constrained (in terms of CPU or Memory), but it is just limited in how many concurrent request it can handle, producing misleading benchmark numbers.
+
+---
+
+### Step 7: Quick Suitability Check
+
+Before deploying the full SPCS benchmark infrastructure, verify the query is a good candidate for interactive warehouses. This avoids spending time on a full load test for queries that will not benefit.
+
+**Pre-flight: Verify the query is already tuned on standard compute.**
+Migration to an interactive warehouse is NOT a silver bullet for inefficient queries. The query must already be optimized and performing well on a standard warehouse before benchmarking. If the query is slow due to missing clustering keys, bad predicates, or inefficient joins, fix those first.
+
+Run the query on the standard warehouse first (disable result caching):
+
+```sql
+ALTER SESSION SET USE_CACHED_RESULT = FALSE;
+USE WAREHOUSE <STANDARD_WAREHOUSE>;
+USE SCHEMA <DATABASE>.<STANDARD_SCHEMA>;
+<THE QUERY>;
+```
+
+**10-second rule:** If the query exceeds 10 seconds on the standard warehouse despite proper clustering and optimization, it is highly improbable to meet the 5-second interactive execution threshold. Stop here and inform the user that the query needs further optimization before it can benefit from an interactive warehouse. Do NOT proceed with the interactive comparison.
+
+If the standard warehouse timing is acceptable (under 10 seconds), proceed with the interactive comparison.
 
 Run the query against both warehouses (disable result caching to get honest timings):
 
@@ -152,13 +193,14 @@ Compare the two elapsed times. Present the results to the user:
 
 **Decision gate:**
 - If the interactive warehouse is significantly faster (≥1.5× speedup), proceed with the full SPCS load test.
-- If performance is similar or the standard warehouse is faster, **stop here** and inform the user: the query is not a good candidate for interactive warehouses. Explain why (e.g., the query does a full table scan, aggregation pattern doesn't benefit from interactive caching, data volume is too small). Suggest query characteristics that work well with interactive warehouses (point lookups, selective filters, dashboard-style queries on hot data).
+- If the interactive query exceeds 5 seconds, treat this as a **fit warning**: interactive warehouses cancel SELECT statements after 5 seconds by design. The query is not suitable for interactive execution without further optimization or simplification.
+- If performance is similar or the standard warehouse is faster, **stop here** and inform the user: the query is not a good candidate for interactive warehouses. Explain why (e.g., the query does a full table scan, aggregation pattern doesn't benefit from interactive caching, query is too complex, for example with many joins and many subqueries). Suggest query characteristics that work well with interactive warehouses (point lookups, selective filters, dashboard-style queries on hot data). A good workload for interactive is query that is selective, such ones used for dashboards, APIs, alerting, or agentic workloads, not broad exploratory scans or long-running ad hoc analytics. At least more than 100GB in data size is needed for interactive analytics to be really effective. The expected query shapes are narrow and selective: few columns, targeted predicates, bounded time windows, small result sets. Avoid SELECT *, year-wide scans, and expensive patterns that force large reads or heavy compute. The ideal latency range for interactive workloads is 30ms–5sec.
 
 Only proceed to the next step if the suitability check passes.
 
 ---
 
-### Step 7: Save the Benchmark Query
+### Step 8: Save the Benchmark Query
 
 The user provides the query to benchmark as part of their request to CoCo. Create `benchmark/test/benchmark-query.sql` from the template file `benchmark/test/benchmark-query.sql.template` by replacing the placeholder content with the actual query:
 
@@ -170,19 +212,31 @@ This file is the single query executed against both warehouse types during the l
 
 ---
 
-### Step 8: Configure Environment
+### Step 9: Configure Environment
 
-1. Ensure `benchmark/.env` exists with:
+Both config files MUST be created from their templates — never edit the templates directly.
+
+1. **Create `benchmark/.env`** from `benchmark/.env.example`:
+   ```bash
+   cp <REPO_ROOT>/benchmark/.env.example <REPO_ROOT>/benchmark/.env
+   ```
+   Then fill in the values:
    ```
    CONNECTION_NAME=<user's connection>
-   SOLUTION_NAME=<from snowflake-interactive output>
+   SOLUTION_NAME=<benchmark name from Step 1>
    ```
 
-2. Review `benchmark/spcs/config.env` for SPCS deployment settings.
+2. **Create `benchmark/spcs/config.env`** from `benchmark/spcs/config.env.template`:
+   ```bash
+   cp <REPO_ROOT>/benchmark/spcs/config.env.template <REPO_ROOT>/benchmark/spcs/config.env
+   ```
+   Then fill in values matching the user's environment (connection, role, warehouse names, schemas, user count, etc.). The template contains comments explaining each variable.
+
+3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist, verify their values match the current benchmark parameters. Update them if the user changed any inputs (connection, solution name, warehouses, user count).
 
 ---
 
-### Step 9: Deploy to SPCS
+### Step 10: Deploy to SPCS
 
 ```bash
 cd <REPO_ROOT>/benchmark/spcs && ./deploy.sh
@@ -192,9 +246,25 @@ This deploys:
 - **Benchmark API** — FastAPI server that executes queries against both warehouse types
 - **Locust** — Load generator that POSTs queries to the API
 
+**IMPORTANT — Deployment monitoring:** SPCS deployments can take 3–10 minutes (compute pool provisioning + image pull + container start). To avoid appearing stuck:
+
+1. Run `deploy.sh` in the background.
+2. Every 30 seconds, poll service status and report to the user:
+   ```bash
+   cd <REPO_ROOT>/benchmark/spcs && ./status.sh
+   ```
+   This shows the current state of each service (PENDING, READY, FAILED) along with a status message (e.g. "Pending scheduling", "Pulling image").
+3. If a service stays in PENDING for more than 5 minutes, run `./logs.sh` and report any errors to the user. Common causes:
+   - Compute pool still provisioning (normal — wait)
+   - Image pull in progress (normal — wait)
+   - Image not found (check `build-and-push.sh` succeeded)
+   - Insufficient privileges (check ROLE)
+4. If a service enters FAILED state, immediately show the user the output of `./logs.sh` and stop.
+5. Only proceed to the next step once both services report READY.
+
 ---
 
-### Step 10: Warm the Cache
+### Step 11: Warm the Cache
 
 Before collecting benchmark measurements, run the query once against each warehouse to warm caches. This ensures the load test measures steady-state performance rather than cold-start latency.
 
@@ -212,7 +282,7 @@ Discard the results from these warm-up calls — they are not part of the benchm
 
 ---
 
-### Step 11: Run Load Test
+### Step 12: Run Load Test
 
 The load test always runs on the SPCS-deployed Locust service. Use the Locust REST API to start and monitor the test via curl.
 
@@ -242,12 +312,14 @@ curl -s <LOCUST_INGRESS_URL>/stats/requests
 
 ---
 
-### Step 12: Analyze Results and Generate Recommendations
+### Step 13: Analyze Results and Generate Recommendations
 
 After the load test completes, collect the Locust metrics:
-- Request latency percentiles (p50, p95, p99) per endpoint
+- **Request latency percentiles: P50, P95, P99** — these three MUST be measured for every test run, for each endpoint
 - Throughput (requests/sec) for interactive vs standard
 - Error rates
+
+**Latency goal convention:** When the user specifies a latency target (e.g. "queries must complete within 2 seconds"), interpret that as a **P95 target** unless they explicitly state otherwise.
 
 Compare `/api/run/interactive` vs `/api/run/standard` metrics to see the performance difference.
 
@@ -260,15 +332,15 @@ Capture these recommendations for the report.
 
 ---
 
-### Step 13: Generate HTML Report
+### Step 14: Generate HTML Report
 
 Use the `html-authoring` skill to create a comprehensive HTML report at `<REPO_ROOT>/benchmark/report.html`. The report must include:
 
 1. **Benchmark Summary** — Date, connection, database, warehouse sizes (standard and interactive), number of users, duration
 2. **Query** — The SQL query that was benchmarked (formatted with syntax highlighting)
 3. **Table Details** — Source tables, row counts, whether subsets were used and what filters were applied
-4. **Performance Results** — Latency percentiles (p50, p95, p99), throughput, and error rates for both interactive and standard warehouses, presented side-by-side
-5. **Performance Comparison** — Speedup factor (standard_latency / interactive_latency), visual chart comparing the two
+4. **Performance Results** — Latency percentiles (P50, P95, P99) for each endpoint, throughput, and error rates for both interactive and standard warehouses, presented side-by-side. All three percentiles are mandatory.
+5. **Performance Comparison** — Speedup factor at P95 (standard_p95 / interactive_p95), visual chart comparing P50/P95/P99 for both warehouses
 6. **Optimization Recommendations** — Output from the `snowflake-interactive` skill analysis:
    - Query rewrites or tweaks suggested
    - Clustering key recommendations
@@ -279,7 +351,7 @@ Open the report in the browser for the user when done.
 
 ---
 
-### Step 14: Teardown or Keep Services
+### Step 15: Teardown or Keep Services
 
 After the report is generated, ask the user whether they want to:
 
