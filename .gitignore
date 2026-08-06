@@ -15,6 +15,7 @@ snowflake.log
 
 # Local configuration
 .env
+config.env
 
 # macOS
 .DS_Store
