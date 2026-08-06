@@ -7,7 +7,6 @@ spec:
         LOCUST_WEB_PORT: "${LOCUST_WEB_PORT}"
         LOCUST_USERS: "${LOCUST_USERS}"
         LOCUST_SPAWN: "${LOCUST_SPAWN}"
-        LOCUST_HEADLESS: "${LOCUST_HEADLESS}"
         LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
         WAREHOUSE: "${LOCUST_WAREHOUSE}"
       resources:

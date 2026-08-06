@@ -149,6 +149,13 @@ Compare the `cluster_by` column against the columns used in the query's WHERE/JO
 - Rewriting the query to filter on clustered columns
 - Adjusting the clustering key on the interactive table to match the query's access pattern
 
+**Every interactive table MUST have a `CLUSTER BY`, including tiny dimension/lookup tables.** `CREATE INTERACTIVE TABLE` fails with `An interactive table must contain clustering keys` if omitted. For lookup tables with no natural filter column (e.g. `NATION` with 25 rows, `REGION` with 5 rows), cluster on the primary key column — it satisfies the requirement at zero cost:
+
+```sql
+CREATE INTERACTIVE TABLE <SCHEMA>.NATION CLUSTER BY (N_NATIONKEY) AS SELECT * FROM <SRC>.NATION;
+CREATE INTERACTIVE TABLE <SCHEMA>.REGION CLUSTER BY (R_REGIONKEY) AS SELECT * FROM <SRC>.REGION;
+```
+
 **3. Validate working set sizing:**
 
 Check the total data size of the interactive tables:
@@ -185,29 +192,61 @@ The minimum auto-suspend for interactive warehouses is 24 hours (86400 seconds).
 
 ---
 
-### Step 6: Evaluate MWC Before Scaling Up
+### Step 6: Configure Concurrency and Fallback Before Load Test
 
-**CRITICAL: Before scaling up interactive warehouse, you MUST evaluate Multi-Warehouse Concurrency (MWC) capacity for both the interactive and standard warehouses.**
+**CRITICAL: Interactive warehouses scale concurrency *horizontally* (multi-cluster), not vertically. You MUST configure `MAX_CLUSTER_COUNT` and a fallback warehouse BEFORE running the load test — not after failures show up.**
 
-MWC determines how many concurrent queries a warehouse can handle before queueing. Scaling the API and Locust to 100+ users is pointless — and produces misleading results — if the warehouse itself starts queueing at 30 concurrent queries.
+A single-cluster XSMALL interactive warehouse saturates at ~10–15 concurrent queries. Anything above that queues, and queued queries hit the 5-second interactive cancel threshold and fail. Upsizing the warehouse doesn't help — the working set already fits in a small cache. What's needed is more clusters serving in parallel.
 
-1. Check the current MWC setting for both warehouses:
-   ```sql
-   SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
-   SHOW WAREHOUSES LIKE '<STANDARD_WAREHOUSE>';
-   ```
-   Look at the `max_concurrency_level` column (or `MAX_CLUSTERS` for multi-cluster warehouses).
+#### 6a. Check current settings
 
-2. Compare the planned user count against the warehouse's effective concurrency limit. If the target user count exceeds the warehouse's MWC capacity:
-   - Inform the user that the warehouse will queue queries beyond its MWC limit
-   - Suggest increasing MWC or using a multi-cluster warehouse before scaling up the load test
-   - If the user proceeds anyway, note in the final report that results may reflect warehouse queueing rather than true query performance
+```sql
+SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
+SHOW WAREHOUSES LIKE '<STANDARD_WAREHOUSE>';
+```
 
-3. Only after confirming adequate warehouse concurrency should you proceed with deploying higher user counts or adding API replicas.
+Look at `min_cluster_count`, `max_cluster_count`, and `scaling_policy`.
 
-This prevents a common mistake: increasing the size of a warehouse which is not actually resource constrained (in terms of CPU or Memory), but it is just limited in how many concurrent request it can handle, producing misleading benchmark numbers.
+#### 6b. Configure the interactive warehouse for the target user count
 
-**Horizontal vs vertical scaling principle:** When the working set already resides in cache, horizontal scaling (multi-cluster) is more effective than vertical scaling (upsizing) for increasing throughput. Upsizing adds more compute but doesn't help if the bottleneck is concurrency slots. If the user needs to handle more concurrent queries, recommend adding clusters rather than increasing warehouse size.
+Compute the required cluster count from the user count captured in Step 1:
+
+```
+MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
+```
+
+Round up. For 50 users this is 4; use 5 to leave headroom. Then apply:
+
+```sql
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
+  MIN_CLUSTER_COUNT = 1,
+  MAX_CLUSTER_COUNT = <computed_value>,
+  SCALING_POLICY = 'STANDARD';
+```
+
+#### 6c. Configure the fallback warehouse (mandatory before load-testing)
+
+Interactive warehouses cancel any query exceeding 5 seconds. Under concurrent load there will always be a tail of queries that trip this limit — from momentary cache misses, cross-cluster metadata sync, or unlucky co-location on a hot cluster. A fallback warehouse transparently reroutes those queries to a standard warehouse so users see slower results instead of errors:
+
+```sql
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE>
+  SET FALLBACK_WAREHOUSE = <STANDARD_WAREHOUSE>;
+```
+
+The querying role must have `USAGE` on both warehouses.
+
+**Fallback is not optional for benchmarks.** The load test itself creates outlier queries via contention even if the underlying query shape is fine. Without fallback, you will report failure rates that are an artifact of the interactive cancel policy, not real query performance.
+
+#### 6d. Verify
+
+```sql
+SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
+SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE' IN WAREHOUSE <INTERACTIVE_WAREHOUSE>;
+```
+
+Confirm `max_cluster_count` matches your computed value and `FALLBACK_WAREHOUSE` shows the standard warehouse.
+
+**Horizontal vs vertical scaling principle:** When the working set already resides in cache, horizontal scaling (multi-cluster) is more effective than vertical scaling (upsizing) for increasing throughput. Upsizing adds more compute per cluster but doesn't help if the bottleneck is concurrency slots. If the user needs to handle more concurrent queries, add clusters — do not increase warehouse size.
 
 ---
 
@@ -254,8 +293,8 @@ Compare the two elapsed times. Present the results to the user:
 | **Speedup** | **N×** |
 
 **Decision gate:**
-- If the interactive warehouse is significantly faster (≥1.5× speedup), proceed with the full SPCS load test.
-- If the interactive query exceeds 5 seconds, treat this as a **fit warning**: interactive warehouses cancel SELECT statements after 5 seconds by design. The query is not suitable for interactive execution without further optimization or simplification. If the workload contains a mix of queries where *some* need more than 5 seconds, recommend setting a **fallback warehouse**: configure a standard warehouse as the fallback so that queries exceeding the interactive ceiling are automatically routed there. Ensure the querying role has USAGE on both the interactive warehouse and the fallback warehouse.
+- If the interactive warehouse is significantly faster (≥1.5× speedup), proceed with the full SPCS load test. The fallback warehouse configured in Step 6c will catch any tail queries that exceed 5 seconds under load.
+- If the interactive query exceeds 5 seconds even at rest, treat this as a **fit warning**: interactive warehouses cancel SELECT statements after 5 seconds by design. The query is not suitable for interactive execution without further optimization or simplification. The fallback warehouse will absorb some outliers, but if the *typical* query takes >5 s the fallback becomes the primary path and interactive gives you nothing.
 - If performance is similar or the standard warehouse is faster, **stop here** and inform the user: the query is not a good candidate for interactive warehouses. Explain why (e.g., the query does a full table scan, aggregation pattern doesn't benefit from interactive caching, query is too complex, for example with many joins and many subqueries). Suggest query characteristics that work well with interactive warehouses (point lookups, selective filters, dashboard-style queries on hot data). A good workload for interactive is query that is selective, such ones used for dashboards, APIs, alerting, or agentic workloads, not broad exploratory scans or long-running ad hoc analytics. At least more than 100GB in data size is needed for interactive analytics to be really effective. The expected query shapes are narrow and selective: few columns, targeted predicates, bounded time windows, small result sets. Queries should be parameterized (e.g. date ranges, customer IDs) so the same shape is executed repeatedly with different bind values — this is the pattern that benefits most from interactive caching. Avoid SELECT *, year-wide scans, and expensive patterns that force large reads or heavy compute. The ideal latency range for interactive workloads is 30ms–5sec.
 
 Only proceed to the next step if the suitability check passes.
@@ -282,9 +321,9 @@ Both config files MUST be created from their templates — never edit the templa
    ```bash
    cp <REPO_ROOT>/benchmark/.env.example <REPO_ROOT>/benchmark/.env
    ```
-   Then fill in the values:
+   Write these exact values:
    ```
-   CONNECTION_NAME=<user's connection>
+   CONNECTION_NAME=<connection from Step 1>
    SOLUTION_NAME=<benchmark name from Step 1>
    ```
 
@@ -292,9 +331,27 @@ Both config files MUST be created from their templates — never edit the templa
    ```bash
    cp <REPO_ROOT>/benchmark/spcs/config.env.template <REPO_ROOT>/benchmark/spcs/config.env
    ```
-   Then fill in values matching the user's environment (connection, role, warehouse names, schemas, user count, etc.). The template contains comments explaining each variable.
 
-3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist, verify their values match the current benchmark parameters. Update them if the user changed any inputs (connection, solution name, warehouses, user count).
+   Then **explicitly overwrite** these values in `config.env` from the answers gathered in Step 1 and the outputs captured in Step 5. Do NOT rely on template defaults — the whole run is wrong if any of these drift:
+
+   | Variable | Source | Example |
+   |---|---|---|
+   | `CONNECTION` | Step 1 answer | `PM` |
+   | `ROLE` | Step 1 or `ACCOUNTADMIN` | `ACCOUNTADMIN` |
+   | `INTERACTIVE_WAREHOUSE` | **Step 5 output** — the exact name `snowflake-interactive` created | `DM_TESTTPCH_BENCH_WH_INT` |
+   | `STANDARD_WAREHOUSE` | **Step 1 answer** — the warehouse the user pointed to | `DM_TESTTPCH_BENCH_WH_STD_100` |
+   | `INTERACTIVE_SCHEMA` | **Step 5 output** | `TPCH_SF100_INT` |
+   | `STANDARD_SCHEMA` | **Step 1 answer** | `TPCH_SF100` |
+   | `API_DATABASE` | **Step 1 answer** | `DM_TESTTPCH_BENCH_DB` |
+   | `LOCUST_USERS` | **Step 1 answer** — the concurrent-users number | `50` |
+   | `LOCUST_RUN_TIME` | Default `3m`, or user-supplied | `3m` |
+   | `LOCUST_WAREHOUSE` | Fixed as `both` for A/B comparison | `both` |
+
+   After writing, `grep` the file to sanity-check that no template placeholder or stale value remains. The `INTERACTIVE_WAREHOUSE` and `LOCUST_USERS` values are the two most common sources of "the benchmark ran with the wrong settings" bugs.
+
+3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist from a previous run, do NOT reuse them blindly. Diff each value in the table above against the current Step 1/Step 5 answers and overwrite anything that changed.
+
+**Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Step 12 for the execution flow.
 
 ---
 
@@ -328,7 +385,7 @@ This deploys:
 
 ### Step 11: Warm the Cache
 
-Before collecting benchmark measurements, warm the interactive warehouse cache. This ensures the load test measures steady-state performance rather than cold-start latency.
+Before the load test measures anything, warm the interactive warehouse cache. This ensures the numbers reflect steady-state performance, not cold-start latency.
 
 **Cache warming guidance:**
 - If the warehouse was recently resumed, do NOT expect immediate sub-second latency. The cache must be populated first.
@@ -336,23 +393,28 @@ Before collecting benchmark measurements, warm the interactive warehouse cache. 
 - For a 100 GB working set on XS, expect ~4–5 minutes of warming time before the cache is fully populated.
 - Run the query multiple times (3–5 iterations) to ensure the relevant data pages are cached, not just once.
 
-**Warm-up procedure:**
+**Warm-up procedure (via SQL, since the SPCS API ingress requires Snowflake auth and can't be curled from the laptop with `externalbrowser` connections):**
 
-```bash
-# Run multiple warm-up iterations
-for i in 1 2 3 4 5; do
-  curl -s -X POST <SPCS_API_INGRESS_URL>/api/run/interactive \
-    -H 'Content-Type: application/json' \
-    -d '{"query": "<THE USER QUERY>"}'
-done
+```sql
+ALTER SESSION SET USE_CACHED_RESULT = FALSE;
 
-# Also warm the standard warehouse for fair comparison
-curl -s -X POST <SPCS_API_INGRESS_URL>/api/run/standard \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "<THE USER QUERY>"}'
+-- Warm interactive warehouse and each attached table
+USE WAREHOUSE <INTERACTIVE_WAREHOUSE>;
+USE SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
+<THE QUERY>;               -- iteration 1
+<THE QUERY>;               -- iteration 2
+<THE QUERY>;               -- iteration 3
+
+-- Then warm standard for a fair comparison
+USE WAREHOUSE <STANDARD_WAREHOUSE>;
+USE SCHEMA <DATABASE>.<STANDARD_SCHEMA>;
+<THE QUERY>;
+<THE QUERY>;
 ```
 
-Check that the last warm-up iteration shows latency close to expected steady-state (e.g. sub-second for a well-fitted workload). If latency is still high on the final iteration, run additional warm-up calls or wait for background cache population to complete.
+Also warm each *variant* query shape (`benchmark-query-q1.sql`, `benchmark-query-nation.sql`, etc.) at least once so the tail of the load test doesn't include cold-cache measurements.
+
+Check that the last warm-up iteration shows latency close to expected steady-state (e.g. sub-second for a well-fitted workload). If latency is still high on the final iteration, run more iterations or wait for background cache population to complete.
 
 Discard the results from these warm-up calls — they are not part of the benchmark.
 
@@ -360,31 +422,62 @@ Discard the results from these warm-up calls — they are not part of the benchm
 
 ### Step 12: Run Load Test
 
-The load test always runs on the SPCS-deployed Locust service. Use the Locust REST API to start and monitor the test via curl.
+**Execution model:** Locust runs inside the SPCS container in **non-headless mode with `--autostart --autoquit --run-time`**. When the container starts, the swarm begins automatically, runs for `LOCUST_RUN_TIME`, then locust quits. The container stays alive afterward and periodically re-prints the results CSV to stdout so `snow spcs service logs` can retrieve them at any time.
 
-**Start the test:**
+This means **there is no external HTTP call needed to trigger the test.** Starting the container starts the test. SPCS public ingress requires Snowflake auth, so external `curl /swarm` calls will not work with `externalbrowser` connections and no stored PAT — the auto-start design sidesteps this entirely.
+
+#### 12a. Trigger the run
+
+Depending on state:
+- **First run after `./deploy.sh`** — the locust container just came up; the swarm is already running. No action needed. Proceed to 12b.
+- **Subsequent runs after changing config or warehouse settings** — force a container restart by re-applying the spec:
+  ```bash
+  cd <REPO_ROOT>/benchmark/spcs && ./update.sh
+  ```
+  Or suspend+resume directly via SQL:
+  ```sql
+  ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST SUSPEND;
+  ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST RESUME;
+  ```
+  Then wait for locust to report READY:
+  ```bash
+  cd <REPO_ROOT>/benchmark/spcs && ./status.sh --wait
+  ```
+
+#### 12b. Monitor the run
+
+The test runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
+
+- **Watch cluster scaling** on the interactive warehouse:
+  ```sql
+  SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
+  ```
+  Look at `started_clusters` and `running`. If `queued > 0`, `MAX_CLUSTER_COUNT` from Step 6b is too low — abort and increase it.
+
+- **Follow locust logs** for progress:
+  ```bash
+  cd <REPO_ROOT>/benchmark/spcs && ./logs.sh locust
+  ```
+  You'll see lines like `Ramping to 50 users at a rate of 5.00 per second` and `All users spawned`.
+
+#### 12c. Retrieve the results
+
+After `LOCUST_RUN_TIME + ~10 s` (for `--autoquit` to fire), locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV:
+
 ```bash
-curl -s -X POST <LOCUST_INGRESS_URL>/swarm \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'user_count=<CONCURRENT_USERS>&spawn_rate=5&host=<LOCUST_API_HOST>'
+cd <REPO_ROOT>/benchmark/spcs && ./logs.sh locust | tail -80
 ```
 
-Where `<CONCURRENT_USERS>` is the number from Step 1 and `<LOCUST_API_HOST>` is the internal SPCS host for the API service (e.g. `http://benchmark-api:3000`).
+The `locust_stats_stats.csv` block contains three rows (per endpoint + Aggregated) with columns:
 
-**Poll for completion** (check every 30 seconds):
-```bash
-curl -s <LOCUST_INGRESS_URL>/stats/requests
+```
+Type, Name, Request Count, Failure Count, Median Response Time, Average Response Time,
+Min, Max, Avg Content Size, Requests/s, Failures/s, 50%, 66%, 75%, 80%, 90%, 95%, 98%, 99%, 99.9%, 99.99%, 100%
 ```
 
-**Stop the test** after the desired duration:
-```bash
-curl -s <LOCUST_INGRESS_URL>/stop
-```
+Parse the `/api/run/interactive` and `/api/run/standard` rows for P50, P95, P99 and failure counts.
 
-**Retrieve final stats:**
-```bash
-curl -s <LOCUST_INGRESS_URL>/stats/requests
-```
+If you need results before the test finishes, the container also emits a HEARTBEAT block every 2 minutes with the current CSV — grep for `HEARTBEAT` in the logs.
 
 ---
 
@@ -410,7 +503,28 @@ Capture these recommendations for the report.
 
 ### Step 13b: Post-Benchmark Query Profile Diagnostics
 
-After collecting load test metrics, inspect the Snowsight Query Profile for a sample of interactive warehouse queries to validate steady-state health. Use the query IDs returned by the API during the load test (or query `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY`).
+After collecting load test metrics, inspect the Snowsight Query Profile for a sample of interactive warehouse queries to validate steady-state health. The API sets `QUERY_TAG='IW_BENCHMARK'` on every request, so you can pull representative query IDs directly from `ACCOUNT_USAGE.QUERY_HISTORY`:
+
+```sql
+-- Sample of interactive queries from the load test window
+SELECT
+    QUERY_ID,
+    TOTAL_ELAPSED_TIME,
+    BYTES_SCANNED,
+    COMPILATION_TIME,
+    EXECUTION_TIME,
+    QUEUED_PROVISIONING_TIME + QUEUED_OVERLOAD_TIME AS QUEUED_MS,
+    PERCENTAGE_SCANNED_FROM_CACHE
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE QUERY_TAG = 'IW_BENCHMARK'
+  AND WAREHOUSE_NAME = '<INTERACTIVE_WAREHOUSE>'
+  AND START_TIME >= DATEADD(minute, -10, CURRENT_TIMESTAMP())
+  AND EXECUTION_STATUS = 'SUCCESS'
+ORDER BY TOTAL_ELAPSED_TIME DESC
+LIMIT 20;
+```
+
+Pick a mix of median and slow queries and open their Query Profiles in Snowsight.
 
 Check the following metrics:
 
@@ -560,10 +674,13 @@ After running `teardown.sh`, ask the user whether they also want to drop the cre
 
 Before considering a benchmark complete, verify all of the following are true:
 
-- [ ] Interactive table created with a **deliberate CLUSTER BY** matching the query's predicate columns
+- [ ] Interactive table created with a **deliberate CLUSTER BY** matching the query's predicate columns (every table, including tiny lookups)
 - [ ] Interactive warehouse created, resumed, and **explicitly used** (not accidentally falling back to a standard warehouse)
 - [ ] Hot tables **attached** to the interactive warehouse with ADD TABLES (verified via `SHOW INTERACTIVE TABLES`)
-- [ ] Warehouse **sized to working set** and expected concurrency (cache fits the data; MWC handles the user count)
+- [ ] Warehouse **sized to working set** (cache fits the data) — do NOT upsize to fix concurrency
+- [ ] **`MAX_CLUSTER_COUNT` set proportional to target concurrent users** (rule: `ceil(users / 15)`; verified via `SHOW WAREHOUSES`)
+- [ ] **Fallback warehouse configured** on the interactive warehouse (verified via `SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE'`)
+- [ ] `config.env` values (INTERACTIVE_WAREHOUSE, STANDARD_WAREHOUSE, LOCUST_USERS, schemas) match Step 1/Step 5 outputs — no template placeholders left
 - [ ] Query shapes are **selective, parameterized, and benchmarked after warm-up** (not cold-start measurements)
 - [ ] Query Profile shows **low remote reads** (0% ideal), **low compile time** (< 50 ms), and **low queueing** (0 ms) for steady-state traffic
 
@@ -579,3 +696,9 @@ If any item fails, address it before drawing conclusions from benchmark numbers.
 | Service stuck in PENDING | Run `./logs.sh` to inspect container logs |
 | Connection errors | Verify connection name in `~/.snowflake/connections.toml` |
 | Interactive tables not found | Re-run `snowflake-interactive` skill |
+| `BENCHMARK_LOCUST` stuck in PENDING with "Readiness probe failing at /stats/requests" | Legacy `LOCUST_HEADLESS=1` config. Headless locust does not bind port 8089, so the readiness probe fails forever. Remove `LOCUST_HEADLESS` from `config.env` and `specs/locust.yaml`; use the auto-start non-headless path (default). |
+| `An interactive table must contain clustering keys` on `CREATE INTERACTIVE TABLE` | The table has no `CLUSTER BY`. All interactive tables need one, including tiny lookup tables. Cluster on the primary key column if nothing else fits (e.g. `CLUSTER BY (N_NATIONKEY)`). |
+| Most interactive queries fail with `Statement reached its statement or warehouse timeout of 5 second(s) and was canceled` under load | Interactive warehouse is out of concurrency slots. Queries queue past the 5 s cancel. Fix: set `MAX_CLUSTER_COUNT` per Step 6b (`ceil(users / 15)`) — do NOT upsize the warehouse. |
+| Small number of interactive queries fail with the 5 s cancel; the rest are fast | Long-tail outliers hitting the cancel. Fix: set `FALLBACK_WAREHOUSE` per Step 6c. This is the expected steady-state for benchmarks — always configure fallback before load-testing. |
+| Curl to Locust `/swarm` endpoint returns an HTML auth page | SPCS public ingress requires Snowflake auth. `externalbrowser` connections cannot curl this from a laptop. Use the auto-start execution model (Step 12) — no `/swarm` call needed. |
+| Benchmark run used a different `LOCUST_USERS` value than requested | `config.env` had a stale value. Step 9 checklist requires overwriting `LOCUST_USERS` from Step 1's answer — do not rely on template defaults. |
