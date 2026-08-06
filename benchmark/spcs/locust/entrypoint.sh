@@ -51,9 +51,34 @@ if [[ "$HEADLESS" == "1" || "$HEADLESS" == "true" ]]; then
   done
 fi
 
-exec uv run --no-sync locust -f /app/locustfile.py \
+uv run --no-sync locust -f /app/locustfile.py \
   --host "$LOCUST_HOST" \
   --web-host 0.0.0.0 \
   --web-port "$WEB_PORT" \
+  --autostart \
+  --autoquit 5 \
+  --run-time "$RUN_TIME" \
+  --csv /tmp/locust_stats \
+  --html /tmp/locust_report.html \
   -u "$USERS" \
-  -r "$SPAWN"
+  -r "$SPAWN" 2>&1 | tee /tmp/locust_run.log
+
+echo ""
+echo "======================== BENCHMARK RESULTS ========================"
+echo "-- locust_stats_stats.csv --"
+[[ -f /tmp/locust_stats_stats.csv ]] && cat /tmp/locust_stats_stats.csv || echo "(no stats file)"
+echo ""
+echo "-- locust_stats_failures.csv --"
+[[ -f /tmp/locust_stats_failures.csv ]] && cat /tmp/locust_stats_failures.csv || echo "(no failures file)"
+echo ""
+echo "-- locust_stats_stats_history.csv (last 5 rows) --"
+[[ -f /tmp/locust_stats_stats_history.csv ]] && tail -5 /tmp/locust_stats_stats_history.csv || echo "(no history file)"
+echo "===================================================================="
+
+# Keep container alive so logs remain retrievable and CSV files can be re-read via heartbeats.
+while true; do
+  echo "=== HEARTBEAT $(date -u +%FT%TZ) ==="
+  echo "-- locust_stats_stats.csv --"
+  [[ -f /tmp/locust_stats_stats.csv ]] && cat /tmp/locust_stats_stats.csv || true
+  sleep 120
+done

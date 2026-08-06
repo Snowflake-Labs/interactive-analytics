@@ -17,5 +17,8 @@ snowflake.log
 .env
 config.env
 
+# Generated benchmark files
+benchmark-query*
+
 # macOS
 .DS_Store
