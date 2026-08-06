@@ -15,16 +15,43 @@ TPC-H benchmark harness for Snowflake **Interactive Warehouses**. Copies TPC-H t
 
 Generic Interactive Warehouse benchmark tool. A FastAPI server exposes two endpoints (`/api/run/interactive` and `/api/run/standard`) that execute any user-provided SQL query against the respective warehouse type. Includes a Locust-based load test for concurrency benchmarking and full Snowpark Container Services deployment. See [`benchmark/README.md`](benchmark/README.md) for setup and usage.
 
-## Cortex Code (CoCo) Skill
+### [`tpc-h-sample-dashboard/`](tpc-h-sample-dashboard/)
 
-This repository includes a **project-level CoCo skill** (`interactive-benchmark`) that lets you benchmark any query against interactive vs standard warehouses through conversational prompts in Cortex Code. The skill:
+TPC-H interactive dashboard demo. A FastAPI + Chart.js single-page app that visualizes TPC-H data (KPIs, orders over time, segment/region breakdowns) with a Locust load generator for concurrent user simulation. Deployable to SPCS. See [`tpc-h-sample-dashboard/README.md`](tpc-h-sample-dashboard/README.md) for setup and usage.
+
+## Cortex Code (CoCo) Skills
+
+This repository includes three **project-level CoCo skills** that automate common workflows through conversational prompts in Cortex Code.
+
+### `interactive-benchmark`
+
+Benchmark **any SQL query** against interactive vs standard warehouses.
 
 - Chains the `snowflake-interactive` skill to create interactive tables and optimize the query
 - Deploys the benchmark API and Locust load test to Snowpark Container Services
-- Supports local or SPCS-based load testing
 - Reports latency comparisons between warehouse types
 
-To use it, open this project in Cortex Code and ask something like *"benchmark my query on interactive vs standard"* — the skill will guide you through the rest.
+**Usage:** Ask something like *"benchmark my query on interactive vs standard"*.
+
+### `interactive-tpch-benchmark`
+
+Set up and run the **TPC-H benchmark locally** against interactive and standard warehouses.
+
+- Creates TPC-H tables at various scale factors (1, 10, 100, 1000)
+- Runs the 22 standard queries and collects timing results (JSON + CSV)
+- Supports both `original` and `modern` (window functions, QUALIFY) query variants
+
+**Usage:** Ask something like *"set up the TPC-H benchmark at scale 10"* or *"run tpch queries against interactive"*.
+
+### `interactive-tpch-dashboard`
+
+Deploy the **TPC-H dashboard demo** and Locust load test to SPCS.
+
+- Deploys FastAPI + Chart.js dashboard with real-time TPC-H visualizations
+- Deploys a Locust load generator for simulating concurrent dashboard users
+- Manages SPCS service lifecycle (deploy, status, update, teardown)
+
+**Usage:** Ask something like *"deploy the TPC-H dashboard to SPCS"* or *"check tpch dashboard status"*.
 
 ---
 
