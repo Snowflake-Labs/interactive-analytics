@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import concurrent.futures
 import logging
 import os
 import sys
@@ -11,7 +13,8 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from threading import Lock, local as _thread_local
+from queue import Empty, Queue
+from threading import Lock
 from typing import Any
 
 import snowflake.connector
@@ -30,6 +33,7 @@ SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "IW_TPCH")
 DATABASE = os.environ.get("SNOWFLAKE_DATABASE", f"{SOLUTION_NAME}_BENCH_DB")
 SCALES = ["1", "10", "100", "1000"]
 CONNECTION_NAME = os.environ.get("CONNECTION_NAME")
+POOL_SIZE = int(os.environ.get("POOL_SIZE", "5"))
 LOOKBACK_DAYS = 15
 TARGETS = ["standard", "interactive"]
 DEFAULT_TARGET = "interactive"
@@ -211,57 +215,68 @@ def connection_kwargs_for(target: str, scale: str) -> dict[str, Any]:
         "warehouse": warehouse_for_target(target, scale),
         "database": DATABASE,
         "schema": schema_for_target(target, scale),
+        "session_parameters": {
+            "QUERY_TAG": QUERY_TAG,
+            "USE_CACHED_RESULT": False,
+        },
     }
 
 
 class ConnectionPool:
-    def __init__(self) -> None:
-        self._connections: dict[str, snowflake.connector.SnowflakeConnection] = {}
-        self._locks: dict[str, Lock] = {}
-        self._global_lock = Lock()
+    """Queue-based pool: up to POOL_SIZE concurrent connections per target/scale."""
 
-    def _lock_for(self, key: str) -> Lock:
-        with self._global_lock:
-            if key not in self._locks:
-                self._locks[key] = Lock()
-            return self._locks[key]
+    def __init__(self, size: int = POOL_SIZE) -> None:
+        self._size = size
+        self._queues: dict[str, Queue[snowflake.connector.SnowflakeConnection]] = {}
+        self._init_lock = Lock()
 
-    def get(self, target: str, scale: str) -> snowflake.connector.SnowflakeConnection:
+    def _queue_for(self, key: str) -> Queue[snowflake.connector.SnowflakeConnection]:
+        with self._init_lock:
+            if key not in self._queues:
+                self._queues[key] = Queue(maxsize=self._size)
+            return self._queues[key]
+
+    def _new_connection(self, target: str, scale: str) -> snowflake.connector.SnowflakeConnection:
+        kwargs = connection_kwargs_for(target, scale)
+        return snowflake.connector.connect(**kwargs)
+
+    def acquire(self, target: str, scale: str) -> snowflake.connector.SnowflakeConnection:
         key = f"{target}:{scale}"
-        lock = self._lock_for(key)
-        with lock:
-            conn = self._connections.get(key)
-            if conn is not None and not conn.is_closed():
-                return conn
-
-            kwargs = connection_kwargs_for(target, scale)
-            conn = snowflake.connector.connect(**kwargs)
-            wh = warehouse_for_target(target, scale)
-            schema = schema_for_target(target, scale)
-            with conn.cursor() as cur:
-                cur.execute(f"USE WAREHOUSE {wh}")
-                cur.execute(f"USE DATABASE {DATABASE}")
-                cur.execute(f"USE SCHEMA {schema}")
-                cur.execute("ALTER SESSION SET USE_CACHED_RESULT = FALSE")
-                cur.execute(f"ALTER SESSION SET QUERY_TAG = '{QUERY_TAG}'")
-            self._connections[key] = conn
+        q = self._queue_for(key)
+        try:
+            conn = q.get_nowait()
+            if conn.is_closed():
+                conn = self._new_connection(target, scale)
             return conn
+        except Empty:
+            return self._new_connection(target, scale)
+
+    def release(self, target: str, scale: str, conn: snowflake.connector.SnowflakeConnection) -> None:
+        key = f"{target}:{scale}"
+        q = self._queue_for(key)
+        try:
+            q.put_nowait(conn)
+        except Exception:
+            conn.close()
 
 
 pool = ConnectionPool()
 
-_thread_state = _thread_local()
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=POOL_SIZE * len(TARGETS))
 
 
 def execute_query(
     sql: str, target: str, scale: str, binds: list[Any] | None = None
-) -> list[dict[str, Any]]:
-    conn = pool.get(target, scale)
-    with conn.cursor(DictCursor) as cur:
-        t0 = time.perf_counter()
-        cur.execute(sql, binds or ())
-        _thread_state.query_elapsed_ms = round((time.perf_counter() - t0) * 1000)
-        return cur.fetchall()
+) -> tuple[list[dict[str, Any]], int]:
+    conn = pool.acquire(target, scale)
+    try:
+        with conn.cursor(DictCursor) as cur:
+            t0 = time.perf_counter()
+            cur.execute(sql, binds or ())
+            elapsed_ms = round((time.perf_counter() - t0) * 1000)
+            return cur.fetchall(), elapsed_ms
+    finally:
+        pool.release(target, scale, conn)
 
 
 def run_dashboard_query(
@@ -269,7 +284,7 @@ def run_dashboard_query(
     scale: str,
     segment: str | None,
     **options: Any,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int]:
     sql, binds = build_dashboard_query(segment=segment, **options)
     return execute_query(sql, target, scale, binds)
 
@@ -307,8 +322,11 @@ def request_params(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(_executor)
     scale = resolve_scale(DEFAULT_SCALE)
     log.info("TPC-H dashboard running at http://localhost:%s", PORT)
+    log.info("Pool size: %d per target, executor threads: %d", POOL_SIZE, POOL_SIZE * len(TARGETS))
     log.info("Database: %s, default scale: SF%s", DATABASE, scale)
     log.info(
         "Warehouses: interactive=%s, standard=%s",
@@ -326,7 +344,8 @@ async def lifespan(_app: FastAPI):
         log.info("Snowflake credential cache: %s", credential_cache_description())
     try:
         opts = connection_kwargs_for("interactive", scale)
-        pool.get("interactive", scale)
+        conn = pool.acquire("interactive", scale)
+        pool.release("interactive", scale, conn)
         log.info(
             "Snowflake connection established (%s / %s.%s).",
             opts["warehouse"],
@@ -393,9 +412,9 @@ async def api_logging(request: Request, call_next):
         raise
 
 
-def json_api(data: Any, request: Request) -> JSONResponse:
+def json_api(data: Any, request: Request, query_ms: int | None = None) -> JSONResponse:
     request.state.response_rows = response_row_count(data)
-    request.state.query_elapsed_ms = getattr(_thread_state, "query_elapsed_ms", None)
+    request.state.query_elapsed_ms = query_ms
     return JSONResponse(serialize_rows(data))
 
 
@@ -437,13 +456,14 @@ def api_config(
 
 
 @app.get("/api/segments")
-def api_segments(request: Request):
+async def api_segments(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -454,17 +474,19 @@ def api_segments(request: Request):
     return json_api(
         [r["MARKET_SEGMENT"] for r in rows if r.get("MARKET_SEGMENT")],
         request,
+        query_ms,
     )
 
 
 @app.get("/api/kpis")
-def api_kpis(request: Request):
+async def api_kpis(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -475,17 +497,18 @@ def api_kpis(request: Request):
           COUNT(*) AS total_line_items,
           ROUND(SUM({lineitem_revenue("l")}) / NULLIF(COUNT(DISTINCT l.L_ORDERKEY), 0), 2) AS avg_order_value""",
     )
-    return json_api(rows[0] if rows else {}, request)
+    return json_api(rows[0] if rows else {}, request, query_ms)
 
 
 @app.get("/api/orders-over-time")
-def api_orders_over_time(request: Request):
+async def api_orders_over_time(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -496,17 +519,18 @@ def api_orders_over_time(request: Request):
         group_by="GROUP BY 1",
         order_by="ORDER BY order_day ASC",
     )
-    return json_api(rows, request)
+    return json_api(rows, request, query_ms)
 
 
 @app.get("/api/by-segment")
-def api_by_segment(request: Request):
+async def api_by_segment(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -516,17 +540,18 @@ def api_by_segment(request: Request):
         group_by="GROUP BY 1",
         order_by="" if segment else "ORDER BY revenue DESC",
     )
-    return json_api(rows, request)
+    return json_api(rows, request, query_ms)
 
 
 @app.get("/api/by-region")
-def api_by_region(request: Request):
+async def api_by_region(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -536,17 +561,18 @@ def api_by_region(request: Request):
         group_by="GROUP BY 1",
         order_by="ORDER BY revenue DESC",
     )
-    return json_api(rows, request)
+    return json_api(rows, request, query_ms)
 
 
 @app.get("/api/latest-orders")
-def api_latest_orders(request: Request):
+async def api_latest_orders(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -560,17 +586,18 @@ def api_latest_orders(request: Request):
         order_by="ORDER BY MAX(l.L_SHIPDATE) DESC, l.L_ORDERKEY DESC",
         limit="LIMIT 20",
     )
-    return json_api(rows, request)
+    return json_api(rows, request, query_ms)
 
 
 @app.get("/api/table-stats")
-def api_table_stats(request: Request):
+async def api_table_stats(request: Request):
     target, scale, segment = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
     )
-    rows = run_dashboard_query(
+    rows, query_ms = await asyncio.to_thread(
+        run_dashboard_query,
         target,
         scale,
         segment,
@@ -578,7 +605,7 @@ def api_table_stats(request: Request):
         COUNT(*) AS lineitem_rows,
         COUNT(DISTINCT l.L_ORDERKEY) AS order_rows""",
     )
-    return json_api(rows[0] if rows else {}, request)
+    return json_api(rows[0] if rows else {}, request, query_ms)
 
 
 def main() -> None:
