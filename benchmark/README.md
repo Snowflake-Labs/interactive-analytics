@@ -2,6 +2,8 @@
 
 A generic benchmark tool that compares Snowflake **Interactive Warehouses** against **Standard Warehouses** using any user-provided SQL query. Includes a Locust-based load test to measure query latency under concurrency.
 
+> **Tip:** If you're using [Cortex Code (CoCo)](https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code), you can use the `interactive-benchmark` skill to automate the entire workflow — from creating interactive tables to deploying the benchmark and generating reports — through conversational prompts. Just open this project in Cortex Code and describe what you want to benchmark.
+
 ## Repository Structure
 
 ```
