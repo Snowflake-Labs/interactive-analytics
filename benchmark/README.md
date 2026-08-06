@@ -9,6 +9,7 @@ benchmark/
 ├── api/          # Python FastAPI backend (two endpoints: /api/run/interactive, /api/run/standard)
 ├── test/         # SQL query files to benchmark (place your .sql files here)
 ├── locust/       # Locust load test that POSTs queries to both endpoints
+├── reports/      # Generated HTML benchmark reports
 └── spcs/         # Snowpark Container Services deployment (Dockerfiles, specs, scripts)
 ```
 
@@ -23,6 +24,10 @@ Place `.sql` files here — each containing a single query. The locust load test
 ### `locust/`
 
 Locust workload that reads queries from `test/`, then POSTs them to `/api/run/interactive` and `/api/run/standard`. Supports targeting one or both warehouse types.
+
+### `reports/`
+
+Generated HTML benchmark reports. Each report is named `YYYY-MM-DD-<SOLUTION_NAME>-benchmark-report.html` (e.g. `2026-08-06-IWBENCH-benchmark-report.html`). This directory is created automatically by the benchmark skill.
 
 ### `spcs/`
 
