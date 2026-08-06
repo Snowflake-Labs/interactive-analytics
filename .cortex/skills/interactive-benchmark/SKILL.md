@@ -462,6 +462,29 @@ If the user chooses to **tear down**:
 cd <REPO_ROOT>/benchmark/spcs && ./teardown.sh
 ```
 
+After the SPCS teardown completes, ask the user whether they also want to **drop the schemas** (and all tables/objects within them) that were created during the benchmark:
+
+- `<DATABASE>.<INTERACTIVE_SCHEMA>` — contains the interactive tables
+- `<DATABASE>.<STANDARD_SCHEMA>` — contains the standard tables (if created as copies)
+- `<DATABASE>.SPCS` — the schema used for SPCS objects (image repo, services)
+
+If the user confirms, drop them:
+
+```sql
+USE ROLE <ROLE>;
+DROP SCHEMA IF EXISTS <DATABASE>.<INTERACTIVE_SCHEMA>; -- cascades to all tables/views within
+DROP SCHEMA IF EXISTS <DATABASE>.<STANDARD_SCHEMA>;
+DROP SCHEMA IF EXISTS <DATABASE>.SPCS;
+```
+
+If all schemas in the database have been dropped (i.e. the database was created entirely by this benchmark and is now empty), also ask whether to drop the database itself:
+
+```sql
+DROP DATABASE IF EXISTS <DATABASE>;
+```
+
+Always require explicit user confirmation before dropping schemas or the database — never do this automatically.
+
 If the user chooses to **keep**, save the deployment state in `benchmark/.env` so future runs reuse the existing services instead of redeploying:
 
 ```
@@ -492,6 +515,8 @@ Options:
 ```bash
 cd <REPO_ROOT>/benchmark/spcs && ./teardown.sh
 ```
+
+After running `teardown.sh`, ask the user whether they also want to drop the created schemas (and all contained tables/objects). See Step 15 for the full teardown flow with user confirmation.
 
 ---
 
