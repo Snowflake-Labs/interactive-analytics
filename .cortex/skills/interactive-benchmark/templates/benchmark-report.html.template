@@ -91,6 +91,18 @@
     {{PROFILE_TOP_ROWS}}        <tr>… for top ~10 slowest interactive queries.
     {{PROFILE_VERDICT_LIST}}    <li>… items summarizing compile/queue/scan tail.
 
+  Escalation path (populated from Step 13c)
+    {{ITERATION_HISTORY}}       HTML fragment (a small table or <ul>) showing
+                                each benchmark iteration that led to the final
+                                numbers: starting warehouse size,
+                                MAX_CLUSTER_COUNT, server-side P95, and the
+                                decision taken (met goal / scale up / scale out
+                                / limit-bound). If only one iteration was
+                                needed, emit a single-row table with decision
+                                "goal met at initial configuration" — do NOT
+                                emit an empty string, the section must always
+                                have content.
+
   Recommendations
     {{RECOMMENDATIONS_TO_MEET_GOAL}}   <ol><li>…</li></ol> of actionable steps
                                         to hit the latency goal.
@@ -310,6 +322,12 @@
   <ul>
     {{PROFILE_VERDICT_LIST}}
   </ul>
+</section>
+
+<section>
+  <h2>Escalation Path</h2>
+  <p>Each row is one benchmark iteration. If only one row is present, the target latency was met at the initial configuration and no scale-up or scale-out was required. If multiple rows are present, they show the sequence of Step 13c decisions that led to the reported numbers.</p>
+  {{ITERATION_HISTORY}}
 </section>
 
 <section>

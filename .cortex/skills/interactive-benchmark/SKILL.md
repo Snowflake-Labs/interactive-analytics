@@ -46,7 +46,13 @@ Before proceeding, ask the user for:
 3. **Database** — Which database should the query run against?
 4. **Standard warehouse** — Which existing warehouse should be used as the reference for running the benchmark against standard tables?
 5. **Concurrent users** — How many concurrent users should the load test simulate? This sets the Locust user count (`LOCUST_USERS`). Default: 50.
-6. **Latency goal (P95)** — What is the target P95 latency for the benchmark? (e.g. "under 1 seconds"). If the user does not volunteer a latency goal, you MUST ask for one. This value is used to evaluate pass/fail in the final report and to determine whether the interactive warehouse meets the user's requirements. Default suggestion: 1 second. Note: interactive warehouses are designed for the 30ms–5sec latency range. If the user's target exceeds 5 seconds, warn them that the workload may not be a good fit for interactive warehouses.
+6. **Latency goal** — What is the target latency for the benchmark?
+   **Any latency figure the user provides is interpreted as a P95 target unless they explicitly say otherwise** (e.g. they say "P99", "median", "P50", "average"). Phrases like "under 1 second", "sub-second", "must respond in less than X ms", "queries need to answer in Y" all mean **P95 ≤ that value**. State this assumption back to the user in your confirmation so they can correct it if they meant a different percentile.
+   If the user does not volunteer a target, you MUST ask. Default suggestion: **P95 ≤ 1 second**. Interactive warehouses are designed for the 30 ms–5 s range; if the target exceeds 5 s, warn that the workload may not be a good fit.
+7. **Scale-out limit (MAX_CLUSTER_COUNT / MWC)** — What is the maximum number of clusters the interactive warehouse is allowed to grow to during the benchmark? This bounds *horizontal* (multi-cluster) scaling. Default rule of thumb: `ceil(concurrent_users / 15)` (see Step 6b) — propose that value and ask the user to confirm or supply their own upper bound. **If the user did not mention a scale-out limit, you MUST ask before starting the benchmark.** A too-tight MWC ceiling forces queueing at the target user count; make the trade-off explicit.
+8. **Scale-up limit (warehouse size / SKU)** — What is the maximum warehouse size the interactive warehouse is allowed to grow to (X-Small, Small, Medium, Large, X-Large, …)? This bounds *vertical* scaling. Default suggestion: start at X-Small, allow growth up to Medium if needed to meet the P95 goal. **If the user did not specify a size ceiling, you MUST ask before starting the benchmark.** Interactive scale-up is expensive — every step up roughly doubles credit cost per second — so the user needs to consent to the ceiling up front, not after the fact.
+
+**Do not proceed past Step 1 until items 6, 7, and 8 are confirmed.** The rest of the workflow depends on them: Step 6b uses the MWC limit; Step 13c uses the SKU limit and the P95 target as the escalation-loop stopping criterion.
 
 Use `SHOW WAREHOUSES LIKE '<warehouse_name>'` to determine the size of the provided standard warehouse. This size will be used later when creating the benchmark standard warehouse so the comparison is fair.
 
@@ -212,10 +218,18 @@ Look at `min_cluster_count`, `max_cluster_count`, and `scaling_policy`.
 Compute the required cluster count from the user count captured in Step 1:
 
 ```
-MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
+RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
 ```
 
-Round up. For 50 users this is 4; use 5 to leave headroom. Then apply:
+Round up (for 50 users this is 4; use 5 to leave headroom).
+
+**Now compare against the scale-out limit captured in Step 1 (bullet 7).** Three cases:
+
+- **Limit ≥ recommended value:** use the recommended value. Proceed.
+- **Limit < recommended value:** do NOT silently cap. Stop and tell the user, for example: *"Rule-of-thumb for 50 users is MAX_CLUSTER_COUNT=5, but your scale-out limit is 3. At the target user count the warehouse is likely to queue, and queued queries will hit the 5-second interactive cancel and get routed to fallback. Do you want to (a) raise the limit to 5, or (b) proceed with 3 and accept that the P95 goal may be missed due to queueing, not query cost?"* Wait for the answer before continuing.
+- **User set no limit (should not happen — Step 1 gate should have caught this):** halt and ask now.
+
+Then apply:
 
 ```sql
 ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
@@ -599,6 +613,36 @@ Include the server-side percentile table, the side-by-side comparison table, and
 
 ---
 
+### Step 13c: Goal Check and Iterative Escalation
+
+After collecting the server-side percentiles from Step 13b, evaluate them against the P95 latency goal captured in Step 1.
+
+**Case 1 — Goal met on both client and server.** Report success. Proceed to Step 14.
+
+**Case 2 — Server-side P95 meets the goal but client-side does not.** Snowflake is doing its job; the tail comes from API/HTTP or fallback re-executions. Do NOT propose warehouse scale-up — it will not help. Diagnose and document, then proceed to Step 14.
+
+**Case 3 — Server-side P95 does NOT meet the goal.** The warehouse itself is not delivering the target latency. Before writing the report, propose to escalate. Pick the right lever based on the profile from Step 13b:
+
+1. **Scale out (increase MAX_CLUSTER_COUNT)** — only if `AVG_QUEUE_MS > 0` on the interactive warehouse. Queueing is the signal that horizontal scaling will help. Bounded by the user's scale-out limit (Step 1 bullet 7).
+2. **Scale up (bump the warehouse SKU)** — if `AVG_QUEUE_MS == 0` (no queueing → the bottleneck is per-query execution, not concurrency). Propose the next SKU (X-Small → Small → Medium → Large → …). Each step roughly doubles cache and cores and typically halves per-query execute time. Bounded by the user's scale-up limit (Step 1 bullet 8).
+3. **Both** — if there is queueing AND per-query execute time is already high, do the scale-out first, then re-measure before considering scale-up.
+
+**Ask before making changes.** Present the diagnosis, the proposed change, and the expected effect, then wait for user approval. Example prompt:
+
+> "Server-side P95 is **1237 ms** — above your **1000 ms** P95 goal. Queueing is **0 ms**, so scaling out won't help; the bottleneck is per-query execution. Your scale-up ceiling is **Medium**. I'd like to bump the interactive warehouse from **X-Small** to **Small** and re-run the benchmark. Expected: server-side P95 around 600 ms, which should meet the goal. OK to proceed?"
+
+**If the user says yes:** re-configure the warehouse (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 11), re-run the load test (Step 12), re-collect the server-side numbers (Step 13b), and re-evaluate this step. **Cap the iteration count at 3** to avoid runaway loops.
+
+**Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. Tell the user clearly, for example:
+
+> "The target of **P95 ≤ 1000 ms** is not achievable within your scale-out limit of **5 clusters** and scale-up limit of **Medium**. Best result reached: server-side P95 = **1800 ms** (Medium × 5 clusters). Options: (a) relax one of the ceilings and re-run, (b) redesign the query (fewer joins, pre-aggregated table, narrower predicates), (c) reduce data scanned (better clustering, search optimization), (d) accept the current performance. How would you like to proceed?"
+
+Then produce the Step 14 report with the ceiling-limited numbers and mark the P95 goal as **not met — limit-bound** in the executive summary tile.
+
+**Recording the iteration history.** For the report, keep a short log of each iteration (starting size / MWC, resulting server-side P95, decision) so the reader can see the escalation path. This log populates the `{{ITERATION_HISTORY}}` placeholder in the template.
+
+---
+
 ### Step 14: Generate HTML Report
 
 **MANDATORY: use the bundled template.** The report MUST be produced by starting from the canonical HTML template shipped with this skill and filling in its `{{PLACEHOLDER}}` tokens. Do NOT hand-author the report from scratch, do NOT change the section order, and do NOT modify the CSS or structure. This guarantees every benchmark report has the same layout, the same mandatory sections, and the same style.
@@ -619,7 +663,7 @@ Write the filled-in report to `<REPO_ROOT>/benchmark/reports/YYYY-MM-DD-<SOLUTIO
 2. Substitute every `{{PLACEHOLDER}}` token with the corresponding value collected during Steps 1, 5, 6, 12b, and 13b. The template's header comment lists every placeholder and what it expects. Do NOT leave any placeholders unfilled — grep the output file for `{{` before saving to verify.
 3. When a section's placeholder expects HTML fragments (e.g. `{{VARIANT_ROWS}}`, `{{BAR_CLIENT_ROWS}}`, `{{RECOMMENDATIONS_TO_MEET_GOAL}}`), emit valid HTML that follows the same tag patterns as the surrounding structure — do not invent new CSS classes.
 4. Compute the speedup value (`{{P95_SPEEDUP}}`) from **server-side** numbers: `round(standard_p95_ms / interactive_p95_ms, 1) + "×"`. Never derive it from client-side numbers.
-5. For the pill-class placeholders (`{{P95_INT_SERVER_CLASS}}`, `{{P50_INT_SERVER_CLASS}}`, `{{P50_INT_CLIENT_CLASS}}`, `{{FAILURE_CLASS}}`), pick one of `ok`, `warn`, or `bad` based on whether the value meets/misses the user-supplied latency goal from Step 1.
+5. For the pill-class placeholders (`{{P95_INT_SERVER_CLASS}}`, `{{P50_INT_SERVER_CLASS}}`, `{{P50_INT_CLIENT_CLASS}}`, `{{FAILURE_CLASS}}`), pick one of `ok`, `warn`, or `bad` based on whether the value meets/misses the user-supplied latency goal from Step 1. **Special case:** if the P95 goal was missed AND the user's scale-out / scale-up ceilings were both reached in Step 13c, use pill class `bad` and status text `"limit-bound"` instead of `"above goal"`. This distinguishes "we could tune further" from "we hit the ceiling the user set".
 6. For the bottleneck verdict box (`{{BOTTLENECK_VERDICT_CLASS}}` and `{{BOTTLENECK_VERDICT}}`), the class must be one of `good`, `note`, or `bad-box`, matching the severity of the diagnosis: `good` if both API and Snowflake meet the goal, `note` if the tail is contained by fallback, `bad-box` if the goal is missed.
 7. For the client-side and server-side percentile bar rows, compute each `width:N%` value using a shared scale-max per section — see the template's header comment for the sizing rule.
 
@@ -634,15 +678,16 @@ Write the filled-in report to `<REPO_ROOT>/benchmark/reports/YYYY-MM-DD-<SOLUTIO
 7. Client vs Server — Bottleneck Diagnosis (delta table + explicit verdict box naming which layer to optimize)
 8. Client-Side and Server-Side Percentile Comparison bar charts
 9. Query Profile Health (top-slowest table + verdict list)
-10. Optimization Recommendations (to-meet-goal / already-ok / general)
-11. Configuration Used (compute pools / API / interactive WH / Locust)
+10. Escalation Path (`{{ITERATION_HISTORY}}` — one iteration entry if no escalation was needed, or the full log of scale-up / scale-out steps taken during Step 13c)
+11. Optimization Recommendations (to-meet-goal / already-ok / general)
+12. Configuration Used (compute pools / API / interactive WH / Locust)
 
 If any section is missing from the final HTML, the report is invalid — re-derive the missing placeholder from the collected data and re-emit.
 
 **Verification before opening the report:**
 
 - `grep '{{' <output-file>` must return zero matches (all placeholders filled).
-- The file must contain each of the 11 section headings above.
+- The file must contain each of the 12 section headings above.
 - The `{{P95_SPEEDUP}}` value must be computed from server-side numbers.
 
 Open the report in the browser for the user when done.
@@ -759,6 +804,8 @@ After running `teardown.sh`, ask the user whether they also want to drop the cre
 
 Before considering a benchmark complete, verify all of the following are true:
 
+- [ ] **Latency goal captured as P95 explicitly** (Step 1 bullet 6) — assumption stated back to the user
+- [ ] **Scale-out (MWC) and scale-up (SKU) limits captured** (Step 1 bullets 7 and 8) — asked before benchmark start if not volunteered
 - [ ] Interactive table created with a **deliberate CLUSTER BY** matching the query's predicate columns (every table, including tiny lookups)
 - [ ] Interactive warehouse created, resumed, and **explicitly used** (not accidentally falling back to a standard warehouse)
 - [ ] Hot tables **attached** to the interactive warehouse with ADD TABLES (verified via `SHOW INTERACTIVE TABLES`)
@@ -770,7 +817,8 @@ Before considering a benchmark complete, verify all of the following are true:
 - [ ] Query Profile shows **low remote reads** (0% ideal), **low compile time** (< 50 ms), and **low queueing** (0 ms) for steady-state traffic
 - [ ] **Server-side P50/P95/P99 collected** per warehouse from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` and reported **alongside** the Locust client-side percentiles
 - [ ] **Client-vs-server delta analyzed** and the bottleneck (API/HTTP vs Snowflake) explicitly named in the report — never rely on Locust numbers alone
-- [ ] **HTML report generated from `templates/benchmark-report.html.template`** — no `{{PLACEHOLDER}}` tokens remain in the output file, and all 11 mandatory sections are present
+- [ ] **Step 13c goal check performed** — if server-side P95 missed the goal, escalation was proposed with user approval, or the limit-bound verdict was recorded
+- [ ] **HTML report generated from `templates/benchmark-report.html.template`** — no `{{PLACEHOLDER}}` tokens remain in the output file, and all 12 mandatory sections are present
 
 If any item fails, address it before drawing conclusions from benchmark numbers.
 
