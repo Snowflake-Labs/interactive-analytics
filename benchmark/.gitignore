@@ -2,4 +2,4 @@
 .env
 **/.cortex
 **/reports
-benchmark-query.sql
+benchmark-query*.sql
