@@ -317,9 +317,9 @@ This file is the single query executed against both warehouse types during the l
 
 Both config files MUST be created from their templates — never edit the templates directly.
 
-1. **Create `benchmark/.env`** from `benchmark/.env.example`:
+1. **Create `benchmark/.env`** from `benchmark/.env.template`:
    ```bash
-   cp <REPO_ROOT>/benchmark/.env.example <REPO_ROOT>/benchmark/.env
+   cp <REPO_ROOT>/benchmark/.env.template <REPO_ROOT>/benchmark/.env
    ```
    Write these exact values:
    ```
@@ -483,14 +483,18 @@ If you need results before the test finishes, the container also emits a HEARTBE
 
 ### Step 13: Analyze Results and Generate Recommendations
 
-After the load test completes, collect the Locust metrics:
-- **Request latency percentiles: P50, P95, P99** — these three MUST be measured for every test run, for each endpoint
-- Throughput (requests/sec) for interactive vs standard
-- Error rates
+After the load test completes, collect **two independent measurements** of latency for every run:
 
-**Latency goal convention:** When the user specifies a latency target (e.g. "queries must complete within 2 seconds"), interpret that as a **P95 target** unless they explicitly state otherwise.
+1. **Client-side (Locust HTTP)** — P50, P95, P99 from the Locust CSV for each endpoint. This is what the end user experiences (HTTP round-trip + API pool + Snowflake).
+2. **Server-side (Snowflake)** — P50, P95, P99 computed from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` for each warehouse. This is what Snowflake alone spent (compile + queue + execute).
 
-Compare `/api/run/interactive` vs `/api/run/standard` metrics to see the performance difference.
+Both sets of numbers are **mandatory**. The server-side numbers are what proves Snowflake performance; the client-side numbers are what the user's dashboard sees. The **delta between them isolates the API/HTTP overhead from Snowflake's real cost** — without this comparison you cannot tell whether the API layer is a bottleneck or the warehouse is.
+
+Also collect:
+- Throughput (requests/sec) for interactive vs standard (Locust)
+- Error rates (Locust) and count of fallback-served queries (server-side query count on the standard WH minus direct standard-endpoint Locust requests)
+
+**Latency goal convention:** When the user specifies a latency target (e.g. "queries must complete within 2 seconds"), interpret that as a **P95 target** unless they explicitly state otherwise. Evaluate the goal against **both** client-side and server-side P95 — if server-side meets the goal but client-side does not, the API is the bottleneck; if both fail, the warehouse configuration needs work.
 
 Then invoke the `snowflake-interactive` skill again to analyze the benchmark results and produce optimization recommendations:
 - Does the query need rewrites or tweaks for better interactive performance?
@@ -501,32 +505,82 @@ Capture these recommendations for the report.
 
 ---
 
-### Step 13b: Post-Benchmark Query Profile Diagnostics
+### Step 13b: Post-Benchmark Server-Side Validation
 
-After collecting load test metrics, inspect the Snowsight Query Profile for a sample of interactive warehouse queries to validate steady-state health. The API sets `QUERY_TAG='IW_BENCHMARK'` on every request, so you can pull representative query IDs directly from `ACCOUNT_USAGE.QUERY_HISTORY`:
+After collecting the Locust CSV, **you MUST run server-side aggregation queries against Snowflake for both warehouses and both compute percentiles + per-query profile metrics**. This is not optional — the Locust numbers alone cannot distinguish API/HTTP overhead from Snowflake time, and cannot tell you whether the P99 tail is queueing, cold cache, or genuine execution cost.
+
+**Important — use `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE`, not `ACCOUNT_USAGE.QUERY_HISTORY`.** The `ACCOUNT_USAGE` view has a 45-minute to 3-hour latency and will return zero rows immediately after the benchmark. `INFORMATION_SCHEMA` is fresh within seconds. Also run these diagnostic queries from a **standard** warehouse (e.g. `USE WAREHOUSE <STANDARD_WAREHOUSE>` or any non-interactive WH) — running them on the interactive WH will hit the 5-second cancel because meta queries against QUERY_HISTORY on large windows can exceed that limit.
+
+The API sets `QUERY_TAG='IW_BENCHMARK'` on every request, which is useful for isolating benchmark traffic when the account is busy.
+
+**1. Aggregate server-side percentiles per warehouse.**
+
+Run this for each of the interactive and standard warehouses:
 
 ```sql
--- Sample of interactive queries from the load test window
 SELECT
-    QUERY_ID,
-    TOTAL_ELAPSED_TIME,
-    BYTES_SCANNED,
-    COMPILATION_TIME,
-    EXECUTION_TIME,
-    QUEUED_PROVISIONING_TIME + QUEUED_OVERLOAD_TIME AS QUEUED_MS,
-    PERCENTAGE_SCANNED_FROM_CACHE
-FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
-WHERE QUERY_TAG = 'IW_BENCHMARK'
-  AND WAREHOUSE_NAME = '<INTERACTIVE_WAREHOUSE>'
-  AND START_TIME >= DATEADD(minute, -10, CURRENT_TIMESTAMP())
+  COUNT(*) AS N,
+  AVG(TOTAL_ELAPSED_TIME)::INT AS AVG_MS,
+  MEDIAN(TOTAL_ELAPSED_TIME)::INT AS P50_MS,
+  APPROX_PERCENTILE(TOTAL_ELAPSED_TIME, 0.90)::INT AS P90_MS,
+  APPROX_PERCENTILE(TOTAL_ELAPSED_TIME, 0.95)::INT AS P95_MS,
+  APPROX_PERCENTILE(TOTAL_ELAPSED_TIME, 0.99)::INT AS P99_MS,
+  AVG(COMPILATION_TIME)::INT AS AVG_COMPILE_MS,
+  AVG(EXECUTION_TIME)::INT AS AVG_EXEC_MS,
+  AVG(QUEUED_PROVISIONING_TIME + QUEUED_OVERLOAD_TIME)::INT AS AVG_QUEUE_MS,
+  (AVG(BYTES_SCANNED) / (1024*1024))::INT AS AVG_MB_SCAN
+FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE(
+  WAREHOUSE_NAME => '<INTERACTIVE_WAREHOUSE>',
+  RESULT_LIMIT => 5000
+))
+WHERE START_TIME >= DATEADD(minute, -10, CURRENT_TIMESTAMP())
+  AND EXECUTION_STATUS = 'SUCCESS';
+```
+
+Repeat with the standard warehouse name. These two rows give you the **authoritative server-side P50/P95/P99** for each warehouse over the load-test window.
+
+**2. Compare client-side vs server-side — this is the API-vs-Snowflake diagnosis.**
+
+Build this table for the report:
+
+| Percentile | Locust interactive | Snowflake interactive | Delta (API+HTTP) | Locust standard | Snowflake standard | Delta (API+HTTP) |
+|---|---|---|---|---|---|---|
+| P50 | … | … | … | … | … | … |
+| P95 | … | … | … | … | … | … |
+| P99 | … | … | … | … | … | … |
+
+Interpretation rules:
+- **Delta < ~50 ms and roughly constant across percentiles** → API and HTTP round-trip are cheap; Snowflake is the whole story. Optimization work should target the warehouse / query / clustering.
+- **Delta grows with percentile (P50 delta small, P95 delta large)** → API pool exhaustion or connection queueing under load. Increase `API_WORKERS` / `POOL_SIZE`, add more API instances, or raise the compute pool size.
+- **Delta is large at every percentile** → API is undersized regardless of load. Same fix as above but more urgent.
+- **Server-side P95 already exceeds the goal** → API tuning cannot save you; go back and fix the warehouse (multi-cluster, fallback size, clustering, query shape).
+
+Always state the conclusion of this analysis in the report — the reader must know which layer to invest in.
+
+**3. Pick outliers and inspect Query Profile.**
+
+For a mix of median and slow queries, pull query IDs and open the Query Profile in Snowsight:
+
+```sql
+SELECT
+  QUERY_ID,
+  TOTAL_ELAPSED_TIME,
+  COMPILATION_TIME,
+  EXECUTION_TIME,
+  QUEUED_PROVISIONING_TIME + QUEUED_OVERLOAD_TIME AS QUEUED_MS,
+  BYTES_SCANNED,
+  PERCENTAGE_SCANNED_FROM_CACHE
+FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE(
+  WAREHOUSE_NAME => '<INTERACTIVE_WAREHOUSE>',
+  RESULT_LIMIT => 5000
+))
+WHERE START_TIME >= DATEADD(minute, -10, CURRENT_TIMESTAMP())
   AND EXECUTION_STATUS = 'SUCCESS'
 ORDER BY TOTAL_ELAPSED_TIME DESC
 LIMIT 20;
 ```
 
-Pick a mix of median and slow queries and open their Query Profiles in Snowsight.
-
-Check the following metrics:
+Check the following metrics per profile:
 
 | Metric | Target | What it means if bad |
 |--------|--------|---------------------|
@@ -541,32 +595,55 @@ Check the following metrics:
 3. **Cold cache** — warehouse was recently resumed or cache hasn't fully populated yet (see Step 11 warming)
 4. **Cache thrashing** — too many diverse query patterns competing for cache space; consider reducing concurrency or narrowing the hot data set
 
-Include these diagnostics in the HTML report (Step 14) under a "Query Profile Health" section.
+Include the server-side percentile table, the side-by-side comparison table, and the profile-health verdict in the HTML report (Step 14) under a "Server-Side Validation" section.
 
 ---
 
 ### Step 14: Generate HTML Report
 
-Use the `html-authoring` skill to create a comprehensive HTML report in the `<REPO_ROOT>/benchmark/reports/` folder. The filename must follow this template:
+**MANDATORY: use the bundled template.** The report MUST be produced by starting from the canonical HTML template shipped with this skill and filling in its `{{PLACEHOLDER}}` tokens. Do NOT hand-author the report from scratch, do NOT change the section order, and do NOT modify the CSS or structure. This guarantees every benchmark report has the same layout, the same mandatory sections, and the same style.
+
+**Template path (relative to this SKILL.md):**
 
 ```
-YYYY-MM-DD-<SOLUTION_NAME>-benchmark-report.html
+templates/benchmark-report.html.template
 ```
 
-Where `YYYY-MM-DD` is the current date and `<SOLUTION_NAME>` is the benchmark name from Step 1 (e.g. `2026-08-06-IWBENCH-benchmark-report.html`). Create the `reports` directory if it does not already exist.
+**Output path and filename:**
 
-The report must include:
+Write the filled-in report to `<REPO_ROOT>/benchmark/reports/YYYY-MM-DD-<SOLUTION_NAME>-benchmark-report.html`, where `YYYY-MM-DD` is the current date and `<SOLUTION_NAME>` is the benchmark name from Step 1 (e.g. `2026-08-06-IWBENCH-benchmark-report.html`). Create the `reports` directory if it does not already exist.
 
-1. **Benchmark Summary** — Date, connection, database, warehouse sizes (standard and interactive), number of users, duration
-2. **Query** — The SQL query that was benchmarked (formatted with syntax highlighting)
-3. **Table Details** — Source tables, row counts, whether subsets were used and what filters were applied
-4. **Performance Results** — Latency percentiles (P50, P95, P99) for each endpoint, throughput, and error rates for both interactive and standard warehouses, presented side-by-side. All three percentiles are mandatory.
-5. **Performance Comparison** — Speedup factor at P95 (standard_p95 / interactive_p95), visual chart comparing P50/P95/P99 for both warehouses
-6. **Optimization Recommendations** — Output from the `snowflake-interactive` skill analysis:
-   - Query rewrites or tweaks suggested
-   - Clustering key recommendations
-   - Any other tuning suggestions
-7. **Configuration** — Warehouse sizes, compute pool specs, Locust settings used
+**Procedure:**
+
+1. Read the template file from `templates/benchmark-report.html.template` in this skill folder.
+2. Substitute every `{{PLACEHOLDER}}` token with the corresponding value collected during Steps 1, 5, 6, 12b, and 13b. The template's header comment lists every placeholder and what it expects. Do NOT leave any placeholders unfilled — grep the output file for `{{` before saving to verify.
+3. When a section's placeholder expects HTML fragments (e.g. `{{VARIANT_ROWS}}`, `{{BAR_CLIENT_ROWS}}`, `{{RECOMMENDATIONS_TO_MEET_GOAL}}`), emit valid HTML that follows the same tag patterns as the surrounding structure — do not invent new CSS classes.
+4. Compute the speedup value (`{{P95_SPEEDUP}}`) from **server-side** numbers: `round(standard_p95_ms / interactive_p95_ms, 1) + "×"`. Never derive it from client-side numbers.
+5. For the pill-class placeholders (`{{P95_INT_SERVER_CLASS}}`, `{{P50_INT_SERVER_CLASS}}`, `{{P50_INT_CLIENT_CLASS}}`, `{{FAILURE_CLASS}}`), pick one of `ok`, `warn`, or `bad` based on whether the value meets/misses the user-supplied latency goal from Step 1.
+6. For the bottleneck verdict box (`{{BOTTLENECK_VERDICT_CLASS}}` and `{{BOTTLENECK_VERDICT}}`), the class must be one of `good`, `note`, or `bad-box`, matching the severity of the diagnosis: `good` if both API and Snowflake meet the goal, `note` if the tail is contained by fallback, `bad-box` if the goal is missed.
+7. For the client-side and server-side percentile bar rows, compute each `width:N%` value using a shared scale-max per section — see the template's header comment for the sizing rule.
+
+**Coverage requirement — every section in the template is mandatory:**
+
+1. Executive Summary tiles (all 6)
+2. Benchmark Setup (`kv` block)
+3. Query and Filter Variants (primary query + variants table)
+4. Table Details (Interactive)
+5. Performance Results — Client-side (Locust HTTP), with P50/P95/P99 (all three mandatory)
+6. Performance Results — Server-side (Snowflake), with P50/P95/P99 and compile / exec / queue / scan averages (mandatory — must appear ALONGSIDE the client-side section, never in place of it)
+7. Client vs Server — Bottleneck Diagnosis (delta table + explicit verdict box naming which layer to optimize)
+8. Client-Side and Server-Side Percentile Comparison bar charts
+9. Query Profile Health (top-slowest table + verdict list)
+10. Optimization Recommendations (to-meet-goal / already-ok / general)
+11. Configuration Used (compute pools / API / interactive WH / Locust)
+
+If any section is missing from the final HTML, the report is invalid — re-derive the missing placeholder from the collected data and re-emit.
+
+**Verification before opening the report:**
+
+- `grep '{{' <output-file>` must return zero matches (all placeholders filled).
+- The file must contain each of the 11 section headings above.
+- The `{{P95_SPEEDUP}}` value must be computed from server-side numbers.
 
 Open the report in the browser for the user when done.
 
@@ -691,6 +768,9 @@ Before considering a benchmark complete, verify all of the following are true:
 - [ ] `config.env` values (INTERACTIVE_WAREHOUSE, STANDARD_WAREHOUSE, LOCUST_USERS, schemas) match Step 1/Step 5 outputs — no template placeholders left
 - [ ] Query shapes are **selective, parameterized, and benchmarked after warm-up** (not cold-start measurements)
 - [ ] Query Profile shows **low remote reads** (0% ideal), **low compile time** (< 50 ms), and **low queueing** (0 ms) for steady-state traffic
+- [ ] **Server-side P50/P95/P99 collected** per warehouse from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` and reported **alongside** the Locust client-side percentiles
+- [ ] **Client-vs-server delta analyzed** and the bottleneck (API/HTTP vs Snowflake) explicitly named in the report — never rely on Locust numbers alone
+- [ ] **HTML report generated from `templates/benchmark-report.html.template`** — no `{{PLACEHOLDER}}` tokens remain in the output file, and all 11 mandatory sections are present
 
 If any item fails, address it before drawing conclusions from benchmark numbers.
 

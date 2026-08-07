@@ -13,13 +13,16 @@ spec:
         INTERACTIVE_SCHEMA: "${INTERACTIVE_SCHEMA}"
         STANDARD_SCHEMA: "${STANDARD_SCHEMA}"
         POOL_SIZE: "${POOL_SIZE}"
+        POOL_WARMUP: "${API_POOL_WARMUP}"
+        POOL_ACQUIRE_TIMEOUT: "${API_POOL_ACQUIRE_TIMEOUT}"
+        WORKERS: "${API_WORKERS}"
       resources:
         requests:
-          memory: 1Gi
-          cpu: "500m"
+          memory: "${API_MEMORY_REQUEST}"
+          cpu: "${API_CPU_REQUEST}"
         limits:
-          memory: 2Gi
-          cpu: "1000m"
+          memory: "${API_MEMORY_LIMIT}"
+          cpu: "${API_CPU_LIMIT}"
       readinessProbe:
         port: ${API_PORT}
         path: /api/health

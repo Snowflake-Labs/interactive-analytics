@@ -37,7 +37,7 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
 
 ## Running Locally
 
-1. Copy `.env.example` to `.env` and configure:
+1. Copy `.env.template` to `.env` and configure:
 
    ```
    CONNECTION_NAME=<your_connection>

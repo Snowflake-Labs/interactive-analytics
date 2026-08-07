@@ -48,10 +48,16 @@ Route to the matching section below.
 
 3. Update `tpc-h-sample-dashboard/.env` with the values.
 
-4. Review `tpc-h-sample-dashboard/spcs/config.env` — key settings:
+4. Ensure `tpc-h-sample-dashboard/spcs/config.env` exists (create from template if missing):
+   ```bash
+   cp tpc-h-sample-dashboard/spcs/config.env.template tpc-h-sample-dashboard/spcs/config.env
+   ```
+   Then review — key settings:
    - `CONNECTION` — Snowflake connection for SPCS deployment
    - `ROLE` — role for creating SPCS objects (default: `ACCOUNTADMIN`)
    - `DEPLOY_WAREHOUSE` — warehouse for deploy SQL session
+   - `SOLUTION_NAME` — must match the value in `tpc-h-sample-dashboard/.env`
+   - `DEFAULT_SCALE` — must match the scale in `tpc-h-sample-dashboard/.env`
 
 5. Create the denormalized dashboard table:
    ```bash

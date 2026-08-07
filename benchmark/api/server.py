@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
-import concurrent.futures
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
 from queue import Empty, Queue
-from threading import Lock
+from threading import Lock, Semaphore
 from typing import Any
 
 import snowflake.connector
@@ -29,7 +29,10 @@ SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "IW_TPCH")
 DATABASE = os.environ.get("SNOWFLAKE_DATABASE", f"{SOLUTION_NAME}_BENCH_DB")
 CONNECTION_NAME = os.environ.get("CONNECTION_NAME")
 TARGETS = ["standard", "interactive"]
-POOL_SIZE = int(os.environ.get("POOL_SIZE", "10"))
+POOL_SIZE = int(os.environ.get("POOL_SIZE", "40"))
+POOL_WARMUP = int(os.environ.get("POOL_WARMUP", "0"))
+POOL_ACQUIRE_TIMEOUT = float(os.environ.get("POOL_ACQUIRE_TIMEOUT", "30"))
+WORKERS = int(os.environ.get("WORKERS", "1"))
 PORT = int(os.environ.get("PORT", "3000"))
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -81,47 +84,81 @@ def connection_kwargs_for(target: str) -> dict[str, Any]:
 
 
 class ConnectionPool:
-    """Queue-based pool: up to POOL_SIZE concurrent connections per target."""
+    """Bounded, blocking pool: at most POOL_SIZE live connections per target.
+
+    - A per-key Semaphore caps total live connections (idle + borrowed).
+    - Idle connections are kept in an unbounded Queue.
+    - acquire() blocks up to POOL_ACQUIRE_TIMEOUT waiting for a slot; if the
+      idle queue is empty when a slot is granted, a new connection is created.
+    - release() returns the connection to the idle queue and frees the slot.
+    """
 
     def __init__(self, size: int = POOL_SIZE) -> None:
         self._size = size
-        self._queues: dict[str, Queue[snowflake.connector.SnowflakeConnection]] = {}
+        self._idle: dict[str, Queue[snowflake.connector.SnowflakeConnection]] = {}
+        self._sem: dict[str, Semaphore] = {}
         self._init_lock = Lock()
 
-    def _queue_for(self, key: str) -> Queue[snowflake.connector.SnowflakeConnection]:
+    def _slots_for(
+        self, key: str
+    ) -> tuple[Queue[snowflake.connector.SnowflakeConnection], Semaphore]:
         with self._init_lock:
-            if key not in self._queues:
-                self._queues[key] = Queue(maxsize=self._size)
-            return self._queues[key]
+            if key not in self._idle:
+                self._idle[key] = Queue()
+                self._sem[key] = Semaphore(self._size)
+            return self._idle[key], self._sem[key]
 
     def _new_connection(self, target: str) -> snowflake.connector.SnowflakeConnection:
-        kwargs = connection_kwargs_for(target)
-        conn = snowflake.connector.connect(**kwargs)
-        return conn
+        return snowflake.connector.connect(**connection_kwargs_for(target))
 
     def acquire(self, target: str) -> snowflake.connector.SnowflakeConnection:
-        q = self._queue_for(target)
+        idle, sem = self._slots_for(target)
+        if not sem.acquire(timeout=POOL_ACQUIRE_TIMEOUT):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Connection pool exhausted for {target} "
+                    f"(size={self._size}, timeout={POOL_ACQUIRE_TIMEOUT}s)"
+                ),
+            )
         try:
-            conn = q.get_nowait()
-            if conn.is_closed():
-                conn = self._new_connection(target)
-            return conn
-        except Empty:
-            return self._new_connection(target)
+            while True:
+                try:
+                    conn = idle.get_nowait()
+                except Empty:
+                    return self._new_connection(target)
+                if conn.is_closed():
+                    continue
+                return conn
+        except Exception:
+            sem.release()
+            raise
 
     def release(self, target: str, conn: snowflake.connector.SnowflakeConnection) -> None:
-        q = self._queue_for(target)
+        idle, sem = self._slots_for(target)
         try:
-            q.put_nowait(conn)
-        except Exception:
-            conn.close()
+            if not conn.is_closed():
+                idle.put_nowait(conn)
+        finally:
+            sem.release()
+
+    def warmup(self, target: str, count: int | None = None) -> int:
+        """Pre-open up to `count` (default: POOL_SIZE) connections and park them."""
+        idle, _sem = self._slots_for(target)
+        want = self._size if count is None else min(count, self._size)
+        opened = 0
+        for _ in range(want):
+            try:
+                conn = self._new_connection(target)
+            except Exception as exc:
+                log.warning("Pool warmup failed for %s after %d/%d: %s", target, opened, want, exc)
+                break
+            idle.put_nowait(conn)
+            opened += 1
+        return opened
 
 
 pool = ConnectionPool()
-
-# Thread pool for asyncio.to_thread — default is min(32, cpu+4) which is too
-# small in a 1-CPU container.  Size it to match total pool capacity.
-_executor = concurrent.futures.ThreadPoolExecutor(max_workers=POOL_SIZE * len(TARGETS))
 
 
 def execute_query(sql: str, target: str) -> dict[str, Any]:
@@ -145,10 +182,8 @@ def execute_query(sql: str, target: str) -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    loop = asyncio.get_running_loop()
-    loop.set_default_executor(_executor)
     log.info("Benchmark API running at http://localhost:%s", PORT)
-    log.info("Pool size: %d per target, executor threads: %d", POOL_SIZE, POOL_SIZE * len(TARGETS))
+    log.info("Pool size: %d per target, workers: %d", POOL_SIZE, WORKERS)
     log.info("Database: %s", DATABASE)
     log.info(
         "Warehouses: interactive=%s, standard=%s",
@@ -162,7 +197,31 @@ async def lifespan(_app: FastAPI):
     )
     if CONNECTION_NAME:
         log.info("Snowflake connection: %s", CONNECTION_NAME)
+
+    if POOL_WARMUP > 0:
+        async def _warmup_all() -> None:
+            for target in TARGETS:
+                try:
+                    opened = await asyncio.to_thread(
+                        pool.warmup, target, POOL_WARMUP
+                    )
+                    log.info(
+                        "Prewarmed %d/%d connections for %s",
+                        opened,
+                        POOL_WARMUP,
+                        target,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Warmup failed for %s: %s", target, exc)
+
+        # Run warmup in the background so the app can start serving requests
+        # immediately (important for SPCS readiness probes on cold start).
+        warmup_task = asyncio.create_task(_warmup_all())
+    else:
+        warmup_task = None
     yield
+    if warmup_task is not None and not warmup_task.done():
+        warmup_task.cancel()
 
 
 app = FastAPI(title="Interactive Warehouse Benchmark API", lifespan=lifespan)
@@ -195,7 +254,28 @@ async def run_standard(body: RunRequest):
 
 
 def main() -> None:
-    uvicorn.run("server:app", host="0.0.0.0", port=PORT, reload=False)
+    global PORT, WORKERS
+
+    parser = argparse.ArgumentParser(description="Benchmark API server")
+    parser.add_argument("--port", type=int, default=PORT, help="HTTP port")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=WORKERS,
+        help="Number of Uvicorn worker processes (default: WORKERS env or 1)",
+    )
+    args, _unknown = parser.parse_known_args()
+
+    PORT = args.port
+    WORKERS = max(1, args.workers)
+
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=PORT,
+        reload=False,
+        workers=WORKERS if WORKERS > 1 else None,
+    )
 
 
 if __name__ == "__main__":
