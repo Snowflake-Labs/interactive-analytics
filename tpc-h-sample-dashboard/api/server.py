@@ -396,10 +396,30 @@ async def lifespan(_app: FastAPI):
         log.error("Snowflake connection failed: %s", exc)
 
     if POOL_WARMUP > 0:
-        for target in TARGETS:
-            opened = await asyncio.to_thread(pool.warmup, target, scale, POOL_WARMUP)
-            log.info("Prewarmed %d/%d connections for %s:%s", opened, POOL_WARMUP, target, scale)
+        async def _warmup_all() -> None:
+            for target in TARGETS:
+                try:
+                    opened = await asyncio.to_thread(
+                        pool.warmup, target, scale, POOL_WARMUP
+                    )
+                    log.info(
+                        "Prewarmed %d/%d connections for %s:%s",
+                        opened,
+                        POOL_WARMUP,
+                        target,
+                        scale,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Warmup failed for %s:%s: %s", target, scale, exc)
+
+        # Run warmup in the background so the app can start serving requests
+        # immediately (important for SPCS readiness probes on cold start).
+        warmup_task = asyncio.create_task(_warmup_all())
+    else:
+        warmup_task = None
     yield
+    if warmup_task is not None and not warmup_task.done():
+        warmup_task.cancel()
 
 
 app = FastAPI(title="TPC-H Benchmark Dashboard", lifespan=lifespan)

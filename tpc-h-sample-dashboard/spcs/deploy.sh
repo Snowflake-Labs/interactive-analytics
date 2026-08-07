@@ -36,7 +36,55 @@ deploy_sql() {
 
   snow_sql_run "create_lineitem_dashboard" <<< "$rendered"
 
+  deploy_demo_warehouses "$scale"
+
   echo "==> Done."
+}
+
+# Force the interactive and standard demo warehouses to a fair-comparison
+# configuration: X-Small, single cluster. Uses scripting blocks so a SUSPEND
+# on an already-suspended warehouse is a no-op. AUTO_RESUME picks them back up
+# when the dashboard queries hit them.
+deploy_demo_warehouses() {
+  local scale="$1"
+  local int_wh="${SOLUTION_NAME}_BENCH_WH_INT_${scale}"
+  local std_wh="${SOLUTION_NAME}_BENCH_WH_STD_${scale}"
+
+  echo "==> Sizing demo warehouses to XSMALL, single cluster ($int_wh, $std_wh)"
+
+  snow_sql_run "resize demo warehouses" <<EOF
+USE ROLE $ROLE;
+
+EXECUTE IMMEDIATE \$\$
+BEGIN
+  ALTER WAREHOUSE $int_wh SUSPEND;
+EXCEPTION
+  WHEN OTHER THEN NULL;
+END;
+\$\$;
+
+ALTER WAREHOUSE $int_wh SET
+  WAREHOUSE_SIZE = 'XSMALL',
+  MIN_CLUSTER_COUNT = 1,
+  MAX_CLUSTER_COUNT = 1;
+
+ALTER WAREHOUSE $int_wh UNSET MAX_CONCURRENCY_LEVEL;
+
+EXECUTE IMMEDIATE \$\$
+BEGIN
+  ALTER WAREHOUSE $std_wh SUSPEND;
+EXCEPTION
+  WHEN OTHER THEN NULL;
+END;
+\$\$;
+
+ALTER WAREHOUSE $std_wh SET
+  WAREHOUSE_SIZE = 'XSMALL',
+  MIN_CLUSTER_COUNT = 1,
+  MAX_CLUSTER_COUNT = 1;
+
+ALTER WAREHOUSE $std_wh UNSET MAX_CONCURRENCY_LEVEL;
+EOF
 }
 
 # ---------------------------------------------------------------------------
