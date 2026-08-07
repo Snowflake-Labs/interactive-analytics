@@ -80,11 +80,13 @@ EOF
     local svc="$1"
     local spec_file="$2"
     local pool="$3"
+    local min_inst="${4:-1}"
+    local max_inst="${5:-1}"
 
     local rendered
     rendered="$(render_spec "$spec_file")"
 
-    echo "==> Rendered spec for $svc (pool=$pool):"
+    echo "==> Rendered spec for $svc (pool=$pool, min=$min_inst, max=$max_inst):"
     echo "----"
     echo "$rendered" | sed 's/^/    /'
     echo "----"
@@ -99,24 +101,29 @@ CREATE SERVICE IF NOT EXISTS $svc
   FROM SPECIFICATION \$\$
 $rendered
 \$\$
-  MIN_INSTANCES = 1
-  MAX_INSTANCES = 1
+  MIN_INSTANCES = $min_inst
+  MAX_INSTANCES = $max_inst
   COMMENT = 'Managed by dashboard/spcs/';
 
 ALTER SERVICE $svc FROM SPECIFICATION \$\$
 $rendered
 \$\$;
+
+ALTER SERVICE $svc SET
+  MIN_INSTANCES = $min_inst
+  MAX_INSTANCES = $max_inst;
 EOF
   }
 
   echo "==> [3/6] Deploying dashboard API service ($DASHBOARD_SERVICE) on pool $DASHBOARD_COMPUTE_POOL"
-  deploy_service "$DASHBOARD_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml" "$DASHBOARD_COMPUTE_POOL"
+  deploy_service "$DASHBOARD_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml" "$DASHBOARD_COMPUTE_POOL" \
+    "$DASHBOARD_MIN_INSTANCES" "$DASHBOARD_MAX_INSTANCES"
 
   echo "==> [4/6] Deploying isolated API server for locust ($LOCUST_API_SERVICE) on pool $LOCUST_COMPUTE_POOL"
-  deploy_service "$LOCUST_API_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml" "$LOCUST_COMPUTE_POOL"
+  deploy_service "$LOCUST_API_SERVICE" "$SCRIPT_DIR/specs/dashboard.yaml" "$LOCUST_COMPUTE_POOL" 1 1
 
   echo "==> [5/6] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
-  deploy_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL"
+  deploy_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL" 1 1
 
   echo "==> [6/6] Waiting for services to become READY (this can take a few minutes)"
   "$SCRIPT_DIR/status.sh" --wait
