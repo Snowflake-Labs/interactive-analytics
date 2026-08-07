@@ -655,7 +655,7 @@ templates/benchmark-report.html.template
 
 **Output path and filename:**
 
-Write the filled-in report to `<REPO_ROOT>/benchmark/reports/YYYY-MM-DD-<SOLUTION_NAME>-benchmark-report.html`, where `YYYY-MM-DD` is the current date and `<SOLUTION_NAME>` is the benchmark name from Step 1 (e.g. `2026-08-06-IWBENCH-benchmark-report.html`). Create the `reports` directory if it does not already exist.
+Write the filled-in report to `<REPO_ROOT>/benchmark/reports/YYYY-MM-DD-HH-mm-<SOLUTION_NAME>-benchmark-report.html`, where `YYYY-MM-DD` is the current date, `HH-mm` is the time and `<SOLUTION_NAME>` is the benchmark name from Step 1 (e.g. `2026-08-06-15-36-IWBENCH-benchmark-report.html`). Create the `reports` directory if it does not already exist.
 
 **Procedure:**
 
