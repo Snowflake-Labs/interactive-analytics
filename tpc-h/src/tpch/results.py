@@ -42,6 +42,7 @@ def enrich_server_elapsed(conn, results: list[QueryResult], *, use_avg: bool = F
             r["server_elapsed_s"] = sum(servers) / len(servers)
         else:
             r["server_elapsed_s"] = min(servers)
+        r["attempt_server_times"] = servers
 
 
 def _stats(times: list[float]) -> dict:
@@ -61,11 +62,21 @@ def summarize(results: list[QueryResult]) -> dict:
     ok = [r for r in results if r["status"] == "OK"]
     failed = [r for r in results if r["status"] != "OK"]
     validation_failed = [r for r in ok if r.get("validation") == "FAIL"]
-    client_times = [r["client_elapsed_s"] for r in ok]
-    server_times = [
-        r["server_elapsed_s"] if r.get("server_elapsed_s") is not None else r["client_elapsed_s"]
-        for r in ok
-    ]
+
+    unique_queries = set(r["query"] for r in results)
+    single_query = len(unique_queries) == 1
+
+    if single_query:
+        client_times = [t for r in ok for t in r.get("attempt_client_times", [r["client_elapsed_s"]])]
+        server_times = [t for r in ok for t in r.get("attempt_server_times", [])]
+        if not server_times:
+            server_times = client_times
+    else:
+        client_times = [r["client_elapsed_s"] for r in ok]
+        server_times = [
+            r["server_elapsed_s"] if r.get("server_elapsed_s") is not None else r["client_elapsed_s"]
+            for r in ok
+        ]
     out = {
         "total_queries": len(results),
         "successful": len(ok),
