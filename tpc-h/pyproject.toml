@@ -1,6 +1,6 @@
 [project]
 name = "iw-tpch"
-version = "0.2.3"
+version = "0.2.4"
 description = "TPC-H benchmark runner for Snowflake interactive and standard warehouses"
 requires-python = ">=3.13"
 dependencies = [
