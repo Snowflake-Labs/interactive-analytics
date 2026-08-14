@@ -17,5 +17,8 @@ snowflake.log
 .env
 config.env
 
+# Plans
+plan-*.md
+
 # macOS
 .DS_Store
