@@ -1,4 +1,5 @@
-# Build context is repo root. Only include what we need.
+# Build context is the skill root (.cortex/skills/interactive-benchmark/).
+# Only include what we need.
 **/.venv
 **/__pycache__
 **/*.pyc
@@ -6,12 +7,9 @@
 **/.env
 **/snowflake.log
 **/node_modules
-tpc-h/
-.git/
-.cortex/
-.snowflake/
-benchmark/locust/
-benchmark/spcs/locust/
+templates/
+benchmark/api/
+benchmark/spcs/api/
 benchmark/spcs/specs/
 benchmark/spcs/sql/
 benchmark/spcs/*.sh

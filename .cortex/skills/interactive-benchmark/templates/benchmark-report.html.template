@@ -18,17 +18,16 @@
 
   Executive summary tiles
     {{P95_INT_SERVER_MS}}       Interactive server-side P95 (ms).
-    {{P95_INT_SERVER_STATUS}}   "under goal" | "above goal" (tile pill).
+    {{P95_INT_SERVER_STATUS}}   "under goal" | "above goal" | "limit-bound".
     {{P95_INT_SERVER_CLASS}}    Pill class: "ok" | "warn" | "bad".
-    {{P95_STD_SERVER}}          Standard server-side P95, formatted (e.g. "18.7 s").
-    {{P95_SPEEDUP}}             Server-side P95 speedup vs standard (e.g. "15.1×").
     {{P50_INT_SERVER_MS}}       Interactive server-side P50 (ms).
     {{P50_INT_SERVER_CLASS}}    Pill class for P50 server tile.
     {{P50_INT_SERVER_STATUS}}   Pill copy for P50 server tile.
     {{P50_INT_CLIENT_MS}}       Interactive client-side P50 (ms).
     {{P50_INT_CLIENT_CLASS}}    Pill class for P50 client tile.
     {{P50_INT_CLIENT_STATUS}}   Pill copy for P50 client tile.
-    {{TOTAL_REQUESTS}}          Total Locust request count (int + std).
+    {{THROUGHPUT_RPS}}          Requests per second (from Locust).
+    {{TOTAL_REQUESTS}}          Total Locust request count.
     {{TOTAL_FAILURES}}          Failure count.
     {{FAILURE_CLASS}}           Pill class for failure tile.
     {{FAILURE_STATUS}}          Pill copy for failure tile (e.g. "100% success").
@@ -36,10 +35,7 @@
 
   Benchmark setup
     {{CONNECTION}}              Snowflake connection name.
-    {{DB_STD}}                  Fully-qualified standard schema (DB.SCHEMA).
     {{DB_INT}}                  Fully-qualified interactive schema (DB.SCHEMA).
-    {{STD_WH}}                  Standard warehouse name.
-    {{STD_WH_DESC}}             "X-Small · Gen2" or equivalent size/gen text.
     {{INT_WH}}                  Interactive warehouse name.
     {{INT_WH_DESC}}             Interactive WH descriptor incl. size, MIN/MAX
                                 clusters, scaling policy, and fallback WH.
@@ -61,34 +57,32 @@
     {{WORKING_SET_NOTE}}        Free-text note on cache fit and pruning behavior.
 
   Client-side results
-    {{CLIENT_INTERACTIVE_ROW}}  <tr> for /api/run/interactive (Req#, req/s, Min,
+    {{CLIENT_ROW}}              <tr> for /api/run/interactive (Req#, req/s, Min,
                                 P50, P90, P95, P99, Max — all ms).
-    {{CLIENT_STANDARD_ROW}}     <tr> for /api/run/standard.
 
   Server-side results
-    {{SERVER_INTERACTIVE_ROW}}  <tr> for interactive WH (N, P50, P90, P95, P99,
+    {{SERVER_ROW}}              <tr> for interactive WH (N, P50, P90, P95, P99,
                                 avg compile, avg exec, avg queue, avg MB scan).
-    {{SERVER_STANDARD_ROW}}     <tr> for standard WH.
-    {{SERVER_N_NOTE}}           Note explaining N discrepancy (fallback story),
-                                or "" if standard N == locust standard hits.
 
   Bottleneck diagnosis
     {{DELTA_TABLE_ROWS}}        <tr>… for P50/P95/P99 with Locust, Snowflake,
-                                and delta values for both warehouses.
-    {{STANDARD_DELTA_ANALYSIS}} 1-paragraph interpretation of standard delta.
-    {{INTERACTIVE_DELTA_ANALYSIS}} 1-paragraph interpretation of interactive
-                                delta pattern (constant/growing).
+                                and delta values.
+    {{DELTA_ANALYSIS}}          1-paragraph interpretation of delta pattern
+                                (constant/growing).
     {{BOTTLENECK_VERDICT_CLASS}} "good" | "note" | "bad-box".
     {{BOTTLENECK_VERDICT}}      Explicit conclusion naming which layer to
-                                optimize (Snowflake vs API vs fallback).
+                                optimize (Snowflake vs API).
 
   Percentile bars
-    {{BAR_CLIENT_ROWS}}         6 <div class="bar-row">… entries for client-side
-                                P50/P95/P99 int and std.
-    {{BAR_SERVER_ROWS}}         6 rows for server-side percentiles.
+    {{BAR_CLIENT_ROWS}}         3 <div class="bar-row">… entries for client-side
+                                P50/P95/P99.
+    {{BAR_SERVER_ROWS}}         3 rows for server-side percentiles.
 
   Query profile health
     {{PROFILE_TOP_ROWS}}        <tr>… for top ~10 slowest interactive queries.
+                                IMPORTANT: QUERY_ID values must be FULL and
+                                UNTRUNCATED (e.g. 01b8f3a2-0504-b572-0000-0a6d001f436a).
+                                Never shorten or abbreviate — users copy-paste them.
     {{PROFILE_VERDICT_LIST}}    <li>… items summarizing compile/queue/scan tail.
 
   Escalation path (populated from Step 13c)
@@ -120,9 +114,7 @@
   =============================================================================
   The bar-row widths are relative percentages within their section. Pick a
   common scale-max (the slowest value in the section) and compute each bar
-  width as round(value / scale_max * 100). Keep the same scale-max for both
-  interactive and standard bars in the same section so the visual ratio is
-  faithful.
+  width as round(value / scale_max * 100).
 
   =============================================================================
 -->
@@ -162,7 +154,6 @@
   .metric .lbl { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
   .metric .val { font-size:28px; font-weight:600; color:var(--snow-navy); font-variant-numeric:tabular-nums; }
   .bar { height:22px; background:var(--snow-blue); border-radius:4px; }
-  .bar.std { background:#c74141; }
   .bar-row { display:grid; grid-template-columns:70px 1fr 110px; align-items:center; gap:12px; margin:6px 0; font-size:13px; }
   .bar-row .lbl { color:var(--muted); font-family:"SF Mono",Menlo,monospace; }
   .bar-row .val { text-align:right; font-family:"SF Mono",Menlo,monospace; font-weight:600; }
@@ -185,24 +176,24 @@
   <h2>Executive Summary</h2>
   <div class="grid3">
     <div class="metric">
-      <div class="lbl">P95 — Snowflake (interactive)</div>
+      <div class="lbl">P95 — Snowflake (server-side)</div>
       <div class="val">{{P95_INT_SERVER_MS}} ms <span class="pill {{P95_INT_SERVER_CLASS}}">{{P95_INT_SERVER_STATUS}}</span></div>
     </div>
     <div class="metric">
-      <div class="lbl">P95 — Snowflake (standard)</div>
-      <div class="val">{{P95_STD_SERVER}} <span class="pill bad">saturated</span></div>
-    </div>
-    <div class="metric">
-      <div class="lbl">P95 speedup — server-side</div>
-      <div class="val">{{P95_SPEEDUP}}</div>
-    </div>
-    <div class="metric">
-      <div class="lbl">P50 — Snowflake (interactive)</div>
+      <div class="lbl">P50 — Snowflake (server-side)</div>
       <div class="val">{{P50_INT_SERVER_MS}} ms <span class="pill {{P50_INT_SERVER_CLASS}}">{{P50_INT_SERVER_STATUS}}</span></div>
     </div>
     <div class="metric">
-      <div class="lbl">P50 — Client (interactive)</div>
+      <div class="lbl">P50 — Client (end-to-end)</div>
       <div class="val">{{P50_INT_CLIENT_MS}} ms <span class="pill {{P50_INT_CLIENT_CLASS}}">{{P50_INT_CLIENT_STATUS}}</span></div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Throughput</div>
+      <div class="val">{{THROUGHPUT_RPS}} req/s</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Total requests</div>
+      <div class="val">{{TOTAL_REQUESTS}}</div>
     </div>
     <div class="metric">
       <div class="lbl">Failures</div>
@@ -218,16 +209,14 @@
   <h2>Benchmark Setup</h2>
   <dl class="kv">
     <dt>Connection</dt><dd>{{CONNECTION}}</dd>
-    <dt>Database / schema (std)</dt><dd>{{DB_STD}}</dd>
-    <dt>Database / schema (int)</dt><dd>{{DB_INT}}</dd>
-    <dt>Standard warehouse</dt><dd>{{STD_WH}} · {{STD_WH_DESC}}</dd>
+    <dt>Database / schema (interactive)</dt><dd>{{DB_INT}}</dd>
     <dt>Interactive warehouse</dt><dd>{{INT_WH}} · {{INT_WH_DESC}}</dd>
     <dt>Users</dt><dd>{{USER_COUNT}} concurrent (locust <code>--users {{USER_COUNT}} --spawn-rate {{SPAWN_RATE}}</code>)</dd>
     <dt>Duration</dt><dd>{{RUN_TIME}} ({{RUN_TIME_SEC}} s)</dd>
     <dt>Load driver</dt><dd>SPCS BENCHMARK_LOCUST (Locust {{LOCUST_VERSION}}, auto-start / auto-quit)</dd>
-    <dt>API layer</dt><dd>SPCS BENCHMARK_API (FastAPI + Snowflake connector) · {{API_WORKERS}} uvicorn workers · POOL_SIZE={{API_POOL_SIZE}} per target · {{API_INSTANCE_FAMILY}} · {{API_INSTANCE_COUNT}} instances</dd>
+    <dt>API layer</dt><dd>SPCS BENCHMARK_API (FastAPI + Snowflake connector) · {{API_WORKERS}} uvicorn workers · POOL_SIZE={{API_POOL_SIZE}} · {{API_INSTANCE_FAMILY}} · {{API_INSTANCE_COUNT}} instances</dd>
     <dt>Result caching</dt><dd><code>USE_CACHED_RESULT=FALSE</code> (measures Snowflake, not the result cache)</dd>
-    <dt>Query tag</dt><dd><code>QUERY_TAG='IW_BENCHMARK'</code> (used for server-side isolation)</dd>
+    <dt>Query tag</dt><dd><code>QUERY_TAG='{{SOLUTION_NAME}}'</code> (used for server-side isolation)</dd>
   </dl>
 </section>
 
@@ -260,8 +249,7 @@
   <table>
     <thead><tr><th>Endpoint</th><th class="num">Requests</th><th class="num">req/s</th><th class="num">Min</th><th class="num">P50</th><th class="num">P90</th><th class="num">P95</th><th class="num">P99</th><th class="num">Max</th></tr></thead>
     <tbody>
-      {{CLIENT_INTERACTIVE_ROW}}
-      {{CLIENT_STANDARD_ROW}}
+      {{CLIENT_ROW}}
     </tbody>
   </table>
   <p style="margin-top:8px;color:var(--muted);font-size:13px">All values in milliseconds.</p>
@@ -269,33 +257,28 @@
 
 <section>
   <h2>Performance Results — Server-side (Snowflake)</h2>
-  <p>What Snowflake alone spent — compile + execute + queue — measured from <code>INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE</code> over the run window, filtered to <code>QUERY_TAG='IW_BENCHMARK'</code>.</p>
+  <p>What Snowflake alone spent — compile + execute + queue — measured from <code>INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE</code> over the run window, filtered to <code>QUERY_TAG='{{SOLUTION_NAME}}'</code>.</p>
   <table>
     <thead><tr><th>Warehouse</th><th class="num">N</th><th class="num">P50</th><th class="num">P90</th><th class="num">P95</th><th class="num">P99</th><th class="num">Avg compile</th><th class="num">Avg exec</th><th class="num">Avg queue</th><th class="num">Avg MB scan</th></tr></thead>
     <tbody>
-      {{SERVER_INTERACTIVE_ROW}}
-      {{SERVER_STANDARD_ROW}}
+      {{SERVER_ROW}}
     </tbody>
   </table>
   <p style="margin-top:8px;color:var(--muted);font-size:13px">All values in milliseconds unless labelled. N is the count of SUCCESS queries observed.</p>
-  {{SERVER_N_NOTE}}
 </section>
 
 <section>
   <h2>Client vs Server — Bottleneck Diagnosis</h2>
   <p>The gap between the client-observed latency (Locust) and the server-side latency (Snowflake) tells us where to optimize.</p>
   <table>
-    <thead><tr><th>Percentile</th><th class="num">Locust interactive</th><th class="num">Snowflake interactive</th><th class="num">Δ (API/HTTP/fallback)</th><th class="num">Locust standard</th><th class="num">Snowflake standard</th><th class="num">Δ</th></tr></thead>
+    <thead><tr><th>Percentile</th><th class="num">Locust (client)</th><th class="num">Snowflake (server)</th><th class="num">Delta (API/HTTP)</th></tr></thead>
     <tbody>
       {{DELTA_TABLE_ROWS}}
     </tbody>
   </table>
 
-  <h3>Standard warehouse</h3>
-  <p>{{STANDARD_DELTA_ANALYSIS}}</p>
-
-  <h3>Interactive warehouse</h3>
-  <p>{{INTERACTIVE_DELTA_ANALYSIS}}</p>
+  <h3>Analysis</h3>
+  <p>{{DELTA_ANALYSIS}}</p>
 
   <div class="{{BOTTLENECK_VERDICT_CLASS}}">
     {{BOTTLENECK_VERDICT}}

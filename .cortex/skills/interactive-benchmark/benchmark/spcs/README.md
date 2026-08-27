@@ -47,8 +47,8 @@ are no separate SQL files to keep in sync.
 - `snow` CLI configured with the connection listed in `config.env` (`PM` by default).
 - The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
   REPOSITORY`, and `CREATE SERVICE`. `ACCOUNTADMIN` works.
-- The API's runtime role (`API_ROLE`) needs `USAGE` on the benchmark
-  warehouses and `SELECT` on the benchmark schemas.
+- The API's runtime role (`API_ROLE`) needs `USAGE` on the interactive
+  warehouse and `SELECT` on the interactive schema.
 
 ## Deploying
 

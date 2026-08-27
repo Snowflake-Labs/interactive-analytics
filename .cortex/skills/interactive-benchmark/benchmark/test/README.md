@@ -1,10 +1,10 @@
 # Benchmark Queries
 
 Place `.sql` files in this directory. Each file should contain a single SQL query
-that will be benchmarked against both interactive and standard warehouses.
+that will be benchmarked against the interactive warehouse under concurrent load.
 
 The benchmark tool reads all `*.sql` files from this folder and executes them
-via the API server's `/api/run/interactive` and `/api/run/standard` endpoints.
+via the API server's `/api/run/interactive` endpoint.
 
 ## Conventions
 

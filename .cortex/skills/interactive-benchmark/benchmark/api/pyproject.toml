@@ -1,7 +1,7 @@
 [project]
 name = "benchmark-api"
 version = "0.1.0"
-description = "Benchmark API server for interactive vs standard warehouse comparison"
+description = "Benchmark API server for interactive warehouse load testing"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

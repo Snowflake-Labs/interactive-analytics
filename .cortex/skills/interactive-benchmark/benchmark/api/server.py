@@ -1,4 +1,4 @@
-"""Generic benchmark API server — runs any query against interactive or standard warehouses."""
+"""Benchmark API server — runs queries against an interactive warehouse."""
 
 from __future__ import annotations
 
@@ -28,7 +28,9 @@ load_dotenv(ROOT_DIR / ".env")
 SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "IW_TPCH")
 DATABASE = os.environ.get("SNOWFLAKE_DATABASE", f"{SOLUTION_NAME}_BENCH_DB")
 CONNECTION_NAME = os.environ.get("CONNECTION_NAME")
-TARGETS = ["standard", "interactive"]
+INTERACTIVE_WAREHOUSE = os.environ.get("INTERACTIVE_WAREHOUSE", f"{SOLUTION_NAME}_BENCH_WH_INT")
+INTERACTIVE_SCHEMA = os.environ.get("INTERACTIVE_SCHEMA", f"{SOLUTION_NAME}_IT")
+QUERY_TAG = os.environ.get("QUERY_TAG", SOLUTION_NAME)
 POOL_SIZE = int(os.environ.get("POOL_SIZE", "40"))
 POOL_WARMUP = int(os.environ.get("POOL_WARMUP", "0"))
 POOL_ACQUIRE_TIMEOUT = float(os.environ.get("POOL_ACQUIRE_TIMEOUT", "30"))
@@ -37,25 +39,6 @@ PORT = int(os.environ.get("PORT", "3000"))
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("benchmark")
-
-
-def schema_for_target(target: str) -> str:
-    if target == "interactive":
-        return os.environ.get("INTERACTIVE_SCHEMA", f"{SOLUTION_NAME}_IT")
-    return os.environ.get("STANDARD_SCHEMA", SOLUTION_NAME)
-
-
-def warehouse_for_target(target: str) -> str:
-    if target == "interactive":
-        return os.environ.get("INTERACTIVE_WAREHOUSE", f"{SOLUTION_NAME}_BENCH_WH_INT")
-    return os.environ.get("STANDARD_WAREHOUSE", f"{SOLUTION_NAME}_BENCH_WH_STD")
-
-
-def resolve_target(raw: str | None) -> str:
-    target = "interactive" if raw in (None, "") else str(raw)
-    if target not in TARGETS:
-        raise ValueError(f'Invalid target {raw!r}. Use "standard" or "interactive".')
-    return target
 
 
 def base_connection_kwargs() -> dict[str, Any]:
@@ -70,23 +53,23 @@ def base_connection_kwargs() -> dict[str, Any]:
     }
 
 
-def connection_kwargs_for(target: str) -> dict[str, Any]:
+def connection_kwargs() -> dict[str, Any]:
     return {
         **base_connection_kwargs(),
-        "warehouse": warehouse_for_target(target),
+        "warehouse": INTERACTIVE_WAREHOUSE,
         "database": DATABASE,
-        "schema": schema_for_target(target),
+        "schema": INTERACTIVE_SCHEMA,
         "session_parameters": {
-            "QUERY_TAG": "IW_BENCHMARK",
+            "QUERY_TAG": QUERY_TAG,
             "USE_CACHED_RESULT": False,
         },
     }
 
 
 class ConnectionPool:
-    """Bounded, blocking pool: at most POOL_SIZE live connections per target.
+    """Bounded, blocking pool: at most POOL_SIZE live connections.
 
-    - A per-key Semaphore caps total live connections (idle + borrowed).
+    - A Semaphore caps total live connections (idle + borrowed).
     - Idle connections are kept in an unbounded Queue.
     - acquire() blocks up to POOL_ACQUIRE_TIMEOUT waiting for a slot; if the
       idle queue is empty when a slot is granted, a new connection is created.
@@ -95,65 +78,52 @@ class ConnectionPool:
 
     def __init__(self, size: int = POOL_SIZE) -> None:
         self._size = size
-        self._idle: dict[str, Queue[snowflake.connector.SnowflakeConnection]] = {}
-        self._sem: dict[str, Semaphore] = {}
-        self._init_lock = Lock()
+        self._idle: Queue[snowflake.connector.SnowflakeConnection] = Queue()
+        self._sem = Semaphore(size)
 
-    def _slots_for(
-        self, key: str
-    ) -> tuple[Queue[snowflake.connector.SnowflakeConnection], Semaphore]:
-        with self._init_lock:
-            if key not in self._idle:
-                self._idle[key] = Queue()
-                self._sem[key] = Semaphore(self._size)
-            return self._idle[key], self._sem[key]
+    def _new_connection(self) -> snowflake.connector.SnowflakeConnection:
+        return snowflake.connector.connect(**connection_kwargs())
 
-    def _new_connection(self, target: str) -> snowflake.connector.SnowflakeConnection:
-        return snowflake.connector.connect(**connection_kwargs_for(target))
-
-    def acquire(self, target: str) -> snowflake.connector.SnowflakeConnection:
-        idle, sem = self._slots_for(target)
-        if not sem.acquire(timeout=POOL_ACQUIRE_TIMEOUT):
+    def acquire(self) -> snowflake.connector.SnowflakeConnection:
+        if not self._sem.acquire(timeout=POOL_ACQUIRE_TIMEOUT):
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    f"Connection pool exhausted for {target} "
+                    f"Connection pool exhausted "
                     f"(size={self._size}, timeout={POOL_ACQUIRE_TIMEOUT}s)"
                 ),
             )
         try:
             while True:
                 try:
-                    conn = idle.get_nowait()
+                    conn = self._idle.get_nowait()
                 except Empty:
-                    return self._new_connection(target)
+                    return self._new_connection()
                 if conn.is_closed():
                     continue
                 return conn
         except Exception:
-            sem.release()
+            self._sem.release()
             raise
 
-    def release(self, target: str, conn: snowflake.connector.SnowflakeConnection) -> None:
-        idle, sem = self._slots_for(target)
+    def release(self, conn: snowflake.connector.SnowflakeConnection) -> None:
         try:
             if not conn.is_closed():
-                idle.put_nowait(conn)
+                self._idle.put_nowait(conn)
         finally:
-            sem.release()
+            self._sem.release()
 
-    def warmup(self, target: str, count: int | None = None) -> int:
+    def warmup(self, count: int | None = None) -> int:
         """Pre-open up to `count` (default: POOL_SIZE) connections and park them."""
-        idle, _sem = self._slots_for(target)
         want = self._size if count is None else min(count, self._size)
         opened = 0
         for _ in range(want):
             try:
-                conn = self._new_connection(target)
+                conn = self._new_connection()
             except Exception as exc:
-                log.warning("Pool warmup failed for %s after %d/%d: %s", target, opened, want, exc)
+                log.warning("Pool warmup failed after %d/%d: %s", opened, want, exc)
                 break
-            idle.put_nowait(conn)
+            self._idle.put_nowait(conn)
             opened += 1
         return opened
 
@@ -161,8 +131,8 @@ class ConnectionPool:
 pool = ConnectionPool()
 
 
-def execute_query(sql: str, target: str) -> dict[str, Any]:
-    conn = pool.acquire(target)
+def execute_query(sql: str) -> dict[str, Any]:
+    conn = pool.acquire()
     try:
         with conn.cursor(DictCursor) as cur:
             t0 = time.perf_counter()
@@ -172,51 +142,32 @@ def execute_query(sql: str, target: str) -> dict[str, Any]:
             return {
                 "elapsed_ms": elapsed_ms,
                 "row_count": len(rows),
-                "warehouse": warehouse_for_target(target),
-                "target": target,
+                "warehouse": INTERACTIVE_WAREHOUSE,
                 "query_id": cur.sfqid,
             }
     finally:
-        pool.release(target, conn)
+        pool.release(conn)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     log.info("Benchmark API running at http://localhost:%s", PORT)
-    log.info("Pool size: %d per target, workers: %d", POOL_SIZE, WORKERS)
+    log.info("Pool size: %d, workers: %d", POOL_SIZE, WORKERS)
     log.info("Database: %s", DATABASE)
-    log.info(
-        "Warehouses: interactive=%s, standard=%s",
-        warehouse_for_target("interactive"),
-        warehouse_for_target("standard"),
-    )
-    log.info(
-        "Schemas: interactive=%s, standard=%s",
-        schema_for_target("interactive"),
-        schema_for_target("standard"),
-    )
+    log.info("Warehouse: %s", INTERACTIVE_WAREHOUSE)
+    log.info("Schema: %s", INTERACTIVE_SCHEMA)
     if CONNECTION_NAME:
         log.info("Snowflake connection: %s", CONNECTION_NAME)
 
     if POOL_WARMUP > 0:
-        async def _warmup_all() -> None:
-            for target in TARGETS:
-                try:
-                    opened = await asyncio.to_thread(
-                        pool.warmup, target, POOL_WARMUP
-                    )
-                    log.info(
-                        "Prewarmed %d/%d connections for %s",
-                        opened,
-                        POOL_WARMUP,
-                        target,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    log.warning("Warmup failed for %s: %s", target, exc)
+        async def _warmup() -> None:
+            try:
+                opened = await asyncio.to_thread(pool.warmup, POOL_WARMUP)
+                log.info("Prewarmed %d/%d connections", opened, POOL_WARMUP)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Warmup failed: %s", exc)
 
-        # Run warmup in the background so the app can start serving requests
-        # immediately (important for SPCS readiness probes on cold start).
-        warmup_task = asyncio.create_task(_warmup_all())
+        warmup_task = asyncio.create_task(_warmup())
     else:
         warmup_task = None
     yield
@@ -243,14 +194,10 @@ async def health():
     return {"status": "ok"}
 
 
+@app.post("/api/run")
 @app.post("/api/run/interactive")
-async def run_interactive(body: RunRequest):
-    return await asyncio.to_thread(execute_query, body.query, "interactive")
-
-
-@app.post("/api/run/standard")
-async def run_standard(body: RunRequest):
-    return await asyncio.to_thread(execute_query, body.query, "standard")
+async def run_query(body: RunRequest):
+    return await asyncio.to_thread(execute_query, body.query)
 
 
 def main() -> None:

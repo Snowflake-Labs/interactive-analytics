@@ -11,9 +11,9 @@ workloads.
 
 TPC-H benchmark harness for Snowflake **Interactive Warehouses**. Copies TPC-H tables from `SNOWFLAKE_SAMPLE_DATA` into a local benchmark database, then runs the 22 standard queries (original and modern rewrites) against standard or interactive tables at scale factors 1, 10, 100, and 1000. See [`tpc-h/README.md`](tpc-h/README.md) for setup and usage.
 
-### [`benchmark/`](benchmark/)
+### [`benchmark/`](.cortex/skills/interactive-benchmark/benchmark/)
 
-Generic Interactive Warehouse benchmark tool. A FastAPI server exposes two endpoints (`/api/run/interactive` and `/api/run/standard`) that execute any user-provided SQL query against the respective warehouse type. Includes a Locust-based load test for concurrency benchmarking and full Snowpark Container Services deployment. See [`benchmark/README.md`](benchmark/README.md) for setup and usage.
+Generic Interactive Warehouse benchmark tool. A FastAPI server exposes an endpoint (`/api/run/interactive`) that executes any user-provided SQL query against an interactive warehouse under concurrent load. Includes a Locust-based load test for concurrency benchmarking and full Snowpark Container Services deployment. See [`benchmark/README.md`](.cortex/skills/interactive-benchmark/benchmark/README.md) for setup and usage.
 
 ### [`tpc-h-sample-dashboard/`](tpc-h-sample-dashboard/)
 
@@ -25,11 +25,11 @@ This repository includes three **project-level CoCo skills** that automate commo
 
 ### `interactive-benchmark`
 
-Benchmark **any SQL query** against interactive vs standard warehouses.
+Benchmark **any SQL query** on interactive warehouses under concurrent load.
 
 - Chains the `snowflake-interactive` skill to create interactive tables and optimize the query
 - Deploys the benchmark API and Locust load test to Snowpark Container Services
-- Reports latency comparisons between warehouse types
+- Reports whether the query meets its P95 latency goal under load
 
 **Usage:** Ask something like *"benchmark my query on interactive vs standard"*.
 

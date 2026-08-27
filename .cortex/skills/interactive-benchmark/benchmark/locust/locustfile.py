@@ -3,7 +3,6 @@ Locust workload for the interactive warehouse benchmark API.
 
 Reads .sql files from a queries directory and POSTs them to:
   - POST /api/run/interactive
-  - POST /api/run/standard
 
 Query directory can be set three ways (last wins):
   1. Env var: BENCHMARK_QUERIES_DIR
@@ -13,7 +12,7 @@ Query directory can be set three ways (last wins):
 Examples:
   uv run locust -f locustfile.py --host http://localhost:3000
   uv run locust -f locustfile.py --host http://localhost:3000 \
-      --warehouse interactive --headless -u 20 -r 5 -t 2m
+      --headless -u 20 -r 5 -t 2m
 """
 
 from __future__ import annotations
@@ -23,8 +22,6 @@ import random
 from pathlib import Path
 
 from locust import HttpUser, between, events, task
-
-WAREHOUSES = ["interactive", "standard", "both"]
 
 DEFAULT_QUERIES_DIR = str(
     Path(__file__).resolve().parent.parent / "test"
@@ -48,15 +45,6 @@ def load_queries(directory: str) -> list[str]:
 @events.init_command_line_parser.add_listener
 def _register_cli_args(parser):
     parser.add_argument(
-        "--warehouse",
-        type=str,
-        choices=WAREHOUSES,
-        default=os.environ.get("WAREHOUSE", "both"),
-        env_var="WAREHOUSE",
-        include_in_web_ui=True,
-        help="Target: interactive, standard, or both",
-    )
-    parser.add_argument(
         "--queries-dir",
         type=str,
         default=os.environ.get("BENCHMARK_QUERIES_DIR", DEFAULT_QUERIES_DIR),
@@ -67,22 +55,15 @@ def _register_cli_args(parser):
 
 
 class BenchmarkUser(HttpUser):
-    """Sends benchmark queries to the API endpoints."""
+    """Sends benchmark queries to the interactive warehouse API endpoint."""
 
     wait_time = between(0.5, 1.5)
 
-    def _resolve_options(self) -> tuple[str, str]:
+    def on_start(self) -> None:
         opts = getattr(self.environment, "parsed_options", None)
-        wh = getattr(opts, "warehouse", None) or os.environ.get("WAREHOUSE", "both")
-        qdir = getattr(opts, "queries_dir", None) or os.environ.get(
+        queries_dir = getattr(opts, "queries_dir", None) or os.environ.get(
             "BENCHMARK_QUERIES_DIR", DEFAULT_QUERIES_DIR
         )
-        if wh not in WAREHOUSES:
-            wh = "both"
-        return wh, qdir
-
-    def on_start(self) -> None:
-        self.warehouse, queries_dir = self._resolve_options()
         self.queries = load_queries(queries_dir)
         if not self.queries:
             raise RuntimeError(
@@ -90,10 +71,11 @@ class BenchmarkUser(HttpUser):
                 "Place benchmark queries in the test/ folder."
             )
 
-    def _run_query(self, target: str) -> None:
+    @task
+    def run_query(self) -> None:
         query = random.choice(self.queries)
         payload = {"query": query}
-        endpoint = f"/api/run/{target}"
+        endpoint = "/api/run/interactive"
         with self.client.post(
             endpoint,
             json=payload,
@@ -102,13 +84,3 @@ class BenchmarkUser(HttpUser):
         ) as response:
             if response.status_code != 200:
                 response.failure(f"{endpoint} status {response.status_code}: {response.text}")
-
-    @task(5)
-    def run_interactive(self) -> None:
-        if self.warehouse in ("interactive", "both"):
-            self._run_query("interactive")
-
-    @task(5)
-    def run_standard(self) -> None:
-        if self.warehouse in ("standard", "both"):
-            self._run_query("standard")

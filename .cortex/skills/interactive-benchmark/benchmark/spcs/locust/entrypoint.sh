@@ -17,7 +17,6 @@ set -uo pipefail
 
 : "${LOCUST_HOST:?LOCUST_HOST must be set (e.g. http://benchmark-api:3000)}"
 
-export WAREHOUSE="${WAREHOUSE:-${LOCUST_WAREHOUSE:-both}}"
 export BENCHMARK_QUERIES_DIR="${BENCHMARK_QUERIES_DIR:-/app/test}"
 
 USERS="${LOCUST_USERS:-10}"
@@ -25,7 +24,7 @@ SPAWN="${LOCUST_SPAWN:-5}"
 WEB_PORT="${LOCUST_WEB_PORT:-8089}"
 RUN_TIME="${LOCUST_RUN_TIME:-3m}"
 
-echo "[entrypoint] target=$LOCUST_HOST warehouse=$WAREHOUSE users=$USERS spawn=$SPAWN run_time=$RUN_TIME queries=$BENCHMARK_QUERIES_DIR"
+echo "[entrypoint] target=$LOCUST_HOST users=$USERS spawn=$SPAWN run_time=$RUN_TIME queries=$BENCHMARK_QUERIES_DIR"
 
 uv run --no-sync locust -f /app/locustfile.py \
   --host "$LOCUST_HOST" \
