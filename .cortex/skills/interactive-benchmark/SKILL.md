@@ -1,7 +1,7 @@
 ---
 name: interactive-benchmark
 description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test."
-version: 0.4
+version: 0.4.2
 ---
 
 # Interactive Warehouse Benchmark
@@ -32,22 +32,36 @@ The workflow has three distinct phases that MUST be followed in order:
 2. **Phase 2 — Validate suitability** — confirm the query is a good fit for interactive warehouses. If not, STOP and explain why.
 3. **Phase 3 — Run the benchmark** — deploy, load test, analyze, report. This phase runs autonomously within the user-approved limits.
 
-**IMPORTANT — Progress visibility:** After completing Phase 1, you MUST create a task list (using system_todo_write) that shows the user ALL remaining steps. This gives the user full visibility into what is happening and what comes next. The task list should include one entry per major step, for example:
+**IMPORTANT — Progress visibility (DAG):** Immediately after the user confirms Phase 1 inputs — before doing ANY other work — you MUST call `system_todo_write` to create a task list with ALL of the following steps. This is NON-NEGOTIABLE; skipping or deferring it is a bug. The task list MUST contain every step below (one todo item per step):
 
 1. Validate query suitability (snowflake-interactive skill)
 2. Verify Docker is running
-3. Save benchmark query
-4. Configure environment (config.env)
-5. Configure concurrency and fallback
-6. Deploy to SPCS
-7. Warm the cache
-8. Run load test
-9. Analyze results (server-side validation)
-10. Goal check and escalation (if needed)
-11. Generate HTML report
-12. Teardown or keep services
+3. Validate interactive setup
+4. Configure concurrency and fallback
+5. Save benchmark query
+6. Configure environment (config.env)
+7. Deploy to SPCS
+8. Warm the cache
+9. Run load test
+10. Collect server-side metrics
+11. Goal check and escalation (if needed)
+12. Generate HTML report
+13. Teardown or keep services
 
-Update this task list in real-time as you progress — mark each task as in_progress when you start it and completed when you finish it. Only have ONE task in_progress at a time.
+The FIRST call after Phase 1 confirmation MUST be `system_todo_write` with all 13 items (first item marked `in_progress`, rest `pending`). Do NOT start any Phase 2/3 work before this call. Update the task list in real-time as you progress — mark each task as `in_progress` when you start it and `completed` when you finish it. Only have ONE task `in_progress` at a time.
+
+**IMPORTANT — Live progress HTML file:** Immediately after creating the task list, also create the progress tracker HTML file at:
+
+```
+<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.html
+```
+
+Use the template at `templates/benchmark-progress.html.template`. Fill in the `{{PLACEHOLDER}}` tokens with initial values (all steps pending, no escalation history yet, status "Starting benchmark…"). **Update this file every time:**
+- A step changes status (starts or completes)
+- An escalation iteration finishes (add a row to the escalation history table)
+- An error occurs
+
+The file has `<meta http-equiv="refresh" content="10">` so the user can keep it open in a browser and see live updates. Open it in the browser for the user right after creating it. When the final report (`benchmark-report.html`) is generated, update the progress file one last time with status "Complete — see benchmark-report.html" and all steps marked done.
 
 ---
 
@@ -481,7 +495,7 @@ After collecting the server-side percentiles from Step 3.10, evaluate them again
 
 **Do NOT ask for permission to scale within the defined limits.** The user already approved the scale-out limit (MAX_CLUSTER_COUNT) and scale-up limit (warehouse size) in Step 1. As long as the proposed change stays within those boundaries, proceed automatically — inform the user what you are doing (e.g. "P95 goal not met. Scaling warehouse from X-Small to Small — within your approved ceiling of Medium. Re-running benchmark.") but do NOT wait for confirmation. This keeps the benchmark moving without unnecessary interruptions.
 
-**After each escalation:** re-configure the warehouse (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), re-run the load test (Step 3.8), re-collect the server-side numbers (Step 3.10), and re-evaluate this step. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
+**After each escalation:** re-configure the warehouse via SQL (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), then re-run the load test (Step 3.8) and re-collect the server-side numbers (Step 3.10). **Do NOT re-deploy SPCS** — the API and Locust services are already running; only the warehouse configuration changes. To re-trigger the load test, suspend/resume the Locust service as described in Step 3.8 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 6)** to avoid runaway loops.
 
 **Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. **Only at this point should you stop and ask the user.** Tell them clearly, for example:
 
