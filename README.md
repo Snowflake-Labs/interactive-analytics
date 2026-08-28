@@ -7,13 +7,13 @@ workloads.
 
 ## Contents
 
+### [`.cortex/skills/interactive-benchmark/`](.cortex/skills/interactive-benchmark/)
+
+Interactive Warehouse benchmark skill and tooling. A FastAPI server exposes an endpoint (`/api/run/interactive`) that executes any user-provided SQL query against an interactive warehouse under concurrent load. Includes a Locust-based load test, full SPCS deployment, and automated escalation within user-defined limits. See [`interactive-benchmark/README.md`](.cortex/skills/interactive-benchmark/README.md) for the full structure and usage.
+
 ### [`tpc-h/`](tpc-h/)
 
 TPC-H benchmark harness for Snowflake **Interactive Warehouses**. Copies TPC-H tables from `SNOWFLAKE_SAMPLE_DATA` into a local benchmark database, then runs the 22 standard queries (original and modern rewrites) against standard or interactive tables at scale factors 1, 10, 100, and 1000. See [`tpc-h/README.md`](tpc-h/README.md) for setup and usage.
-
-### [`benchmark/`](.cortex/skills/interactive-benchmark/benchmark/)
-
-Generic Interactive Warehouse benchmark tool. A FastAPI server exposes an endpoint (`/api/run/interactive`) that executes any user-provided SQL query against an interactive warehouse under concurrent load. Includes a Locust-based load test for concurrency benchmarking and full Snowpark Container Services deployment. See [`benchmark/README.md`](.cortex/skills/interactive-benchmark/benchmark/README.md) for setup and usage.
 
 ### [`tpc-h-sample-dashboard/`](tpc-h-sample-dashboard/)
 

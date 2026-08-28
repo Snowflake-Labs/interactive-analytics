@@ -7,12 +7,26 @@ A benchmark tool that tests Snowflake **Interactive Warehouse** performance unde
 ## Repository Structure
 
 ```
-benchmark/
-├── api/          # Python FastAPI backend (endpoint: /api/run/interactive)
-├── test/         # SQL query files to benchmark (place your .sql files here)
-├── locust/       # Locust load test that POSTs queries to the API
-├── reports/      # Generated HTML benchmark reports
-└── spcs/         # Snowpark Container Services deployment (Dockerfiles, specs, scripts)
+interactive-benchmark/
+├── SKILL.md              # Skill definition (loaded by CoCo)
+├── references/           # Supporting docs loaded on-demand by the skill
+│   ├── server-side-validation.md
+│   ├── report-generation.md
+│   └── checklist-and-troubleshooting.md
+├── templates/
+│   └── benchmark-report.html.template
+└── benchmark/
+    ├── .env.template     # Project-level env config template
+    ├── api/              # Python FastAPI backend (endpoint: /api/run/interactive)
+    ├── test/             # SQL query files to benchmark (place your .sql files here)
+    ├── locust/           # Locust load test that POSTs queries to the API
+    ├── reports/          # Generated benchmark reports (one subfolder per run)
+    │   └── <SOLUTION_NAME>/
+    │       ├── benchmark-report.html
+    │       ├── locust-run-1.txt
+    │       ├── locust-run-2.txt   (if escalation triggered re-runs)
+    │       └── locust-run-3.txt   (if needed)
+    └── spcs/             # SPCS deployment (Dockerfiles, specs, scripts)
 ```
 
 ### `api/`
@@ -29,7 +43,9 @@ Locust workload that reads queries from `test/`, then POSTs them to `/api/run/in
 
 ### `reports/`
 
-Generated HTML benchmark reports. Each report is named `YYYY-MM-DD-<SOLUTION_NAME>-benchmark-report.html` (e.g. `2026-08-06-IWBENCH-benchmark-report.html`). This directory is created automatically by the benchmark skill.
+Generated benchmark reports. Each benchmark run creates a subfolder named after the benchmark (e.g. `reports/IWB_202608271430/`) containing:
+- `benchmark-report.html` — the final HTML report
+- `locust-run-N.txt` — Locust execution logs for each load test iteration (one per escalation step)
 
 ### `spcs/`
 
