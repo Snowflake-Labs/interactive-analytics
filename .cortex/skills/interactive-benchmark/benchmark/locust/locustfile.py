@@ -1,8 +1,10 @@
 """
 Locust workload for the interactive warehouse benchmark API.
 
-Reads .sql files from a queries directory and POSTs them to:
-  - POST /api/run/interactive
+Reads .sql filenames from a queries directory and POSTs their IDs to:
+  - POST /api/run/interactive  {"query_id": "<stem>"}
+
+The server must have the same .sql files loaded in its query registry.
 
 Query directory can be set three ways (last wins):
   1. Env var: BENCHMARK_QUERIES_DIR
@@ -30,16 +32,16 @@ DEFAULT_QUERIES_DIR = str(
 )
 
 
-def load_queries(directory: str) -> list[str]:
+def load_query_ids(directory: str) -> list[str]:
+    """Return filename stems of non-empty .sql files (used as query IDs)."""
     queries_path = Path(directory)
     if not queries_path.exists():
         return []
-    queries = []
-    for sql_file in sorted(queries_path.glob("*.sql")):
-        text = sql_file.read_text().strip()
-        if text:
-            queries.append(text)
-    return queries
+    return [
+        sql_file.stem
+        for sql_file in sorted(queries_path.glob("*.sql"))
+        if sql_file.read_text().strip()
+    ]
 
 
 @events.init_command_line_parser.add_listener
@@ -64,8 +66,8 @@ class BenchmarkUser(HttpUser):
         queries_dir = getattr(opts, "queries_dir", None) or os.environ.get(
             "BENCHMARK_QUERIES_DIR", DEFAULT_QUERIES_DIR
         )
-        self.queries = load_queries(queries_dir)
-        if not self.queries:
+        self.query_ids = load_query_ids(queries_dir)
+        if not self.query_ids:
             raise RuntimeError(
                 f"No .sql files found in {queries_dir}. "
                 "Place benchmark queries in the test/ folder."
@@ -73,8 +75,8 @@ class BenchmarkUser(HttpUser):
 
     @task
     def run_query(self) -> None:
-        query = random.choice(self.queries)
-        payload = {"query": query}
+        query_id = random.choice(self.query_ids)
+        payload = {"query_id": query_id}
         endpoint = "/api/run/interactive"
         with self.client.post(
             endpoint,

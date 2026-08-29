@@ -34,6 +34,10 @@ QUERY_TAG = os.environ.get("QUERY_TAG", SOLUTION_NAME)
 POOL_SIZE = int(os.environ.get("POOL_SIZE", "40"))
 POOL_WARMUP = int(os.environ.get("POOL_WARMUP", "0"))
 POOL_ACQUIRE_TIMEOUT = float(os.environ.get("POOL_ACQUIRE_TIMEOUT", "30"))
+QUERIES_DIR = os.environ.get(
+    "BENCHMARK_QUERIES_DIR",
+    str(ROOT_DIR / "test") if not Path("/app/test").exists() else "/app/test",
+)
 WORKERS = int(os.environ.get("WORKERS", "1"))
 PORT = int(os.environ.get("PORT", "3000"))
 
@@ -131,6 +135,24 @@ class ConnectionPool:
 pool = ConnectionPool()
 
 
+def load_query_registry(directory: str) -> dict[str, str]:
+    """Load .sql files from directory into a {stem: sql_text} registry."""
+    queries_path = Path(directory)
+    registry: dict[str, str] = {}
+    if not queries_path.exists():
+        log.warning("Queries directory does not exist: %s", directory)
+        return registry
+    for sql_file in sorted(queries_path.glob("*.sql")):
+        text = sql_file.read_text().strip()
+        if text:
+            registry[sql_file.stem] = text
+    log.info("Loaded %d queries from %s", len(registry), directory)
+    return registry
+
+
+query_registry: dict[str, str] = load_query_registry(QUERIES_DIR)
+
+
 def execute_query(sql: str) -> dict[str, Any]:
     conn = pool.acquire()
     try:
@@ -186,7 +208,7 @@ async def unhandled_exception_handler(_request: Request, exc: Exception):
 
 
 class RunRequest(BaseModel):
-    query: str
+    query_id: str
 
 
 @app.get("/api/health")
@@ -194,10 +216,21 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/queries")
+async def list_queries():
+    return sorted(query_registry.keys())
+
+
 @app.post("/api/run")
 @app.post("/api/run/interactive")
 async def run_query(body: RunRequest):
-    return await asyncio.to_thread(execute_query, body.query)
+    sql = query_registry.get(body.query_id)
+    if sql is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown query_id '{body.query_id}'. Use GET /api/queries to list available IDs.",
+        )
+    return await asyncio.to_thread(execute_query, sql)
 
 
 def main() -> None:
