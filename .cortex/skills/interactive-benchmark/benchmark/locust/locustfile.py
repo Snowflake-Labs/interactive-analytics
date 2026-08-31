@@ -97,6 +97,24 @@ class BaselineUser(HttpUser):
 
     wait_time = between(0.5, 1.5)
 
+    def on_start(self) -> None:
+        """Wait for the API server to be ready before sending measured requests.
+
+        Uses urllib directly (not self.client) so the warmup latency is
+        invisible to Locust stats — no 30s cold-start outlier in p99.
+        """
+        import time
+        import urllib.request
+
+        ready_url = f"{self.host}/api/ready"
+        for _ in range(60):
+            try:
+                with urllib.request.urlopen(ready_url, timeout=5):
+                    return
+            except Exception:
+                pass
+            time.sleep(1)
+
     @task
     def run_baseline(self) -> None:
         endpoint = "/api/run/baseline"
