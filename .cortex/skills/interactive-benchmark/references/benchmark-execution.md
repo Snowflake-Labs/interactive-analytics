@@ -26,7 +26,7 @@ Baseline env vars (all have sensible defaults — no SPCS spec changes required)
 
 Monitor baseline progress using the `bash` tool:
 ```bash
-cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust
+cd <SKILL_DIR>/benchmark/scripts && ./logs.sh locust
 ```
 
 Look for `[baseline] VERDICT: PASS` to confirm the infrastructure is healthy before the benchmark begins.
@@ -43,7 +43,7 @@ Depending on state:
 - **First run after `./deploy.sh`** — both phases run automatically when the container starts. No action needed. Proceed to 9b.
 - **Subsequent runs after changing config or warehouse settings** — force a container restart using the `bash` tool:
   ```bash
-  cd <SKILL_DIR>/benchmark/spcs && ./update.sh
+  cd <SKILL_DIR>/benchmark/scripts && ./update.sh
   ```
   Or suspend+resume directly via `snowflake_sql_execute`:
   ```sql
@@ -52,7 +52,7 @@ Depending on state:
   ```
   Then wait for locust to report READY using the `bash` tool:
   ```bash
-  cd <SKILL_DIR>/benchmark/spcs && ./status.sh --wait
+  cd <SKILL_DIR>/benchmark/scripts && ./status.sh --wait
   ```
   Note: the baseline will re-run on every restart. This is intentional — it re-validates the infrastructure after any configuration change.
 
@@ -68,7 +68,7 @@ The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it run
 
 - **Follow locust logs** using the `bash` tool:
   ```bash
-  cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust
+  cd <SKILL_DIR>/benchmark/scripts && ./logs.sh locust
   ```
   You'll see lines like `Ramping to 50 users at a rate of 5.00 per second` and `All users spawned`.
 
@@ -77,7 +77,7 @@ The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it run
 After `LOCUST_RUN_TIME + ~10 s` (for `--autoquit` to fire), locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV. Retrieve using the `bash` tool:
 
 ```bash
-cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust | tail -80
+cd <SKILL_DIR>/benchmark/scripts && ./logs.sh locust | tail -80
 ```
 
 The `locust_stats_stats.csv` block contains a row for `/api/run/interactive` (plus Aggregated) with columns:

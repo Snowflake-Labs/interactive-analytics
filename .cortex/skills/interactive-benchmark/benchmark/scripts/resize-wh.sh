@@ -139,4 +139,4 @@ echo "  ✓ Services resumed."
 
 echo
 echo "=== Done. $FQ_WH reconfigured ($DESC). ==="
-echo "Run ./status.sh --wait to confirm services are back to READY."
+echo "Run $SCRIPT_DIR/status.sh --wait to confirm services are back to READY."

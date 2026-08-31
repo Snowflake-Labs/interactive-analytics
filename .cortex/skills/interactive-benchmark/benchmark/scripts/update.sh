@@ -25,9 +25,9 @@ EOF
 }
 
 echo "==> Updating API service"
-alter_service "$API_SERVICE" "$SCRIPT_DIR/specs/api.yaml"
+alter_service "$API_SERVICE" "$SPCS_DIR/specs/api.yaml"
 
 echo "==> Updating locust service"
-alter_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml"
+alter_service "$LOCUST_SERVICE" "$SPCS_DIR/specs/locust.yaml"
 
 "$SCRIPT_DIR/status.sh" --urls-only

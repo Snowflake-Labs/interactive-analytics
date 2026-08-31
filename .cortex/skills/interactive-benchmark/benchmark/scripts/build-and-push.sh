@@ -15,7 +15,7 @@ LOCUST_REF="$(image_ref "$LOCUST_IMAGE")"
 echo "==> Building API image: $API_REF"
 docker build \
   --platform linux/amd64 \
-  -f "$SCRIPT_DIR/api/Dockerfile" \
+  -f "$SPCS_DIR/api/Dockerfile" \
   -t "$API_REF" \
   "$REPO_DIR"
 
@@ -25,7 +25,7 @@ docker push "$API_REF"
 echo "==> Building locust image: $LOCUST_REF"
 docker build \
   --platform linux/amd64 \
-  -f "$SCRIPT_DIR/locust/Dockerfile" \
+  -f "$SPCS_DIR/locust/Dockerfile" \
   -t "$LOCUST_REF" \
   "$REPO_DIR"
 

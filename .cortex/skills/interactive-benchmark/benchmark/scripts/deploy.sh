@@ -67,7 +67,7 @@ $rendered
 \$\$
   MIN_INSTANCES = ${min_instances}
   MAX_INSTANCES = ${max_instances}
-  COMMENT = 'Managed by benchmark/spcs/';
+  COMMENT = 'Managed by benchmark/scripts/';
 
 ALTER SERVICE $svc FROM SPECIFICATION \$\$
 $rendered
@@ -76,10 +76,10 @@ EOF
 }
 
 echo "==> [3/5] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
-deploy_service "$API_SERVICE" "$SCRIPT_DIR/specs/api.yaml" "$API_COMPUTE_POOL" "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
+deploy_service "$API_SERVICE" "$SPCS_DIR/specs/api.yaml" "$API_COMPUTE_POOL" "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
 
 echo "==> [4/5] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
-deploy_service "$LOCUST_SERVICE" "$SCRIPT_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL" 1 1
+deploy_service "$LOCUST_SERVICE" "$SPCS_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL" 1 1
 
 echo "==> [5/5] Waiting for services to become READY (this can take a few minutes)"
 "$SCRIPT_DIR/status.sh" --wait

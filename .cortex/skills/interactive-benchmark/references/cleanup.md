@@ -22,7 +22,7 @@ Then use `ask_user_question` to ask the user: **"Would you like me to clean up t
 
 If the user chooses **full cleanup**, use the `bash` tool:
 ```bash
-cd <SKILL_DIR>/benchmark/spcs && ./teardown.sh
+cd <SKILL_DIR>/benchmark/scripts && ./teardown.sh
 ```
 
 Then drop the schemas and warehouse via `snowflake_sql_execute`:
@@ -42,7 +42,7 @@ DROP DATABASE IF EXISTS <SOLUTION_NAME>_BENCH_DB;
 
 If the user chooses **SPCS only**, use the `bash` tool:
 ```bash
-cd <SKILL_DIR>/benchmark/spcs && ./teardown.sh
+cd <SKILL_DIR>/benchmark/scripts && ./teardown.sh
 ```
 
 If the user chooses to **keep everything**, use the `edit` tool to append the deployment state to `benchmark/.env` so future runs reuse the existing services instead of redeploying:
@@ -63,7 +63,7 @@ On future invocations of this skill, use `read` to check `benchmark/.env` for `S
 Verify final service state using the `bash` tool:
 
 ```bash
-cd <SKILL_DIR>/benchmark/spcs && ./status.sh
+cd <SKILL_DIR>/benchmark/scripts && ./status.sh
 ```
 
 Options:
