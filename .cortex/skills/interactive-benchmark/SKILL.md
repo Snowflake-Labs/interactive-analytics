@@ -1,7 +1,7 @@
 ---
 name: interactive-benchmark
-description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test."
 version: 0.5.0
+description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test, stress test, how fast under load, concurrent query performance, can my query handle N users, latency under concurrency, query throughput test."
 ---
 
 # Interactive Warehouse Benchmark
@@ -17,6 +17,24 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 - Role with privileges to create databases, warehouses, compute pools, and services
 - Ability to use Snowpark Container Services (SPCS)
 - Docker installed (for SPCS deployment)
+
+## Tool Usage
+
+Every step in this skill MUST use the specific tool listed below. Do NOT substitute alternative approaches (e.g. do not use `bash` + `snow sql` instead of `snowflake_sql_execute`).
+
+| Action | Tool | Notes |
+|--------|------|-------|
+| Execute SQL | `snowflake_sql_execute` | All SQL in this skill. Never use `bash` + `snow sql`. |
+| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `cp`, `update.sh`. Use `run_in_background=true` for `deploy.sh`. |
+| Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.6). |
+| Read files | `read` | For templates, configs, reference docs, logs. |
+| Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures. |
+| Edit existing files | `edit` | For updating specific values in an existing config file without rewriting the whole file. |
+| Search file contents | `grep` | For placeholder verification (`{{`) and config sanity checks. |
+| Ask user questions | `ask_user_question` | For Phase 1 inputs, Phase 1 confirmation, and cleanup choice (Step 3.14). |
+| Open report in browser | `open_browser` | For the final HTML report (Step 3.13). |
+| Load sub-skills | `skill` | `snowflake-interactive` (Step 2.1, 3.10), `html-authoring` (Step 3.13). |
+| Track progress | `system_todo_write` | Mandatory after Phase 1 confirmation — see DAG section. |
 
 ## Paths
 
@@ -70,7 +88,7 @@ The FIRST call after Phase 1 confirmation MUST be `system_todo_write` with all 1
 
 ## Phase 1: Gather All Inputs
 
-Collect ALL of the following from the user before proceeding. If the user's initial request already provides some of these values, acknowledge them and only ask for what is missing. Present the missing items as a single consolidated question — do NOT ask one item at a time.
+Collect ALL of the following from the user before proceeding. If the user's initial request already provides some of these values, acknowledge them and only ask for what is missing. Use `ask_user_question` to present all missing items as a single consolidated question — do NOT ask one item at a time. Use `type: "text"` fields with sensible `defaultValue` for each input, so the user only edits what differs from the defaults.
 
 | # | Input | Description | Default |
 |---|-------|-------------|---------|
@@ -90,7 +108,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster)." Never create resources silently.
 
-**Do not proceed past Phase 1 until ALL items are confirmed.** Present the collected values back to the user in a summary table and get a single confirmation before moving on.
+**Do not proceed past Phase 1 until ALL items are confirmed.** Present the collected values back to the user in a summary table and use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed") to get approval before moving on.
 
 **Autonomous execution principle:** Once the user confirms these inputs — especially the latency goal and the scale-out / scale-up limits — the benchmark runs autonomously without further questions. If the P95 goal is not met, the benchmark automatically scales out or up (within the approved limits) and re-runs. No additional user confirmation is needed until either (a) the limits are reached and the goal is still not met, or (b) the benchmark completes successfully.
 
@@ -100,80 +118,9 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **This phase determines whether the query is a good candidate for interactive warehouses. If it is not, STOP HERE — do not proceed to Phase 3.**
 
-### Step 2.1: Invoke `snowflake-interactive` Skill
+**Load** `references/suitability-check.md` (via the `read` tool) for the full Step 2.1 and Step 2.2 procedure.
 
-Invoke the `snowflake-interactive` skill to:
-- Analyze the query for interactive warehouse suitability
-- Create interactive tables (copies of the source tables with appropriate clustering)
-- Create an interactive warehouse attached to those tables
-- Optimize the query for interactive warehouse execution
-
-**Do this by calling:**
-```
-skill(command="snowflake-interactive")
-```
-
-Provide the skill with:
-- The database and schema from Phase 1
-- The query to benchmark
-- The standard warehouse name (for sizing reference)
-
-The `snowflake-interactive` skill will:
-- Create interactive tables (copies of the source tables optimized for interactive workloads)
-- Determine the best size for the interactive warehouse based on the data and workload characteristics
-- Create an interactive warehouse with `TARGET_LAG` attached to those tables
-- Return the warehouse name and schema name to use
-
-Capture the output:
-- `INTERACTIVE_WAREHOUSE` — name of the interactive warehouse created (and its size)
-- `INTERACTIVE_SCHEMA` — schema with interactive tables
-- `OPTIMIZED_QUERY` — the query rewritten for the interactive schema (if different)
-
-### Step 2.2: Suitability Check
-
-**This is the critical gate. If the query fails this check, STOP and do not proceed to Phase 3.**
-
-Run the query on the standard warehouse first (disable result caching):
-
-```sql
-ALTER SESSION SET USE_CACHED_RESULT = FALSE;
-USE WAREHOUSE <STANDARD_WAREHOUSE>;
-USE SCHEMA <DATABASE>.<SCHEMA>;
-<THE QUERY>;
-```
-
-**10-second rule:** If the query exceeds 10 seconds on a standard warehouse despite proper clustering and optimization, it is highly improbable to meet the 5-second interactive execution threshold. **STOP HERE** and inform the user that the query needs further optimization before it can benefit from an interactive warehouse. Use the `snowflake-interactive` skill to provide improvement suggestions (query changes, better clustering, etc.).
-
-If the standard warehouse timing is acceptable (under 10 seconds), run the query on the interactive warehouse:
-
-```sql
-ALTER SESSION SET USE_CACHED_RESULT = FALSE;
-USE WAREHOUSE <INTERACTIVE_WAREHOUSE>;
-USE SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
-<THE QUERY>;
-```
-
-Compare the two elapsed times. Present the results to the user:
-
-| Warehouse | Elapsed |
-|---|---|
-| Standard (`<STANDARD_WAREHOUSE>`) | X ms |
-| Interactive (`<INTERACTIVE_WAREHOUSE>`) | Y ms |
-
-**Decision gate — STOP or PROCEED:**
-
-- **PROCEED** — Interactive is significantly faster (>=1.5x speedup) and completes in under 5 seconds. Move to Phase 3.
-- **STOP — query exceeds 5 seconds on interactive even at rest.** Interactive warehouses cancel SELECT statements after 5 seconds by design. The query is not suitable for interactive execution. Invoke the `snowflake-interactive` skill to analyze why and provide improvement recommendations:
-  - Query rewrites (fewer joins, narrower predicates, pre-aggregation)
-  - Better clustering keys on the tables
-  - Reducing data scanned (partition pruning alignment)
-  - Whether a subset of the data would work
-- **STOP — performance is similar or standard is faster.** The query is not a good candidate for interactive warehouses. Explain why (full table scan, aggregation pattern doesn't benefit from caching, too complex with many joins/subqueries). Use the `snowflake-interactive` skill to suggest what characteristics would make the query work well: point lookups, selective filters, dashboard-style queries on hot data, parameterized shapes (date ranges, customer IDs). The ideal workload is narrow and selective: few columns, targeted predicates, bounded time windows, small result sets. At least 100GB of data is needed for interactive analytics to be really effective.
-
-**When stopping:** Provide the user with a clear summary including:
-1. Why the query is not suitable (specific reason)
-2. What the `snowflake-interactive` skill recommends to improve it
-3. Whether a modified version of the query could work
+**Summary:** Invoke `snowflake-interactive` skill to create interactive tables/warehouse, then run the query on both standard and interactive warehouses. Capture `INTERACTIVE_WAREHOUSE`, `INTERACTIVE_SCHEMA`, and `OPTIMIZED_QUERY` from the skill output. If the query exceeds 10s on standard or 5s on interactive, or shows no speedup — **STOP** and do not proceed to Phase 3.
 
 ---
 
@@ -184,6 +131,8 @@ Compare the two elapsed times. Present the results to the user:
 From this point, everything runs autonomously within the user-approved limits from Phase 1. No further questions are asked unless the limits are exhausted.
 
 ### Step 3.1: Verify Docker is Running
+
+Use the `bash` tool:
 
 ```bash
 docker info > /dev/null 2>&1
@@ -197,7 +146,7 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 Verify the interactive setup is correct before deploying.
 
-**1. Verify interactive tables are attached to the interactive warehouse:**
+**1. Verify interactive tables are attached to the interactive warehouse** (via `snowflake_sql_execute`):
 
 ```sql
 SHOW INTERACTIVE TABLES IN SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
@@ -207,7 +156,7 @@ Confirm that each table referenced by the query appears in the output and that t
 
 **2. Verify predicates align with clustering keys:**
 
-For each interactive table, check its clustering key:
+For each interactive table, check its clustering key (via `snowflake_sql_execute`):
 
 ```sql
 SHOW TABLES LIKE '<TABLE_NAME>' IN SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
@@ -222,7 +171,7 @@ CREATE INTERACTIVE TABLE <SCHEMA>.NATION CLUSTER BY (N_NATIONKEY) AS SELECT * FR
 CREATE INTERACTIVE TABLE <SCHEMA>.REGION CLUSTER BY (R_REGIONKEY) AS SELECT * FROM <SRC>.REGION;
 ```
 
-**3. Validate working set sizing:**
+**3. Validate working set sizing** (via `snowflake_sql_execute`):
 
 ```sql
 SELECT TABLE_NAME, BYTES / (1024*1024*1024) AS SIZE_GB
@@ -236,6 +185,8 @@ Compare total working set size against the interactive warehouse size:
 - M: up to ~1200 GB
 - L: up to ~2500 GB
 - XL+: larger working sets
+
+**If any validation fails** (no interactive tables found, tables not attached to the expected warehouse, missing clustering keys, or working set exceeds warehouse cache capacity): inform the user which check failed and why, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed with an invalid interactive setup.
 
 ---
 
@@ -251,7 +202,7 @@ Compute the required cluster count:
 RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
 ```
 
-Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point. Apply:
+Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point. Apply via `snowflake_sql_execute`:
 
 ```sql
 ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
@@ -260,14 +211,14 @@ ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
   SCALING_POLICY = 'STANDARD';
 ```
 
-Configure the fallback warehouse (uses the standard warehouse from Phase 1):
+Configure the fallback warehouse via `snowflake_sql_execute` (uses the standard warehouse from Phase 1):
 
 ```sql
 ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE>
   SET FALLBACK_WAREHOUSE = <STANDARD_WAREHOUSE>;
 ```
 
-Verify:
+Verify via `snowflake_sql_execute`:
 
 ```sql
 SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE' IN WAREHOUSE <INTERACTIVE_WAREHOUSE>;
@@ -279,11 +230,13 @@ SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE' IN WAREHOUSE <INTERACTIVE_WAREHOUSE>;
 
 The user provides the query to benchmark as part of their request to CoCo. Create `benchmark/test/benchmark-query.sql` from the template file `benchmark/test/benchmark-query.sql.template` by replacing the placeholder content with the actual query:
 
-1. Read `<SKILL_DIR>/benchmark/test/benchmark-query.sql.template`
+1. Use `read` to load `<SKILL_DIR>/benchmark/test/benchmark-query.sql.template`
 2. Replace the placeholder text with the user's query (or the optimized version if the `snowflake-interactive` skill produced one)
-3. Write the result to `<SKILL_DIR>/benchmark/test/benchmark-query.sql`
+3. Use `write` to save the result to `<SKILL_DIR>/benchmark/test/benchmark-query.sql`
 
 This file is the single query executed against the interactive warehouse during the load test.
+
+**If the template file does not exist** or the query is empty after substitution: inform the user of the error, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed without a valid query file.
 
 ---
 
@@ -292,21 +245,16 @@ This file is the single query executed against the interactive warehouse during 
 Both config files MUST be created from their templates — never edit the templates directly.
 
 1. **Create `benchmark/.env`** from `benchmark/.env.template`:
-   ```bash
-   cp <SKILL_DIR>/benchmark/.env.template <SKILL_DIR>/benchmark/.env
-   ```
-   Write these exact values:
+   Use `read` to load the template, then `write` to create the `.env` file with these exact values:
    ```
    CONNECTION_NAME=<connection from Phase 1>
    SOLUTION_NAME=<benchmark name from Phase 1>
    ```
 
 2. **Create `benchmark/spcs/config.env`** from `benchmark/spcs/config.env.template`:
-   ```bash
-   cp <SKILL_DIR>/benchmark/spcs/config.env.template <SKILL_DIR>/benchmark/spcs/config.env
-   ```
+   Use `read` to load the template, then `write` to create `config.env` with all values populated.
 
-   Then **explicitly overwrite** these values in `config.env` from the answers gathered in Phase 1 and the outputs captured in Step 2.1. Do NOT rely on template defaults — the whole run is wrong if any of these drift:
+   **Explicitly set** these values in `config.env` from the answers gathered in Phase 1 and the outputs captured in Step 2.1. Do NOT rely on template defaults — the whole run is wrong if any of these drift:
 
    | Variable | Source | Example |
    |---|---|---|
@@ -318,15 +266,19 @@ Both config files MUST be created from their templates — never edit the templa
    | `LOCUST_USERS` | **Phase 1 answer** — the concurrent-users number | `50` |
    | `LOCUST_RUN_TIME` | Default `3m`, or user-supplied | `3m` |
 
-   After writing, `grep` the file to sanity-check that no template placeholder or stale value remains. The `INTERACTIVE_WAREHOUSE` and `LOCUST_USERS` values are the two most common sources of "the benchmark ran with the wrong settings" bugs.
+   After writing, use the `grep` tool on the file to sanity-check that no template placeholder or stale value remains. The `INTERACTIVE_WAREHOUSE` and `LOCUST_USERS` values are the two most common sources of "the benchmark ran with the wrong settings" bugs.
 
-3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist from a previous run, do NOT reuse them blindly. Diff each value in the table above against the current Phase 1/Step 2.1 answers and overwrite anything that changed.
+3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist from a previous run, do NOT reuse them blindly. Use `read` to inspect the existing values, then use `edit` to overwrite anything that changed compared to the current Phase 1/Step 2.1 answers.
+
+**If any config file creation fails** (template not found, write error, or `grep` finds leftover placeholders after writing): inform the user which config is invalid and why, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed with misconfigured environment files.
 
 **Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Step 3.8 and Step 3.9 for the execution flow.
 
 ---
 
 ### Step 3.6: Deploy to SPCS
+
+Use the `bash` tool with `run_in_background=true`:
 
 ```bash
 cd <SKILL_DIR>/benchmark/spcs && ./deploy.sh
@@ -336,20 +288,22 @@ This deploys:
 - **Benchmark API** — FastAPI server that executes queries against the interactive warehouse
 - **Locust** — Load generator that POSTs queries to the API
 
+**Cost note:** This creates 2 compute pools (CPU_X64_M) that incur credits while running. All resources are listed in Step 3.14 where the user chooses to tear down or keep them.
+
 **IMPORTANT — Deployment monitoring:** SPCS deployments can take 3–10 minutes (compute pool provisioning + image pull + container start). To avoid appearing stuck:
 
-1. Run `deploy.sh` in the background.
-2. Every 30 seconds, poll service status and report to the user:
+1. Run `deploy.sh` in the background (as above with `run_in_background=true`). Use `bash_output` to check progress.
+2. Every 30 seconds, use the `bash` tool to poll service status and report to the user:
    ```bash
    cd <SKILL_DIR>/benchmark/spcs && ./status.sh
    ```
    This shows the current state of each service (PENDING, READY, FAILED) along with a status message (e.g. "Pending scheduling", "Pulling image").
-3. If a service stays in PENDING for more than 5 minutes, run `./logs.sh` and report any errors to the user. Common causes:
+3. If a service stays in PENDING for more than 5 minutes, use the `bash` tool to run `./logs.sh` and report any errors to the user. Common causes:
    - Compute pool still provisioning (normal — wait)
    - Image pull in progress (normal — wait)
    - Image not found (check `build-and-push.sh` succeeded)
    - Insufficient privileges (check ROLE)
-4. If a service enters FAILED state, immediately show the user the output of `./logs.sh` and stop.
+4. If a service enters FAILED state, immediately use the `bash` tool to run `./logs.sh`, show the user the output, and stop.
 5. Only proceed to the next step once both services report READY.
 6. **Display the SPCS topology to the user** (see "SPCS Deployment Topology" section above). This makes it clear how many containers are running and how compute is distributed, so the user can judge whether the infrastructure is appropriately sized for their concurrency target.
 
@@ -365,7 +319,7 @@ Before the load test measures anything, warm the interactive warehouse cache. Th
 - For a 100 GB working set on XS, expect ~4–5 minutes of warming time before the cache is fully populated.
 - Run the query multiple times (3–5 iterations) to ensure the relevant data pages are cached, not just once.
 
-**Warm-up procedure (via SQL, since the SPCS API ingress requires Snowflake auth and can't be curled from the laptop with `externalbrowser` connections):**
+**Warm-up procedure (execute each SQL statement via `snowflake_sql_execute`, since the SPCS API ingress requires Snowflake auth and can't be curled from the laptop with `externalbrowser` connections):**
 
 ```sql
 ALTER SESSION SET USE_CACHED_RESULT = FALSE;
@@ -386,98 +340,11 @@ Discard the results from these warm-up calls — they are not part of the benchm
 
 ---
 
-### Step 3.8: Run Baseline Test (Infrastructure Validation)
+### Steps 3.8–3.9: Baseline Test + Load Test
 
-The Locust container now runs a **two-phase execution model**. When the container starts, it automatically executes both phases in sequence:
+**Load** `references/benchmark-execution.md` (via the `read` tool) for the full baseline and load test procedure.
 
-**Phase 1 — Baseline:** Locust runs `BaselineUser` against the no-op `POST /api/run/baseline` endpoint for `BASELINE_RUN_TIME` (default 1 minute) with the same user count and spawn rate as the real benchmark. This measures pure API/SPCS infrastructure throughput without touching Snowflake.
-
-After Phase 1 completes, the entrypoint parses the baseline CSV and checks:
-- **Failure rate** must be <= `BASELINE_MAX_FAILURE_PCT` (default 1%)
-- **p99 latency** must be <= `BASELINE_MAX_P99_MS` (default 500ms)
-
-If either threshold is exceeded, the container logs an error with remediation suggestions (increase API instances, increase compute pool nodes, or reduce user count) and **does NOT proceed to Phase 2**. The container stays alive for log retrieval.
-
-**Phase 2 — Snowflake Benchmark:** Only runs if Phase 1 passes. This is the real load test against `POST /api/run/interactive`.
-
-Baseline env vars (all have sensible defaults — no SPCS spec changes required):
-
-| Variable | Default | Description |
-|---|---|---|
-| `BASELINE_RUN_TIME` | `1m` | Duration of the baseline test |
-| `BASELINE_MAX_FAILURE_PCT` | `1` | Max acceptable failure % |
-| `BASELINE_MAX_P99_MS` | `500` | Max acceptable p99 in milliseconds |
-
-**There is no external HTTP call needed to trigger either phase.** Starting the container starts the baseline, and a passing baseline automatically starts the benchmark. SPCS public ingress requires Snowflake auth, so the auto-start design sidesteps this entirely.
-
-Monitor baseline progress in the logs:
-```bash
-cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust
-```
-
-Look for `[baseline] VERDICT: PASS` to confirm the infrastructure is healthy before the benchmark begins.
-
----
-
-### Step 3.9: Run Load Test (Snowflake Benchmark)
-
-**This step runs automatically after the baseline passes (Step 3.8).** No manual trigger is needed on the first run.
-
-#### 9a. Trigger the run
-
-Depending on state:
-- **First run after `./deploy.sh`** — both phases run automatically when the container starts. No action needed. Proceed to 9b.
-- **Subsequent runs after changing config or warehouse settings** — force a container restart by re-applying the spec:
-  ```bash
-  cd <SKILL_DIR>/benchmark/spcs && ./update.sh
-  ```
-  Or suspend+resume directly via SQL:
-  ```sql
-  ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST SUSPEND;
-  ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST RESUME;
-  ```
-  Then wait for locust to report READY:
-  ```bash
-  cd <SKILL_DIR>/benchmark/spcs && ./status.sh --wait
-  ```
-  Note: the baseline will re-run on every restart. This is intentional — it re-validates the infrastructure after any configuration change.
-
-#### 9b. Monitor the run
-
-The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
-
-- **Watch cluster scaling** on the interactive warehouse:
-  ```sql
-  SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
-  ```
-  Look at `started_clusters` and `running`. If `queued > 0`, `MAX_CLUSTER_COUNT` from Step 3.3 is too low — abort and increase it.
-
-- **Follow locust logs** for progress:
-  ```bash
-  cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust
-  ```
-  You'll see lines like `Ramping to 50 users at a rate of 5.00 per second` and `All users spawned`.
-
-#### 9c. Retrieve the results
-
-After `LOCUST_RUN_TIME + ~10 s` (for `--autoquit` to fire), locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV:
-
-```bash
-cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust | tail -80
-```
-
-The `locust_stats_stats.csv` block contains a row for `/api/run/interactive` (plus Aggregated) with columns:
-
-```
-Type, Name, Request Count, Failure Count, Median Response Time, Average Response Time,
-Min, Max, Avg Content Size, Requests/s, Failures/s, 50%, 66%, 75%, 80%, 90%, 95%, 98%, 99%, 99.9%, 99.99%, 100%
-```
-
-Parse the `/api/run/interactive` row for P50, P95, P99 and failure counts.
-
-The baseline results are also available in the logs under the `======================== BASELINE RESULTS ========================` banner. The baseline p99 establishes the infrastructure overhead floor.
-
-If you need results before the test finishes, the container also emits a HEARTBEAT block every 2 minutes with both baseline and benchmark CSVs — grep for `HEARTBEAT` in the logs.
+**Summary:** The Locust container runs a two-phase execution model automatically on start: (1) a baseline test against the no-op `/api/run/baseline` endpoint to validate infrastructure, then (2) the real load test against `/api/run/interactive`. No external HTTP calls are needed — auto-start sidesteps SPCS auth. Monitor via `./logs.sh locust`; look for `[baseline] VERDICT: PASS` before the benchmark begins. For subsequent runs (after escalation), restart the Locust service via `./update.sh` or `ALTER SERVICE ... SUSPEND / RESUME`. Parse the `/api/run/interactive` row from the Locust CSV for P50, P95, P99 and failure counts.
 
 ---
 
@@ -497,7 +364,7 @@ Also collect:
 
 **Latency goal convention:** When the user specifies a latency target (e.g. "queries must complete within 2 seconds"), interpret that as a **P95 target** unless they explicitly state otherwise. Evaluate the goal against **both** client-side and server-side P95 — if server-side meets the goal but client-side does not, the API is the bottleneck; if both fail, the warehouse configuration needs work.
 
-Then invoke the `snowflake-interactive` skill again to analyze the benchmark results and produce optimization recommendations:
+Then invoke the `snowflake-interactive` skill again via `skill(command="snowflake-interactive")` to analyze the benchmark results and produce optimization recommendations:
 - Does the query need rewrites or tweaks for better interactive performance?
 - Would clustering keys on the interactive tables improve results?
 - Are there join or filter patterns that could benefit from search optimization?
@@ -510,11 +377,11 @@ Capture these recommendations for the report.
 
 After collecting the Locust CSV, **you MUST run server-side aggregation queries against Snowflake for the interactive warehouse**. This is not optional — the Locust numbers alone cannot distinguish API/HTTP overhead from Snowflake time.
 
-**Important — use `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE`, not `ACCOUNT_USAGE.QUERY_HISTORY`.** The `ACCOUNT_USAGE` view has a 45-minute to 3-hour latency and will return zero rows immediately after the benchmark. `INFORMATION_SCHEMA` is fresh within seconds. Run these diagnostic queries from a **non-interactive** warehouse (e.g. `USE WAREHOUSE COMPUTE_WH`) — running them on the interactive WH will hit the 5-second cancel.
+**Important — use `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE`, not `ACCOUNT_USAGE.QUERY_HISTORY`.** The `ACCOUNT_USAGE` view has a 45-minute to 3-hour latency and will return zero rows immediately after the benchmark. `INFORMATION_SCHEMA` is fresh within seconds. Run these diagnostic queries via `snowflake_sql_execute` from a **non-interactive** warehouse (e.g. `USE WAREHOUSE COMPUTE_WH`) — running them on the interactive WH will hit the 5-second cancel.
 
 The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every request. This allows isolating benchmark traffic in `QUERY_HISTORY` queries. Because the default benchmark name includes a `YYYYMMDDHHMM` timestamp, each benchmark run produces a unique tag. If the user provides a custom name without a timestamp pattern, append `_YYYYMMDDHHMM` to the tag value so that queries from different runs of the same benchmark can be distinguished.
 
-**Load** `references/server-side-validation.md` for the exact SQL queries, delta interpretation rules, and query profile health metrics.
+**Load** `references/server-side-validation.md` (via the `read` tool) for the exact SQL queries, delta interpretation rules, and query profile health metrics.
 
 ---
 
@@ -534,7 +401,7 @@ After collecting the server-side percentiles from Step 3.11, evaluate them again
 
 **Do NOT ask for permission to scale within the defined limits.** The user already approved the scale-out limit (MAX_CLUSTER_COUNT) and scale-up limit (warehouse size) in Step 1. As long as the proposed change stays within those boundaries, proceed automatically — inform the user what you are doing (e.g. "P95 goal not met. Scaling warehouse from X-Small to Small — within your approved ceiling of Medium. Re-running benchmark.") but do NOT wait for confirmation. This keeps the benchmark moving without unnecessary interruptions.
 
-**After each escalation:** re-configure the warehouse via SQL (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — the API and Locust services are already running; only the warehouse configuration changes. To re-trigger the load test, suspend/resume the Locust service as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 6)** to avoid runaway loops.
+**After each escalation:** re-configure the warehouse via `snowflake_sql_execute` (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — the API and Locust services are already running; only the warehouse configuration changes. To re-trigger the load test, suspend/resume the Locust service via `snowflake_sql_execute` as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
 
 **Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. **Only at this point should you stop and ask the user.** Tell them clearly, for example:
 
@@ -548,97 +415,38 @@ Then produce the Step 3.13 report with the ceiling-limited numbers and mark the 
 
 ### Step 3.13: Generate HTML Report
 
+**MANDATORY: Load the `html-authoring` skill first** by calling `skill(command="html-authoring")`. This skill provides the sandboxed-HTML rules that must be followed when writing the report file. Load it before any HTML file creation.
+
 **MANDATORY: use the bundled template.** The report MUST be produced by starting from the canonical HTML template shipped with this skill and filling in its `{{PLACEHOLDER}}` tokens. Do NOT hand-author the report from scratch, do NOT change the section order, and do NOT modify the CSS or structure.
 
 **Template path:** `templates/benchmark-report.html.template`
 
 **Output directory:** `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/`
 
-Create a subfolder named after the benchmark (e.g. `reports/IWB_202608271430/`). Save the following files in it:
+Create a subfolder named after the benchmark (e.g. `reports/IWB_202608271430/`). Save the following files in it using the `write` tool:
 - `benchmark-report.html` — the filled-in HTML report (generated once at the end, after all iterations)
 - `locust-run-1.txt` — Locust log from the first load test iteration
 - `locust-run-2.txt` — Locust log from the second iteration (if escalation triggered a re-run)
 - `locust-run-3.txt` — Locust log from the third iteration (if needed)
 
-Each time the load test runs (Step 3.9), save the full Locust output (`./logs.sh locust`) to the next numbered file. This ensures every iteration's results are preserved — even runs that did not meet the goal. The final HTML report references the last successful run's data, but earlier runs provide the escalation history.
+Each time the load test runs (Step 3.9), capture the full Locust output (via `bash` running `./logs.sh locust`) and save it to the next numbered file using `write`. This ensures every iteration's results are preserved — even runs that did not meet the goal. The final HTML report references the last successful run's data, but earlier runs provide the escalation history.
 
-**Load** `references/report-generation.md` for the full procedure, coverage requirements, and verification steps.
+**Load** `references/report-generation.md` (via the `read` tool) for the full procedure, coverage requirements, and verification steps.
 
-Open the report in the browser for the user when done.
+**Report generation procedure:**
+1. Use `read` to load the template from `templates/benchmark-report.html.template`
+2. Substitute all `{{PLACEHOLDER}}` tokens with collected values
+3. Use `write` to save the filled-in report to `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/benchmark-report.html`
+4. Use the `grep` tool to verify no `{{` placeholders remain: `grep '{{' <output-file>` must return zero matches
+5. Use `open_browser` to open the report for the user
 
 ---
 
 ### Step 3.14: Resource Summary and Cleanup
 
-After the report is generated, present the user with a **complete list of all Snowflake resources created during this benchmark session**. Format it as a clear table:
+**Load** `references/cleanup.md` (via the `read` tool) for the full cleanup procedure.
 
-| Resource Type | Name | Location |
-|---|---|---|
-| Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level |
-| Interactive schema | `<DATABASE>.<INTERACTIVE_SCHEMA>` | Contains interactive tables |
-| Interactive tables | `<TABLE_1>`, `<TABLE_2>`, ... | In `<INTERACTIVE_SCHEMA>` |
-| SPCS database | `<SOLUTION_NAME>_BENCH_DB` | Account-level |
-| SPCS schema | `<SOLUTION_NAME>_BENCH_DB.SPCS` | Contains services + image repo |
-| Compute pool (API) | `<SOLUTION_NAME>_BENCH_API_POOL` | Account-level |
-| Compute pool (Locust) | `<SOLUTION_NAME>_BENCH_LOCUST_POOL` | Account-level |
-| Image repository | `<SOLUTION_NAME>_BENCH_IMAGES` | In SPCS schema |
-| Service (API) | `BENCHMARK_API` | In SPCS schema |
-| Service (Locust) | `BENCHMARK_LOCUST` | In SPCS schema |
-
-Then ask the user: **"Would you like me to clean up these resources, or keep them for further benchmarking?"**
-
-Options:
-1. **Full cleanup** — tear down everything (SPCS services, compute pools, interactive tables, warehouse, schemas)
-2. **Tear down SPCS only** — remove services and compute pools but keep the interactive warehouse and tables
-3. **Keep everything** — leave all resources running for re-runs
-
-If the user chooses **full cleanup**:
-```bash
-cd <SKILL_DIR>/benchmark/spcs && ./teardown.sh
-```
-
-Then drop the schemas and warehouse:
-
-```sql
-USE ROLE <ROLE>;
-DROP SCHEMA IF EXISTS <DATABASE>.<INTERACTIVE_SCHEMA>;
-DROP SCHEMA IF EXISTS <SOLUTION_NAME>_BENCH_DB.SPCS;
-DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
-```
-
-If the SPCS database was created entirely by this benchmark and is now empty, also drop it:
-
-```sql
-DROP DATABASE IF EXISTS <SOLUTION_NAME>_BENCH_DB;
-```
-
-If the user chooses **SPCS only**:
-```bash
-cd <SKILL_DIR>/benchmark/spcs && ./teardown.sh
-```
-
-If the user chooses to **keep everything**, save the deployment state in `benchmark/.env` so future runs reuse the existing services instead of redeploying:
-
-```
-# Existing entries
-CONNECTION_NAME=<connection>
-SOLUTION_NAME=<name>
-
-# SPCS deployment state (added when services are kept)
-SPCS_DEPLOYED=true
-SPCS_API_INGRESS_URL=<the ingress URL>
-SPCS_LOCUST_INGRESS_URL=<the locust ingress URL>
-```
-
-On future invocations of this skill, check `benchmark/.env` for `SPCS_DEPLOYED=true`. If set, skip Step 3.6 (Deploy to SPCS) and reuse the saved ingress URLs for cache warming and load testing. If the user later wants to tear down, run `./teardown.sh` and remove the `SPCS_*` lines from `.env`.
-
-```bash
-cd <SKILL_DIR>/benchmark/spcs && ./status.sh
-```
-
-Options:
-- `./status.sh --wait` — poll until all services are READY
-- `./status.sh --urls-only` — print only ingress URLs
+**Summary:** Present the user with a table of all created resources (interactive warehouse, schema, tables, SPCS database/schema, compute pools, image repo, services). Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything. For full cleanup, run `./teardown.sh` then drop schemas/warehouse/database via SQL. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
 
 ---
 
@@ -657,11 +465,19 @@ Request body: `{"query_id": "<id>"}`. Response includes `elapsed_ms`, `row_count
 
 ## Stopping Points
 
-- After detecting intent — confirm action before proceeding
-- After `snowflake-interactive` completes — confirm tables/warehouses were created
-- After suitability check — stop if query shows no interactive benefit
-- Before `deploy.sh services` — warn about compute pool cost implications
-- Before teardown — confirm which resources to drop
+- ⚠️ **Phase 1** — Do not proceed until all inputs are confirmed by the user
+- ⚠️ **Phase 2 (Suitability Check)** — STOP if query exceeds 10s on standard, 5s on interactive, or shows no speedup. Do not enter Phase 3.
+- ⚠️ **Step 3.1** — STOP if Docker is not running. Cannot deploy SPCS without it.
+- ⚠️ **Step 3.6** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
+- ⚠️ **Step 3.8** — STOP if baseline test fails (high failure rate or p99). Infrastructure is not healthy.
+- ⚠️ **Step 3.12** — STOP and ask the user only when both scale-out and scale-up limits are exhausted and the P95 goal is still not met.
+- ⚠️ **Step 3.14** — Confirm cleanup choice before dropping any resources.
+
+## Output
+
+- `benchmark/reports/<SOLUTION_NAME>/benchmark-report.html` — HTML report with executive summary, percentile charts, bottleneck diagnosis, escalation path, and optimization recommendations
+- `benchmark/reports/<SOLUTION_NAME>/locust-run-N.txt` — Raw Locust logs for each load test iteration (one per escalation step)
+- Snowflake resources (interactive warehouse, tables, SPCS services) — listed in Step 3.14 for cleanup or reuse
 
 ## Checklist and Troubleshooting
 
