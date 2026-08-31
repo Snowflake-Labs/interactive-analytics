@@ -60,8 +60,24 @@ snow_sql() {
 }
 
 # Run a SQL statement quietly and return the raw stdout.
+# With -i, snow returns a JSON list-of-lists (one per statement).
+# We flatten to the LAST non-empty rowset for backward compatibility with
+# callers that expect a flat list of dicts.
 snow_sql_quiet() {
-  snow sql --connection "$CONNECTION" --silent --format json "$@"
+  snow sql --connection "$CONNECTION" --silent --format json -i "$@" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+if isinstance(d, list) and d and isinstance(d[0], list):
+    # Pick last non-empty statement rowset, else last one.
+    last = d[-1]
+    for r in reversed(d):
+        if r:
+            last = r
+            break
+    print(json.dumps(last))
+else:
+    print(json.dumps(d))
+'
 }
 
 # Run a SQL script (heredoc on stdin) suppressing normal table output.

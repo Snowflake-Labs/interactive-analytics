@@ -65,12 +65,26 @@ SHOW WAREHOUSES LIKE '${FQ_WH}';
 EOF
 )"
 
-CURRENT_SIZE="$(echo "$CURRENT_PROPS" | python3 -c "import sys,json; rows=json.load(sys.stdin); print(rows[-1]['size'] if rows else 'XSMALL')")"
-CURRENT_MCW="$(echo "$CURRENT_PROPS" | python3 -c "import sys,json; rows=json.load(sys.stdin); print(rows[-1]['max_cluster_count'] if rows else '1')")"
+# snow sql --format json with multi-statement returns [[{status}], [{row},...]].
+# This helper extracts the last non-empty sub-array of dicts.
+_PY_UNWRAP='import sys,json
+data=json.load(sys.stdin)
+if data and isinstance(data[0],list):
+    for sub in reversed(data):
+        if sub and isinstance(sub[0],dict): data=sub; break
+'
+
+CURRENT_SIZE="$(echo "$CURRENT_PROPS" | python3 -c "
+${_PY_UNWRAP}
+print(data[-1].get('size','XSMALL') or 'XSMALL' if data else 'XSMALL')
+")"
+CURRENT_MCW="$(echo "$CURRENT_PROPS" | python3 -c "
+${_PY_UNWRAP}
+print(data[-1].get('max_cluster_count',1) if data else 1)
+")"
 CURRENT_FALLBACK="$(echo "$CURRENT_PROPS" | python3 -c "
-import sys, json
-rows = json.load(sys.stdin)
-fb = rows[-1].get('fallback_warehouse', '') if rows else ''
+${_PY_UNWRAP}
+fb = data[-1].get('fallback_warehouse', '') if data else ''
 print(fb if fb else '')
 " 2>/dev/null || true)"
 
@@ -96,8 +110,15 @@ EOF
 )"
 TABLE_LIST="$(echo "$ATTACHED_TABLES" | python3 -c "
 import sys, json
-rows = json.load(sys.stdin)
-names = [r['name'] for r in rows if r.get('warehouse_name','').upper() == '${FQ_WH}'.upper()]
+data = json.load(sys.stdin)
+# Unwrap multi-statement [[{status}],[{rows},...]] to flat list of dicts
+if data and isinstance(data[0], list):
+    flat = []
+    for sub in data:
+        if isinstance(sub, list):
+            flat.extend(sub)
+    data = flat
+names = [r['name'] for r in data if isinstance(r, dict) and r.get('warehouse_name','').upper() == '${FQ_WH}'.upper()]
 if names:
     print(',\n        '.join(f'${API_DATABASE}.${INTERACTIVE_SCHEMA}.{n}' for n in names))
 " 2>/dev/null || true)"

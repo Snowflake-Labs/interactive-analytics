@@ -4,14 +4,6 @@ For an Interactive warehouse, each cluster has:
 
 - **MAX_CONCURRENCY_LEVEL = 8** by default (queries running simultaneously per cluster before new arrivals queue).
 
-## Case A — Users with think time (typical interactive/dashboard usage)
-
-If each user fires a query every 3–5 seconds, average in-flight queries ≈ `users × 0.26 / 4` at any instant.
-
-**Example:** 50 users → ≈ 3–4 queries in flight at once. **1 cluster is enough.** You're nowhere near saturation.
-
-## Case B — Queries literally in flight at the same moment (benchmark-style burst)
-
 Need enough cluster slots to serve all queries in parallel without queueing:
 
 ```
@@ -22,15 +14,7 @@ clusters_needed = ceil(concurrent_queries / MAX_CONCURRENCY_LEVEL)
 
 Set `MAX_CLUSTER_COUNT = 7` (or 8 for headroom) with `MIN_CLUSTER_COUNT = 1` and `SCALING_POLICY = STANDARD`. MCW will spin extra clusters up on demand during the burst and back down when idle.
 
-## Case C — Strict sub-second latency, no queueing ever
-
-Match `MIN_CLUSTER_COUNT` to peak too, so clusters are always warm:
-
-```
-MIN_CLUSTER_COUNT = MAX_CLUSTER_COUNT = clusters_needed
-```
-
-**Example:** `MIN_CLUSTER_COUNT = MAX_CLUSTER_COUNT = 7`. Higher credit cost but no cold-start / spin-up delay.
+This is the best case. So the MAX_CLUSTER_COUNT should ne twice as that, to leave room in case is needed.
 
 ## Levers that change the answer
 
