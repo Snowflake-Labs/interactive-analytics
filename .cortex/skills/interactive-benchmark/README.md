@@ -79,11 +79,15 @@ Everything needed to deploy the benchmark API and load test to Snowpark Containe
    uv run python server.py
    ```
 
-   The server runs on port 3000. Test with:
+   The server runs on port 3000. It loads all `.sql` files from the `test/` directory into a query registry keyed by filename stem (e.g. `test/q1.sql` → `query_id: "q1"`). Test with:
    ```bash
+   # List available queries
+   curl http://localhost:3000/api/queries
+
+   # Run a query by ID
    curl -X POST http://localhost:3000/api/run/interactive \
      -H "Content-Type: application/json" \
-     -d '{"query": "SELECT COUNT(*) FROM my_table"}'
+     -d '{"query_id": "q1"}'
    ```
 
 ## Sample Prompt
