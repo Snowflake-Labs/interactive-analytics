@@ -50,19 +50,6 @@ The workflow has three distinct phases that MUST be followed in order:
 
 The FIRST call after Phase 1 confirmation MUST be `system_todo_write` with all 13 items (first item marked `in_progress`, rest `pending`). Do NOT start any Phase 2/3 work before this call. Update the task list in real-time as you progress — mark each task as `in_progress` when you start it and `completed` when you finish it. Only have ONE task `in_progress` at a time.
 
-**IMPORTANT — Live progress HTML file:** Immediately after creating the task list, also create the progress tracker HTML file at:
-
-```
-<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.html
-```
-
-Use the template at `templates/benchmark-progress.html.template`. Fill in the `{{PLACEHOLDER}}` tokens with initial values (all steps pending, no escalation history yet, status "Starting benchmark…"). **Update this file every time:**
-- A step changes status (starts or completes)
-- An escalation iteration finishes (add a row to the escalation history table)
-- An error occurs
-
-The file has `<meta http-equiv="refresh" content="10">` so the user can keep it open in a browser and see live updates. Open it in the browser for the user right after creating it. When the final report (`benchmark-report.html`) is generated, update the progress file one last time with status "Complete — see benchmark-report.html" and all steps marked done.
-
 ---
 
 ## Phase 1: Gather All Inputs
