@@ -8,8 +8,9 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from queue import Empty, Queue
-from threading import Lock, Semaphore
+from threading import Semaphore
 from typing import Any
 
 import snowflake.connector
@@ -19,8 +20,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from snowflake.connector import DictCursor
-
-from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
@@ -118,18 +117,37 @@ class ConnectionPool:
             self._sem.release()
 
     def warmup(self, count: int | None = None) -> int:
-        """Pre-open up to `count` (default: POOL_SIZE) connections and park them."""
+        """Pre-open up to `count` (default: POOL_SIZE) connections and park them.
+
+        Acquires a semaphore slot for each connection so the pool invariant
+        (at most ``size`` live connections) is preserved.
+        """
         want = self._size if count is None else min(count, self._size)
         opened = 0
         for _ in range(want):
+            if not self._sem.acquire(timeout=0):
+                break
             try:
                 conn = self._new_connection()
             except Exception as exc:
+                self._sem.release()
                 log.warning("Pool warmup failed after %d/%d: %s", opened, want, exc)
                 break
             self._idle.put_nowait(conn)
             opened += 1
         return opened
+
+    def close_all(self) -> None:
+        """Close all idle connections in the pool."""
+        while True:
+            try:
+                conn = self._idle.get_nowait()
+            except Empty:
+                break
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 pool = ConnectionPool()
@@ -199,6 +217,7 @@ async def lifespan(_app: FastAPI):
     yield
     if warmup_task is not None and not warmup_task.done():
         warmup_task.cancel()
+    pool.close_all()
 
 
 app = FastAPI(title="Interactive Warehouse Benchmark API", lifespan=lifespan)
@@ -208,7 +227,8 @@ app = FastAPI(title="Interactive Warehouse Benchmark API", lifespan=lifespan)
 async def unhandled_exception_handler(_request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
         return JSONResponse(status_code=exc.status_code, content={"error": str(exc.detail)})
-    return JSONResponse(status_code=500, content={"error": str(exc)})
+    log.exception("Unhandled exception on %s %s", _request.method, _request.url.path)
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
 class RunRequest(BaseModel):
@@ -216,25 +236,25 @@ class RunRequest(BaseModel):
 
 
 @app.get("/api/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/api/ready")
-async def ready():
+async def ready() -> dict[str, str]:
     if not pool_ready.is_set():
         raise HTTPException(status_code=503, detail="Pool warming up")
     return {"status": "ready"}
 
 
 @app.get("/api/queries")
-async def list_queries():
+async def list_queries() -> list[str]:
     return sorted(query_registry.keys())
 
 
 @app.post("/api/run")
 @app.post("/api/run/interactive")
-async def run_query(body: RunRequest):
+async def run_query(body: RunRequest) -> dict[str, Any]:
     sql = query_registry.get(body.query_id)
     if sql is None:
         raise HTTPException(
@@ -245,7 +265,7 @@ async def run_query(body: RunRequest):
 
 
 @app.post("/api/run/baseline")
-async def run_baseline(body: RunRequest):
+async def run_baseline(body: RunRequest) -> dict[str, Any]:
     """No-op endpoint for infrastructure baseline testing."""
     return {
         "elapsed_ms": 0,
@@ -256,8 +276,6 @@ async def run_baseline(body: RunRequest):
 
 
 def main() -> None:
-    global PORT, WORKERS
-
     parser = argparse.ArgumentParser(description="Benchmark API server")
     parser.add_argument("--port", type=int, default=PORT, help="HTTP port")
     parser.add_argument(
@@ -268,15 +286,15 @@ def main() -> None:
     )
     args, _unknown = parser.parse_known_args()
 
-    PORT = args.port
-    WORKERS = max(1, args.workers)
+    port = args.port
+    workers = max(1, args.workers)
 
     uvicorn.run(
-        "server:app",
+        "benchmark.api.server:app",
         host="0.0.0.0",
-        port=PORT,
+        port=port,
         reload=False,
-        workers=WORKERS if WORKERS > 1 else None,
+        workers=workers if workers > 1 else None,
     )
 
 
