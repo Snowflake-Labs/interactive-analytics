@@ -233,6 +233,17 @@ async def run_query(body: RunRequest):
     return await asyncio.to_thread(execute_query, sql)
 
 
+@app.post("/api/run/baseline")
+async def run_baseline(body: RunRequest):
+    """No-op endpoint for infrastructure baseline testing."""
+    return {
+        "elapsed_ms": 0,
+        "row_count": 0,
+        "warehouse": None,
+        "query_id": None,
+    }
+
+
 def main() -> None:
     global PORT, WORKERS
 

@@ -1,7 +1,7 @@
 ---
 name: interactive-benchmark
 description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test."
-version: 0.4.2
+version: 0.5.0
 ---
 
 # Interactive Warehouse Benchmark
@@ -21,6 +21,21 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 ## Paths
 
 `<SKILL_DIR>` refers to the directory containing this SKILL.md file (`.cortex/skills/interactive-benchmark/`). The benchmark source code lives at `<SKILL_DIR>/benchmark/`.
+
+## SPCS Deployment Topology
+
+The benchmark deploys two services to Snowpark Container Services. After deployment (Step 3.6), inform the user exactly what is running:
+
+| Service | Container Instances | Compute Pool Nodes | Instance Family |
+|---------|--------------------:|-------------------:|-----------------|
+| **Benchmark API** (FastAPI) | 3 (configurable: `API_MIN_INSTANCES` / `API_MAX_INSTANCES`) | 1-4 (configurable: `API_MIN_NODES` / `API_MAX_NODES`) | CPU_X64_M |
+| **Locust** (load generator) | 1 (fixed) | 1-2 (configurable: `LOCUST_MIN_NODES` / `LOCUST_MAX_NODES`) | CPU_X64_M |
+
+**Why 3 API instances?** A single FastAPI/Uvicorn process handles requests sequentially per worker. With 3 instances (each running WORKERS uvicorn workers), the API layer can serve high concurrency without becoming the bottleneck. The baseline test (Step 3.8 Phase 1) validates this.
+
+**Why 1 Locust instance?** Locust is the load *generator*, not the system under test. A single instance can simulate hundreds of concurrent users.
+
+All instance and node counts are configurable in `benchmark/spcs/config.env`.
 
 ---
 
@@ -42,13 +57,14 @@ The workflow has three distinct phases that MUST be followed in order:
 6. Configure environment (config.env)
 7. Deploy to SPCS
 8. Warm the cache
-9. Run load test
-10. Collect server-side metrics
-11. Goal check and escalation (if needed)
-12. Generate HTML report
-13. Teardown or keep services
+9. Run baseline test (infrastructure validation)
+10. Run load test (Snowflake benchmark)
+11. Collect server-side metrics
+12. Goal check and escalation (if needed)
+13. Generate HTML report
+14. Teardown or keep services
 
-The FIRST call after Phase 1 confirmation MUST be `system_todo_write` with all 13 items (first item marked `in_progress`, rest `pending`). Do NOT start any Phase 2/3 work before this call. Update the task list in real-time as you progress — mark each task as `in_progress` when you start it and `completed` when you finish it. Only have ONE task `in_progress` at a time.
+The FIRST call after Phase 1 confirmation MUST be `system_todo_write` with all 14 items (first item marked `in_progress`, rest `pending`). Do NOT start any Phase 2/3 work before this call. Update the task list in real-time as you progress — mark each task as `in_progress` when you start it and `completed` when you finish it. Only have ONE task `in_progress` at a time.
 
 ---
 
@@ -68,9 +84,9 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | 8 | **Max warehouse size (scale-up limit)** | Maximum SKU the interactive warehouse can grow to (X-Small, Small, Medium, Large, X-Large, ...). Bounds vertical scaling. | Medium |
 | 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `ceil(concurrent_users / 15)`. | ceil(users/15) + 1 |
 | 10 | **Benchmark name** | Short alphanumeric name used as `SOLUTION_NAME` to prefix all created resources. | `IWB_YYYYMMDDHHMM` (e.g. `IWB_202608271430`) |
-| 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.11. | 5 |
+| 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.12. | 5 |
 
-**Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_STD`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_INT`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.13).
+**Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_STD`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_INT`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.14).
 
 **Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster)." Never create resources silently.
 
@@ -227,7 +243,7 @@ Compare total working set size against the interactive warehouse size:
 
 **CRITICAL: Interactive warehouses scale concurrency *horizontally* (multi-cluster), not vertically. Configure `MAX_CLUSTER_COUNT` and a fallback warehouse BEFORE the load test.**
 
-**MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.11), you MUST run the cache warm-up procedure (Step 3.7) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
+**MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.12), you MUST run the cache warm-up procedure (Step 3.7) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
 
 Compute the required cluster count:
 
@@ -235,7 +251,7 @@ Compute the required cluster count:
 RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
 ```
 
-Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.11 will detect if queueing causes P95 misses and propose escalation at that point. Apply:
+Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point. Apply:
 
 ```sql
 ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
@@ -306,7 +322,7 @@ Both config files MUST be created from their templates — never edit the templa
 
 3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist from a previous run, do NOT reuse them blindly. Diff each value in the table above against the current Phase 1/Step 2.1 answers and overwrite anything that changed.
 
-**Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Step 3.8 for the execution flow.
+**Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Step 3.8 and Step 3.9 for the execution flow.
 
 ---
 
@@ -335,6 +351,7 @@ This deploys:
    - Insufficient privileges (check ROLE)
 4. If a service enters FAILED state, immediately show the user the output of `./logs.sh` and stop.
 5. Only proceed to the next step once both services report READY.
+6. **Display the SPCS topology to the user** (see "SPCS Deployment Topology" section above). This makes it clear how many containers are running and how compute is distributed, so the user can judge whether the infrastructure is appropriately sized for their concurrency target.
 
 ---
 
@@ -369,16 +386,47 @@ Discard the results from these warm-up calls — they are not part of the benchm
 
 ---
 
-### Step 3.8: Run Load Test
+### Step 3.8: Run Baseline Test (Infrastructure Validation)
 
-**Execution model:** Locust runs inside the SPCS container in **non-headless mode with `--autostart --autoquit --run-time`**. When the container starts, the swarm begins automatically, runs for `LOCUST_RUN_TIME`, then locust quits. The container stays alive afterward and periodically re-prints the results CSV to stdout so `snow spcs service logs` can retrieve them at any time.
+The Locust container now runs a **two-phase execution model**. When the container starts, it automatically executes both phases in sequence:
 
-This means **there is no external HTTP call needed to trigger the test.** Starting the container starts the test. SPCS public ingress requires Snowflake auth, so external `curl /swarm` calls will not work with `externalbrowser` connections and no stored PAT — the auto-start design sidesteps this entirely.
+**Phase 1 — Baseline:** Locust runs `BaselineUser` against the no-op `POST /api/run/baseline` endpoint for `BASELINE_RUN_TIME` (default 1 minute) with the same user count and spawn rate as the real benchmark. This measures pure API/SPCS infrastructure throughput without touching Snowflake.
 
-#### 12a. Trigger the run
+After Phase 1 completes, the entrypoint parses the baseline CSV and checks:
+- **Failure rate** must be <= `BASELINE_MAX_FAILURE_PCT` (default 1%)
+- **p99 latency** must be <= `BASELINE_MAX_P99_MS` (default 500ms)
+
+If either threshold is exceeded, the container logs an error with remediation suggestions (increase API instances, increase compute pool nodes, or reduce user count) and **does NOT proceed to Phase 2**. The container stays alive for log retrieval.
+
+**Phase 2 — Snowflake Benchmark:** Only runs if Phase 1 passes. This is the real load test against `POST /api/run/interactive`.
+
+Baseline env vars (all have sensible defaults — no SPCS spec changes required):
+
+| Variable | Default | Description |
+|---|---|---|
+| `BASELINE_RUN_TIME` | `1m` | Duration of the baseline test |
+| `BASELINE_MAX_FAILURE_PCT` | `1` | Max acceptable failure % |
+| `BASELINE_MAX_P99_MS` | `500` | Max acceptable p99 in milliseconds |
+
+**There is no external HTTP call needed to trigger either phase.** Starting the container starts the baseline, and a passing baseline automatically starts the benchmark. SPCS public ingress requires Snowflake auth, so the auto-start design sidesteps this entirely.
+
+Monitor baseline progress in the logs:
+```bash
+cd <SKILL_DIR>/benchmark/spcs && ./logs.sh locust
+```
+
+Look for `[baseline] VERDICT: PASS` to confirm the infrastructure is healthy before the benchmark begins.
+
+---
+
+### Step 3.9: Run Load Test (Snowflake Benchmark)
+
+**This step runs automatically after the baseline passes (Step 3.8).** No manual trigger is needed on the first run.
+
+#### 9a. Trigger the run
 
 Depending on state:
-- **First run after `./deploy.sh`** — the locust container just came up; the swarm is already running. No action needed. Proceed to 12b.
+- **First run after `./deploy.sh`** — both phases run automatically when the container starts. No action needed. Proceed to 9b.
 - **Subsequent runs after changing config or warehouse settings** — force a container restart by re-applying the spec:
   ```bash
   cd <SKILL_DIR>/benchmark/spcs && ./update.sh
@@ -392,10 +440,11 @@ Depending on state:
   ```bash
   cd <SKILL_DIR>/benchmark/spcs && ./status.sh --wait
   ```
+  Note: the baseline will re-run on every restart. This is intentional — it re-validates the infrastructure after any configuration change.
 
-#### 12b. Monitor the run
+#### 9b. Monitor the run
 
-The test runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
+The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
 
 - **Watch cluster scaling** on the interactive warehouse:
   ```sql
@@ -409,7 +458,7 @@ The test runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
   ```
   You'll see lines like `Ramping to 50 users at a rate of 5.00 per second` and `All users spawned`.
 
-#### 12c. Retrieve the results
+#### 9c. Retrieve the results
 
 After `LOCUST_RUN_TIME + ~10 s` (for `--autoquit` to fire), locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV:
 
@@ -426,18 +475,21 @@ Min, Max, Avg Content Size, Requests/s, Failures/s, 50%, 66%, 75%, 80%, 90%, 95%
 
 Parse the `/api/run/interactive` row for P50, P95, P99 and failure counts.
 
-If you need results before the test finishes, the container also emits a HEARTBEAT block every 2 minutes with the current CSV — grep for `HEARTBEAT` in the logs.
+The baseline results are also available in the logs under the `======================== BASELINE RESULTS ========================` banner. The baseline p99 establishes the infrastructure overhead floor.
+
+If you need results before the test finishes, the container also emits a HEARTBEAT block every 2 minutes with both baseline and benchmark CSVs — grep for `HEARTBEAT` in the logs.
 
 ---
 
-### Step 3.9: Analyze Results and Generate Recommendations
+### Step 3.10: Analyze Results and Generate Recommendations
 
-After the load test completes, collect **two independent measurements** of latency:
+After the load test completes, collect **three sets of measurements**:
 
-1. **Client-side (Locust HTTP)** — P50, P95, P99 from the Locust CSV for the `/api/run/interactive` endpoint. This is what the end user experiences (HTTP round-trip + API pool + Snowflake).
-2. **Server-side (Snowflake)** — P50, P95, P99 computed from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` for the interactive warehouse. This is what Snowflake alone spent (compile + queue + execute).
+1. **Baseline (Locust HTTP)** — p99 from the baseline CSV for `/api/run/baseline`. This is the infrastructure overhead floor — the minimum latency added by the API/network layer.
+2. **Client-side (Locust HTTP)** — P50, P95, P99 from the Locust CSV for the `/api/run/interactive` endpoint. This is what the end user experiences (HTTP round-trip + API pool + Snowflake).
+3. **Server-side (Snowflake)** — P50, P95, P99 computed from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` for the interactive warehouse. This is what Snowflake alone spent (compile + queue + execute).
 
-Both sets of numbers are **mandatory**. The server-side numbers are what proves Snowflake performance; the client-side numbers are what the user's dashboard sees. The **delta between them isolates the API/HTTP overhead from Snowflake's real cost** — without this comparison you cannot tell whether the API layer is a bottleneck or the warehouse is.
+All three sets of numbers are **mandatory**. The server-side numbers are what proves Snowflake performance; the client-side numbers are what the user's dashboard sees; the baseline numbers establish the infrastructure overhead floor. The **delta between client-side and server-side isolates the API/HTTP overhead from Snowflake's real cost**. If that delta is significantly higher than the baseline p99, there may be connection pool contention or other API-layer issues beyond simple HTTP overhead.
 
 Also collect:
 - Throughput (requests/sec) from Locust
@@ -454,7 +506,7 @@ Capture these recommendations for the report.
 
 ---
 
-### Step 3.10: Post-Benchmark Server-Side Validation
+### Step 3.11: Post-Benchmark Server-Side Validation
 
 After collecting the Locust CSV, **you MUST run server-side aggregation queries against Snowflake for the interactive warehouse**. This is not optional — the Locust numbers alone cannot distinguish API/HTTP overhead from Snowflake time.
 
@@ -466,15 +518,15 @@ The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every reques
 
 ---
 
-### Step 3.11: Goal Check and Iterative Escalation
+### Step 3.12: Goal Check and Iterative Escalation
 
-After collecting the server-side percentiles from Step 3.10, evaluate them against the P95 latency goal captured in Phase 1.
+After collecting the server-side percentiles from Step 3.11, evaluate them against the P95 latency goal captured in Phase 1.
 
-**Case 1 — Goal met on both client and server.** Report success. Proceed to Step 3.12.
+**Case 1 — Goal met on both client and server.** Report success. Proceed to Step 3.13.
 
-**Case 2 — Server-side P95 meets the goal but client-side does not.** Snowflake is doing its job; the tail comes from API/HTTP overhead. Do NOT propose warehouse scale-up — it will not help. Diagnose and document, then proceed to Step 3.12.
+**Case 2 — Server-side P95 meets the goal but client-side does not.** Snowflake is doing its job; the tail comes from API/HTTP overhead. Do NOT propose warehouse scale-up — it will not help. Diagnose and document, then proceed to Step 3.13.
 
-**Case 3 — Server-side P95 does NOT meet the goal.** The warehouse itself is not delivering the target latency. Automatically escalate within the user's pre-approved limits. Pick the right lever based on the profile from Step 3.10:
+**Case 3 — Server-side P95 does NOT meet the goal.** The warehouse itself is not delivering the target latency. Automatically escalate within the user's pre-approved limits. Pick the right lever based on the profile from Step 3.11:
 
 1. **Scale out (increase MAX_CLUSTER_COUNT)** — only if `AVG_QUEUE_MS > 0` on the interactive warehouse. Queueing is the signal that horizontal scaling will help. Bounded by the user's scale-out limit (Phase 1).
 2. **Scale up (bump the warehouse SKU)** — if `AVG_QUEUE_MS == 0` (no queueing — the bottleneck is per-query execution, not concurrency). Move to the next SKU (X-Small -> Small -> Medium -> Large -> ...). Each step roughly doubles cache and cores and typically halves per-query execute time. Bounded by the user's scale-up limit (Phase 1).
@@ -482,19 +534,19 @@ After collecting the server-side percentiles from Step 3.10, evaluate them again
 
 **Do NOT ask for permission to scale within the defined limits.** The user already approved the scale-out limit (MAX_CLUSTER_COUNT) and scale-up limit (warehouse size) in Step 1. As long as the proposed change stays within those boundaries, proceed automatically — inform the user what you are doing (e.g. "P95 goal not met. Scaling warehouse from X-Small to Small — within your approved ceiling of Medium. Re-running benchmark.") but do NOT wait for confirmation. This keeps the benchmark moving without unnecessary interruptions.
 
-**After each escalation:** re-configure the warehouse via SQL (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), then re-run the load test (Step 3.8) and re-collect the server-side numbers (Step 3.10). **Do NOT re-deploy SPCS** — the API and Locust services are already running; only the warehouse configuration changes. To re-trigger the load test, suspend/resume the Locust service as described in Step 3.8 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 6)** to avoid runaway loops.
+**After each escalation:** re-configure the warehouse via SQL (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — the API and Locust services are already running; only the warehouse configuration changes. To re-trigger the load test, suspend/resume the Locust service as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 6)** to avoid runaway loops.
 
 **Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. **Only at this point should you stop and ask the user.** Tell them clearly, for example:
 
 > "The target of **P95 <= 1000 ms** is not achievable within your scale-out limit of **5 clusters** and scale-up limit of **Medium**. Best result reached: server-side P95 = **1800 ms** (Medium x 5 clusters). Options: (a) relax one of the ceilings and re-run, (b) redesign the query (fewer joins, pre-aggregated table, narrower predicates), (c) reduce data scanned (better clustering, search optimization), (d) accept the current performance. How would you like to proceed?"
 
-Then produce the Step 3.12 report with the ceiling-limited numbers and mark the P95 goal as **not met — limit-bound** in the executive summary tile.
+Then produce the Step 3.13 report with the ceiling-limited numbers and mark the P95 goal as **not met — limit-bound** in the executive summary tile.
 
 **Recording the iteration history.** For the report, keep a short log of each iteration (starting size / MCW, resulting server-side P95, decision) so the reader can see the escalation path. This log populates the `{{ITERATION_HISTORY}}` placeholder in the template.
 
 ---
 
-### Step 3.12: Generate HTML Report
+### Step 3.13: Generate HTML Report
 
 **MANDATORY: use the bundled template.** The report MUST be produced by starting from the canonical HTML template shipped with this skill and filling in its `{{PLACEHOLDER}}` tokens. Do NOT hand-author the report from scratch, do NOT change the section order, and do NOT modify the CSS or structure.
 
@@ -508,7 +560,7 @@ Create a subfolder named after the benchmark (e.g. `reports/IWB_202608271430/`).
 - `locust-run-2.txt` — Locust log from the second iteration (if escalation triggered a re-run)
 - `locust-run-3.txt` — Locust log from the third iteration (if needed)
 
-Each time the load test runs (Step 3.8), save the full Locust output (`./logs.sh locust`) to the next numbered file. This ensures every iteration's results are preserved — even runs that did not meet the goal. The final HTML report references the last successful run's data, but earlier runs provide the escalation history.
+Each time the load test runs (Step 3.9), save the full Locust output (`./logs.sh locust`) to the next numbered file. This ensures every iteration's results are preserved — even runs that did not meet the goal. The final HTML report references the last successful run's data, but earlier runs provide the escalation history.
 
 **Load** `references/report-generation.md` for the full procedure, coverage requirements, and verification steps.
 
@@ -516,7 +568,7 @@ Open the report in the browser for the user when done.
 
 ---
 
-### Step 3.13: Resource Summary and Cleanup
+### Step 3.14: Resource Summary and Cleanup
 
 After the report is generated, present the user with a **complete list of all Snowflake resources created during this benchmark session**. Format it as a clear table:
 
@@ -597,8 +649,9 @@ Options:
 | GET | `/api/health` | Health check |
 | POST | `/api/run/interactive` | Execute query on interactive warehouse |
 | POST | `/api/run` | Alias for `/api/run/interactive` |
+| POST | `/api/run/baseline` | No-op endpoint for infrastructure baseline testing |
 
-Request body: `{"query": "SELECT ..."}`. Response includes `elapsed_ms`, `row_count`, `warehouse`, `query_id`.
+Request body: `{"query_id": "<id>"}`. Response includes `elapsed_ms`, `row_count`, `warehouse`, `query_id`. The baseline endpoint returns `elapsed_ms: 0` and `null` for warehouse/query_id.
 
 ---
 

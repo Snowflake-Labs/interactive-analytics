@@ -1,10 +1,12 @@
 """
 Locust workload for the interactive warehouse benchmark API.
 
-Reads .sql filenames from a queries directory and POSTs their IDs to:
-  - POST /api/run/interactive  {"query_id": "<stem>"}
-
-The server must have the same .sql files loaded in its query registry.
+Two user classes:
+  - BenchmarkUser: reads .sql filenames from a queries directory and POSTs
+    their IDs to POST /api/run/interactive {"query_id": "<stem>"}.
+    The server must have the same .sql files loaded in its query registry.
+  - BaselineUser: POSTs to POST /api/run/baseline with a static payload.
+    Measures pure API/infra throughput without touching Snowflake.
 
 Query directory can be set three ways (last wins):
   1. Env var: BENCHMARK_QUERIES_DIR
@@ -12,9 +14,11 @@ Query directory can be set three ways (last wins):
   3. Default: ../test/ (relative to this file) or /app/test/ (in container)
 
 Examples:
-  uv run locust -f locustfile.py --host http://localhost:3000
-  uv run locust -f locustfile.py --host http://localhost:3000 \
-      --headless -u 20 -r 5 -t 2m
+  # Run benchmark (Snowflake queries):
+  uv run locust -f locustfile.py BenchmarkUser --host http://localhost:3000
+  # Run baseline (no-op, infra only):
+  uv run locust -f locustfile.py BaselineUser --host http://localhost:3000 \
+      --headless -u 20 -r 5 -t 1m
 """
 
 from __future__ import annotations
@@ -81,6 +85,24 @@ class BenchmarkUser(HttpUser):
         with self.client.post(
             endpoint,
             json=payload,
+            name=endpoint,
+            catch_response=True,
+        ) as response:
+            if response.status_code != 200:
+                response.failure(f"{endpoint} status {response.status_code}: {response.text}")
+
+
+class BaselineUser(HttpUser):
+    """Hits the no-op baseline endpoint to measure pure API/infra throughput."""
+
+    wait_time = between(0.5, 1.5)
+
+    @task
+    def run_baseline(self) -> None:
+        endpoint = "/api/run/baseline"
+        with self.client.post(
+            endpoint,
+            json={"query_id": "baseline"},
             name=endpoint,
             catch_response=True,
         ) as response:
