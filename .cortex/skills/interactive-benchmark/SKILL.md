@@ -390,22 +390,27 @@ This deploys:
 
 **Cost note:** This creates 2 compute pools (CPU_X64_M) that incur credits while running. All resources are listed in Step 3.14 where the user chooses to tear down or keep them.
 
-**IMPORTANT — Deployment monitoring:** SPCS deployments can take 3–10 minutes (compute pool provisioning + image pull + container start). To avoid appearing stuck:
+**IMPORTANT — Deployment monitoring:** SPCS deployments can take 3–10 minutes (compute pool provisioning + image pull + container start). **You MUST give the user clear, human-readable progress updates** so the deployment doesn't look stuck. Bare tool-call blocks with no text are unacceptable.
 
-1. Run `deploy.sh` in the background (as above with `run_in_background=true`). Use `bash_output` to check progress.
-2. Every 30 seconds, use the `bash` tool to poll service status and report to the user:
+1. Run `deploy.sh` in the background (`run_in_background=true`). Use `bash_output` to check progress.
+2. **Every 30 seconds**, poll service status:
    ```bash
    cd <SKILL_DIR>/benchmark/scripts && ./status.sh
    ```
-   This shows the current state of each service (PENDING, READY, FAILED) along with a status message (e.g. "Pending scheduling", "Pulling image").
-3. If a service stays in PENDING for more than 5 minutes, use the `bash` tool to run `./logs.sh` and report any errors to the user. Common causes:
+3. **After every poll, write a one-line text update** summarizing the current state. Examples:
+   - "Both services still PENDING — compute pools are provisioning. (~1 min elapsed)"
+   - "Benchmark API is READY. Locust is PENDING — pulling image. (~3 min elapsed)"
+   - "Both services are READY — deployment complete."
+
+   Include: which services are up, what the current status/message is, and roughly how long it has been. This keeps the user informed instead of showing a wall of silent BASH OUTPUT blocks.
+4. If a service stays in PENDING for more than 5 minutes, run `./logs.sh` and report any errors to the user. Common causes:
    - Compute pool still provisioning (normal — wait)
    - Image pull in progress (normal — wait)
    - Image not found (check `build-and-push.sh` succeeded)
    - Insufficient privileges (check ROLE)
-4. If a service enters FAILED state, immediately use the `bash` tool to run `./logs.sh`, show the user the output, and stop.
-5. Only proceed to the next step once both services report READY.
-6. **Display the SPCS topology to the user** (see "SPCS Deployment Topology" section above). This makes it clear how many containers are running and how compute is distributed, so the user can judge whether the infrastructure is appropriately sized for their concurrency target.
+5. If a service enters FAILED state, immediately run `./logs.sh`, show the user the output, and stop.
+6. Only proceed to the next step once both services report READY.
+7. **Display the SPCS topology to the user** (see "SPCS Deployment Topology" section above). This makes it clear how many containers are running and how compute is distributed, so the user can judge whether the infrastructure is appropriately sized for their concurrency target.
 
 ---
 
