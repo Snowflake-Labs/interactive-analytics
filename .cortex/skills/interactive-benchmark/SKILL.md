@@ -24,8 +24,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 | Action | Tool | Notes |
 |--------|------|-------|
-| Execute SQL | `snowflake_sql_execute` | All SQL in this skill. Never use `bash` + `snow sql`. |
-| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `cp`, `update.sh`. Use `run_in_background=true` for `deploy.sh`. |
+| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `cp`, `update.sh`. Use `run_in_background=true` for `deploy.sh`. |
 | Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.6). |
 | Read files | `read` | For templates, configs, reference docs, logs. |
 | Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures. |
@@ -202,12 +201,21 @@ Compute the required cluster count:
 RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
 ```
 
-Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point. Apply via `snowflake_sql_execute`:
+Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point.
+
+**IMPORTANT — Use `resize-wh.sh` for any warehouse reconfiguration.** SPCS API workers hold persistent connections to the interactive warehouse and will resume it on every request, which blocks `ALTER WAREHOUSE ... SET WAREHOUSE_SIZE`. Direct `ALTER WAREHOUSE` via `snowflake_sql_execute` will fail or hang while services are running. Always use the `resize-wh.sh` script instead — it deterministically suspends SPCS services, drains connections, suspends the warehouse, applies changes, then resumes everything.
+
+Apply the initial cluster count via `bash`:
+
+```bash
+cd <SKILL_DIR>/benchmark/spcs && ./resize-wh.sh --mcw <computed_value>
+```
+
+Then configure `MIN_CLUSTER_COUNT` and `SCALING_POLICY` via `snowflake_sql_execute` (these do not require service suspension):
 
 ```sql
 ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
   MIN_CLUSTER_COUNT = 1,
-  MAX_CLUSTER_COUNT = <computed_value>,
   SCALING_POLICY = 'STANDARD';
 ```
 
@@ -401,7 +409,18 @@ After collecting the server-side percentiles from Step 3.11, evaluate them again
 
 **Do NOT ask for permission to scale within the defined limits.** The user already approved the scale-out limit (MAX_CLUSTER_COUNT) and scale-up limit (warehouse size) in Step 1. As long as the proposed change stays within those boundaries, proceed automatically — inform the user what you are doing (e.g. "P95 goal not met. Scaling warehouse from X-Small to Small — within your approved ceiling of Medium. Re-running benchmark.") but do NOT wait for confirmation. This keeps the benchmark moving without unnecessary interruptions.
 
-**After each escalation:** re-configure the warehouse via `snowflake_sql_execute` (`ALTER WAREHOUSE ... SET WAREHOUSE_SIZE=... / MAX_CLUSTER_COUNT=...`), re-warm the cache (Step 3.7), then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — the API and Locust services are already running; only the warehouse configuration changes. To re-trigger the load test, suspend/resume the Locust service via `snowflake_sql_execute` as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
+**After each escalation:** re-configure the warehouse using `resize-wh.sh` via `bash`. This script suspends SPCS services, drains connections, applies the warehouse changes, and resumes everything in one deterministic sequence. **Do NOT use `snowflake_sql_execute` with direct `ALTER WAREHOUSE` for size or MCW changes — SPCS workers will block the resize.**
+
+```bash
+# Scale up only:
+cd <SKILL_DIR>/benchmark/spcs && ./resize-wh.sh --size <NEW_SIZE>
+# Scale out only:
+cd <SKILL_DIR>/benchmark/spcs && ./resize-wh.sh --mcw <NEW_MCW>
+# Both at once:
+cd <SKILL_DIR>/benchmark/spcs && ./resize-wh.sh --size <NEW_SIZE> --mcw <NEW_MCW>
+```
+
+After `resize-wh.sh` completes (services are already resumed), re-warm the cache (Step 3.7), then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — `resize-wh.sh` only suspends/resumes the services, it does not recreate them. To re-trigger the load test, suspend/resume the Locust service via `snowflake_sql_execute` as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
 
 **Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. **Only at this point should you stop and ask the user.** Tell them clearly, for example:
 
