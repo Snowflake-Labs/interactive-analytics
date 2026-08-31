@@ -1,6 +1,6 @@
 ---
 name: interactive-benchmark
-version: 0.5.2
+version: 0.5.3
 description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test, stress test, how fast under load, concurrent query performance, can my query handle N users, latency under concurrency, query throughput test."
 ---
 
@@ -133,13 +133,15 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | 6 | **P95 latency goal** | Target P95 latency under concurrent load. Any latency figure is interpreted as P95 unless the user explicitly says otherwise. | P95 <= 1 second |
 | 7 | **Concurrent users** | How many simulated concurrent users for the load test? | 50 |
 | 8 | **Max warehouse size (scale-up limit)** | Maximum SKU the interactive warehouse can grow to (X-Small, Small, Medium, Large, X-Large, ...). Bounds vertical scaling. | Medium |
-| 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `ceil(concurrent_users / MAX_CONCURRENCY_LEVEL)` where MCL defaults to 8. See `references/mcw-sizing.md` for Cases A/B/C. | ceil(users/8) + 1 |
+| 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `ceil(concurrent_users / MAX_CONCURRENCY_LEVEL) * 2` where MCL defaults to 8. See `references/mcw-sizing.md` for details. | ceil(users/8) * 2 |
 | 10 | **Benchmark name** | Short alphanumeric name used as `SOLUTION_NAME` to prefix all created resources. | `IWB_YYYYMMDDHHMM` (e.g. `IWB_202608271430`) |
 | 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.12. | 5 |
 
 **Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_STD`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_INT`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.14).
 
 **Interactive warehouse AUTO_SUSPEND:** Never set `AUTO_SUSPEND` on an interactive warehouse. When creating or altering an interactive warehouse, always set `AUTO_SUSPEND = 0` (never suspend) to ensure it remains running.
+
+**CRITICAL — DDL must use a standard warehouse:** Interactive warehouses reject DDL and CTAS operations. `CREATE INTERACTIVE TABLE ... AS SELECT` and any `CREATE TABLE ... AS SELECT` MUST execute on the **standard** warehouse, never on the interactive warehouse. Always `USE WAREHOUSE <STANDARD_WAREHOUSE>` before running any DDL, table-creation, or data-loading statements. The interactive warehouse is for SELECT queries only. When invoking the `snowflake-interactive` skill in Phase 2, explicitly tell it to use the standard warehouse for creating interactive tables.
 
 **Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster, auto-suspend disabled)." Never create resources silently.
 
@@ -157,7 +159,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Load** `references/suitability-check.md` (via the `read` tool) for the full Step 2.1 and Step 2.2 procedure.
 
-**Summary:** Invoke `snowflake-interactive` skill to create interactive tables/warehouse, then run the query on both standard and interactive warehouses. Capture `INTERACTIVE_WAREHOUSE`, `INTERACTIVE_SCHEMA`, and `OPTIMIZED_QUERY` from the skill output. If the query exceeds 10s on standard or 5s on interactive, or shows no speedup — **STOP** and do not proceed to Phase 3.
+**Summary:** Invoke `snowflake-interactive` skill to create interactive tables/warehouse, then run the query on both standard and interactive warehouses. **CRITICAL: When invoking `snowflake-interactive`, explicitly instruct it to use the standard warehouse (`STANDARD_WAREHOUSE` from Phase 1) for ALL DDL and table creation — interactive warehouses reject `CREATE INTERACTIVE TABLE ... AS SELECT` and any CTAS.** Capture `INTERACTIVE_WAREHOUSE`, `INTERACTIVE_SCHEMA`, and `OPTIMIZED_QUERY` from the skill output. If the query exceeds 10s on standard or 5s on interactive, or shows no speedup — **STOP** and do not proceed to Phase 3.
 
 ---
 
@@ -244,7 +246,7 @@ Compare total working set size against the interactive warehouse size:
 Compute the required cluster count using the benchmark-style (Case B) formula:
 
 ```
-RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / MAX_CONCURRENCY_LEVEL)
+RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / MAX_CONCURRENCY_LEVEL) * 2
 ```
 
 where `MAX_CONCURRENCY_LEVEL` defaults to 8.

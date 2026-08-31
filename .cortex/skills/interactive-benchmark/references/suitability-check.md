@@ -8,6 +8,13 @@ Invoke the `snowflake-interactive` skill to:
 - Create an interactive warehouse attached to those tables
 - Optimize the query for interactive warehouse execution
 
+**CRITICAL — Use the standard warehouse for all DDL:**
+Interactive warehouses reject DDL and CTAS operations. Both `CREATE INTERACTIVE TABLE ... AS SELECT` and `CREATE TABLE ... AS SELECT` will fail with errors like:
+- `Warehouse '...' must not be an interactive warehouse`
+- `Cannot run statement type 'CREATE_TABLE_AS_SELECT' on an interactive warehouse`
+
+When invoking the `snowflake-interactive` skill, you MUST explicitly instruct it to use the **standard warehouse** (from Phase 1) for creating interactive tables and any other DDL. The interactive warehouse should only be used for running SELECT queries after the tables are created and attached.
+
 **Do this by calling:**
 ```
 skill(command="snowflake-interactive")
@@ -16,7 +23,7 @@ skill(command="snowflake-interactive")
 Provide the skill with:
 - The database and schema from Phase 1
 - The query to benchmark
-- The standard warehouse name (for sizing reference)
+- The standard warehouse name — **explicitly state that this warehouse must be used for all DDL, table creation, and CTAS operations**
 
 The `snowflake-interactive` skill will:
 - Create interactive tables (copies of the source tables optimized for interactive workloads)

@@ -8,6 +8,7 @@ spec:
         LOCUST_USERS: "${LOCUST_USERS}"
         LOCUST_SPAWN: "${LOCUST_SPAWN}"
         LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
+        BASELINE_MAX_P99_MS: "40000"
       resources:
         requests:
           memory: 2Gi

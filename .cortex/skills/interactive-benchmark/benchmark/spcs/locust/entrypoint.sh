@@ -22,6 +22,9 @@
 
 set -uo pipefail
 
+RUN_EPOCH="$(date -u +%s)-$$"
+echo "=== RUN_EPOCH ${RUN_EPOCH} ==="
+
 : "${LOCUST_HOST:?LOCUST_HOST must be set (e.g. http://benchmark-api:3000)}"
 
 export BENCHMARK_QUERIES_DIR="${BENCHMARK_QUERIES_DIR:-/app/test}"

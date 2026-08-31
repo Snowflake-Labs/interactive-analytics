@@ -24,7 +24,7 @@ spec:
           cpu: "${API_CPU_LIMIT}"
       readinessProbe:
         port: ${API_PORT}
-        path: /api/health
+        path: /api/ready
   endpoints:
     - name: web
       port: ${API_PORT}

@@ -133,6 +133,7 @@ class ConnectionPool:
 
 
 pool = ConnectionPool()
+pool_ready = asyncio.Event()
 
 
 def load_query_registry(directory: str) -> dict[str, str]:
@@ -188,9 +189,12 @@ async def lifespan(_app: FastAPI):
                 log.info("Prewarmed %d/%d connections", opened, POOL_WARMUP)
             except Exception as exc:  # noqa: BLE001
                 log.warning("Warmup failed: %s", exc)
+            finally:
+                pool_ready.set()
 
         warmup_task = asyncio.create_task(_warmup())
     else:
+        pool_ready.set()
         warmup_task = None
     yield
     if warmup_task is not None and not warmup_task.done():
@@ -214,6 +218,13 @@ class RunRequest(BaseModel):
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/ready")
+async def ready():
+    if not pool_ready.is_set():
+        raise HTTPException(status_code=503, detail="Pool warming up")
+    return {"status": "ready"}
 
 
 @app.get("/api/queries")
