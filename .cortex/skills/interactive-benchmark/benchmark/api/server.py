@@ -290,7 +290,7 @@ def main() -> None:
     workers = max(1, args.workers)
 
     uvicorn.run(
-        "benchmark.api.server:app",
+        "server:app",
         host="0.0.0.0",
         port=port,
         reload=False,
