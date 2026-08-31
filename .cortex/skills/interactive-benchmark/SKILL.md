@@ -133,7 +133,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | 6 | **P95 latency goal** | Target P95 latency under concurrent load. Any latency figure is interpreted as P95 unless the user explicitly says otherwise. | P95 <= 1 second |
 | 7 | **Concurrent users** | How many simulated concurrent users for the load test? | 50 |
 | 8 | **Max warehouse size (scale-up limit)** | Maximum SKU the interactive warehouse can grow to (X-Small, Small, Medium, Large, X-Large, ...). Bounds vertical scaling. | Medium |
-| 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `ceil(concurrent_users / MAX_CONCURRENCY_LEVEL) * 2` where MCL defaults to 8. See `references/mcw-sizing.md` for details. | ceil(users/8) * 2 |
+| 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `MIN = ceil(concurrent_users / MAX_CONCURRENCY_LEVEL)`, `MAX = MIN * 2` where MCL defaults to 8. See `references/mcw-sizing.md` for details. | ceil(users/8) * 2 |
 | 10 | **Benchmark name** | Short alphanumeric name used as `SOLUTION_NAME` to prefix all created resources. | `IWB_YYYYMMDDHHMM` (e.g. `IWB_202608271430`) |
 | 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.12. | 5 |
 
@@ -243,10 +243,11 @@ Compare total working set size against the interactive warehouse size:
 
 **Load** `references/mcw-sizing.md` (via the `read` tool) for the full MCW sizing formula, including Cases A/B/C and levers (MAX_CONCURRENCY_LEVEL, warehouse size) that shift the answer.
 
-Compute the required cluster count using the benchmark-style (Case B) formula:
+Compute the required cluster counts using the formula from `references/mcw-sizing.md`:
 
 ```
-RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / MAX_CONCURRENCY_LEVEL) * 2
+RECOMMENDED_MIN_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / MAX_CONCURRENCY_LEVEL)
+RECOMMENDED_MAX_CLUSTER_COUNT = RECOMMENDED_MIN_CLUSTER_COUNT * 2
 ```
 
 where `MAX_CONCURRENCY_LEVEL` defaults to 8.
@@ -265,7 +266,7 @@ Then configure `MIN_CLUSTER_COUNT` and `SCALING_POLICY` via `snowflake_sql_execu
 
 ```sql
 ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
-  MIN_CLUSTER_COUNT = 1,
+  MIN_CLUSTER_COUNT = <RECOMMENDED_MIN_CLUSTER_COUNT>,
   SCALING_POLICY = 'STANDARD';
 ```
 
