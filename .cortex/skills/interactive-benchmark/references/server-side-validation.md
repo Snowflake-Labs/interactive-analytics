@@ -6,6 +6,8 @@
 
 ```sql
 SELECT
+  WAREHOUSE_SIZE,
+  WAREHOUSE_TYPE,
   COUNT(*) AS N,
   AVG(TOTAL_ELAPSED_TIME)::INT AS AVG_MS,
   MEDIAN(TOTAL_ELAPSED_TIME)::INT AS P50_MS,
@@ -15,13 +17,25 @@ SELECT
   AVG(COMPILATION_TIME)::INT AS AVG_COMPILE_MS,
   AVG(EXECUTION_TIME)::INT AS AVG_EXEC_MS,
   AVG(QUEUED_PROVISIONING_TIME + QUEUED_OVERLOAD_TIME)::INT AS AVG_QUEUE_MS,
-  (AVG(BYTES_SCANNED) / (1024*1024))::INT AS AVG_MB_SCAN
+  (AVG(BYTES_SCANNED) / (1024*1024))::INT AS AVG_MB_SCAN,
+  COUNT(DISTINCT CLUSTER_NUMBER) AS DISTINCT_CLUSTERS_USED,
+  MAX(CLUSTER_NUMBER) AS PEAK_CLUSTER_NUMBER
 FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE(
   WAREHOUSE_NAME => '<INTERACTIVE_WAREHOUSE>',
   RESULT_LIMIT => 5000
 ))
 WHERE START_TIME >= DATEADD(minute, -10, CURRENT_TIMESTAMP())
-  AND EXECUTION_STATUS = 'SUCCESS';
+  AND EXECUTION_STATUS = 'SUCCESS'
+GROUP BY WAREHOUSE_SIZE, WAREHOUSE_TYPE;
+
+-- Notes:
+-- * WAREHOUSE_SIZE and WAREHOUSE_TYPE change across escalation iterations
+--   (e.g. X-Small → Small → Medium, and INTERACTIVE vs STANDARD for fallback).
+--   Grouping by these columns automatically segments iterations that involved
+--   a scale-up, and also isolates fallback traffic (WAREHOUSE_TYPE = 'STANDARD').
+-- * For scale-out-only iterations (same size, different MCW), the rows will
+--   merge. Use DISTINCT_CLUSTERS_USED / PEAK_CLUSTER_NUMBER to distinguish them,
+--   or add a time-window filter to isolate a specific iteration.
 ```
 
 ### 2. Client-vs-server delta table
@@ -49,6 +63,9 @@ Always state the conclusion of this analysis in the report — the reader must k
 ```sql
 SELECT
   QUERY_ID,
+  WAREHOUSE_SIZE,
+  WAREHOUSE_TYPE,
+  CLUSTER_NUMBER,
   TOTAL_ELAPSED_TIME,
   COMPILATION_TIME,
   EXECUTION_TIME,

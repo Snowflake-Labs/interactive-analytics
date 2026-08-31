@@ -39,6 +39,13 @@
     {{INT_WH}}                  Interactive warehouse name.
     {{INT_WH_DESC}}             Interactive WH descriptor incl. size, MIN/MAX
                                 clusters, scaling policy, and fallback WH.
+    {{CLUSTERS_ACTUAL}}         Actual cluster usage during the load test.
+                                Format: "X of Y" where X is distinct clusters
+                                that served queries (from COUNT(DISTINCT
+                                CLUSTER_NUMBER)) and Y is MAX_CLUSTER_COUNT.
+                                If only one iteration, this is the final
+                                value; if escalation occurred, this is the
+                                value from the last (winning) iteration.
     {{SPAWN_RATE}}              Locust spawn rate (e.g. 5).
     {{RUN_TIME_SEC}}            Run time in seconds (e.g. 180).
     {{LOCUST_VERSION}}          Locust version reported by the container.
@@ -62,7 +69,10 @@
 
   Server-side results
     {{SERVER_ROW}}              <tr> for interactive WH (N, P50, P90, P95, P99,
-                                avg compile, avg exec, avg queue, avg MB scan).
+                                avg compile, avg exec, avg queue, avg MB scan,
+                                clusters used — "X of Y" where X is distinct
+                                clusters that served queries and Y is
+                                MAX_CLUSTER_COUNT).
 
   Bottleneck diagnosis
     {{DELTA_TABLE_ROWS}}        <tr>… for P50/P95/P99 with Locust, Snowflake,
@@ -89,13 +99,14 @@
     {{ITERATION_HISTORY}}       HTML fragment (a small table or <ul>) showing
                                 each benchmark iteration that led to the final
                                 numbers: starting warehouse size,
-                                MAX_CLUSTER_COUNT, server-side P95, and the
-                                decision taken (met goal / scale up / scale out
-                                / limit-bound). If only one iteration was
-                                needed, emit a single-row table with decision
-                                "goal met at initial configuration" — do NOT
-                                emit an empty string, the section must always
-                                have content.
+                                MAX_CLUSTER_COUNT, clusters actually used
+                                (from COUNT(DISTINCT CLUSTER_NUMBER)),
+                                server-side P95, and the decision taken (met
+                                goal / scale up / scale out / limit-bound).
+                                If only one iteration was needed, emit a
+                                single-row table with decision "goal met at
+                                initial configuration" — do NOT emit an empty
+                                string, the section must always have content.
 
   Recommendations
     {{RECOMMENDATIONS_TO_MEET_GOAL}}   <ol><li>…</li></ol> of actionable steps
@@ -211,6 +222,7 @@
     <dt>Connection</dt><dd>{{CONNECTION}}</dd>
     <dt>Database / schema (interactive)</dt><dd>{{DB_INT}}</dd>
     <dt>Interactive warehouse</dt><dd>{{INT_WH}} · {{INT_WH_DESC}}</dd>
+    <dt>Clusters used</dt><dd>{{CLUSTERS_ACTUAL}} clusters served queries during the load test</dd>
     <dt>Users</dt><dd>{{USER_COUNT}} concurrent (locust <code>--users {{USER_COUNT}} --spawn-rate {{SPAWN_RATE}}</code>)</dd>
     <dt>Duration</dt><dd>{{RUN_TIME}} ({{RUN_TIME_SEC}} s)</dd>
     <dt>Load driver</dt><dd>SPCS BENCHMARK_LOCUST (Locust {{LOCUST_VERSION}}, auto-start / auto-quit)</dd>
@@ -259,7 +271,7 @@
   <h2>Performance Results — Server-side (Snowflake)</h2>
   <p>What Snowflake alone spent — compile + execute + queue — measured from <code>INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE</code> over the run window, filtered to <code>QUERY_TAG='{{SOLUTION_NAME}}'</code>.</p>
   <table>
-    <thead><tr><th>Warehouse</th><th class="num">N</th><th class="num">P50</th><th class="num">P90</th><th class="num">P95</th><th class="num">P99</th><th class="num">Avg compile</th><th class="num">Avg exec</th><th class="num">Avg queue</th><th class="num">Avg MB scan</th></tr></thead>
+    <thead><tr><th>Warehouse</th><th class="num">N</th><th class="num">P50</th><th class="num">P90</th><th class="num">P95</th><th class="num">P99</th><th class="num">Avg compile</th><th class="num">Avg exec</th><th class="num">Avg queue</th><th class="num">Avg MB scan</th><th class="num">Clusters used</th></tr></thead>
     <tbody>
       {{SERVER_ROW}}
     </tbody>

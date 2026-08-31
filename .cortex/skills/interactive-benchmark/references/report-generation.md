@@ -12,11 +12,11 @@
 ## Coverage Requirement — every section in the template is mandatory
 
 1. Executive Summary tiles (all tiles)
-2. Benchmark Setup (`kv` block)
+2. Benchmark Setup (`kv` block — must include `{{CLUSTERS_ACTUAL}}` showing actual vs configured cluster count)
 3. Query and Filter Variants (primary query + variants table)
 4. Table Details (Interactive)
 5. Performance Results — Client-side (Locust HTTP), with P50/P95/P99 (all three mandatory)
-6. Performance Results — Server-side (Snowflake), with P50/P95/P99 and compile / exec / queue / scan averages (mandatory — must appear ALONGSIDE the client-side section, never in place of it)
+6. Performance Results — Server-side (Snowflake), with P50/P95/P99 and compile / exec / queue / scan averages and clusters used (mandatory — must appear ALONGSIDE the client-side section, never in place of it)
 7. Client vs Server — Bottleneck Diagnosis (delta table + explicit verdict box naming which layer to optimize)
 8. Client-Side and Server-Side Percentile Comparison bar charts
 9. Query Profile Health (top-slowest table + verdict list)

@@ -463,6 +463,8 @@ The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every reques
 
 **Load** `references/server-side-validation.md` (via the `read` tool) for the exact SQL queries, delta interpretation rules, and query profile health metrics.
 
+**Cluster usage detection:** The aggregate server-side query includes `COUNT(DISTINCT CLUSTER_NUMBER) AS DISTINCT_CLUSTERS_USED` and `MAX(CLUSTER_NUMBER) AS PEAK_CLUSTER_NUMBER`. These tell you exactly how many clusters actually served queries during the load test, even if `MAX_CLUSTER_COUNT` was set higher. Capture both values — they populate the `{{CLUSTERS_ACTUAL}}` placeholder in the report (format: "X of Y" where X is `DISTINCT_CLUSTERS_USED` and Y is the configured `MAX_CLUSTER_COUNT`). Also include the cluster count in each row of the `{{ITERATION_HISTORY}}` table so the reader can see how cluster usage changed across escalation steps.
+
 ---
 
 ### Step 3.12: Goal Check and Iterative Escalation
