@@ -128,7 +128,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | 6 | **P95 latency goal** | Target P95 latency under concurrent load. Any latency figure is interpreted as P95 unless the user explicitly says otherwise. | P95 <= 1 second |
 | 7 | **Concurrent users** | How many simulated concurrent users for the load test? | 50 |
 | 8 | **Max warehouse size (scale-up limit)** | Maximum SKU the interactive warehouse can grow to (X-Small, Small, Medium, Large, X-Large, ...). Bounds vertical scaling. | Medium |
-| 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `ceil(concurrent_users / 15)`. | ceil(users/15) + 1 |
+| 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. Rule of thumb: `ceil(concurrent_users / MAX_CONCURRENCY_LEVEL)` where MCL defaults to 8. See `references/mcw-sizing.md` for Cases A/B/C. | ceil(users/8) + 1 |
 | 10 | **Benchmark name** | Short alphanumeric name used as `SOLUTION_NAME` to prefix all created resources. | `IWB_YYYYMMDDHHMM` (e.g. `IWB_202608271430`) |
 | 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.12. | 5 |
 
@@ -232,11 +232,15 @@ Compare total working set size against the interactive warehouse size:
 
 **MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.12), you MUST run the cache warm-up procedure (Step 3.7) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
 
-Compute the required cluster count:
+**Load** `references/mcw-sizing.md` (via the `read` tool) for the full MCW sizing formula, including Cases A/B/C and levers (MAX_CONCURRENCY_LEVEL, warehouse size) that shift the answer.
+
+Compute the required cluster count using the benchmark-style (Case B) formula:
 
 ```
-RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / 15)
+RECOMMENDED_MAX_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / MAX_CONCURRENCY_LEVEL)
 ```
+
+where `MAX_CONCURRENCY_LEVEL` defaults to 8.
 
 Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point.
 
