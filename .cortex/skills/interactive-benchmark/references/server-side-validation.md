@@ -79,7 +79,7 @@ LIMIT 20;
 If remote reads are > 0% for steady-state queries (after cache is warm), investigate:
 1. **Poor clustering** — predicates don't align with clustering keys (see Step 3.2)
 2. **Undersized cache** — working set doesn't fit in warehouse cache (see Step 3.2 sizing)
-3. **Cold cache** — warehouse was recently resumed or cache hasn't fully populated yet (see Step 3.7 warming)
+3. **Cold cache** — warehouse was recently resumed or cache hasn't fully populated yet (see Step 3.6 warming)
 4. **Cache thrashing** — too many diverse query patterns competing for cache space; consider reducing concurrency or narrowing the hot data set
 
 Include the server-side percentile table, the side-by-side comparison table, and the profile-health verdict in the HTML report (Step 3.12) under a "Server-Side Validation" section.

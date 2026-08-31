@@ -1,6 +1,6 @@
 ---
 name: interactive-benchmark
-version: 0.5.1
+version: 0.5.2
 description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test, stress test, how fast under load, concurrent query performance, can my query handle N users, latency under concurrency, query throughput test."
 ---
 
@@ -24,11 +24,11 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 | Action | Tool | Notes |
 |--------|------|-------|
-| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `cp`, `update.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
-| Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.6). |
+| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
+| Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.7). |
 | Read files | `read` | For templates, configs, reference docs, logs. |
 | Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures, and initial `progress.json`. |
-| Edit existing files | `edit` | For updating specific values in an existing config file without rewriting the whole file. Also for updating `progress.json` at each step boundary. |
+| Edit existing files | `edit` | For updating specific values in an existing config file without rewriting the whole file. |
 | Search file contents | `grep` | For placeholder verification (`{{`) and config sanity checks. |
 | Ask user questions | `ask_user_question` | For Phase 1 inputs, Phase 1 confirmation, and cleanup choice (Step 3.14). |
 | Open report in browser | `open_browser` | For the final HTML report (Step 3.13). |
@@ -41,7 +41,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 ## SPCS Deployment Topology
 
-The benchmark deploys two services to Snowpark Container Services. After deployment (Step 3.6), inform the user exactly what is running:
+The benchmark deploys two services to Snowpark Container Services. After deployment (Step 3.7), inform the user exactly what is running:
 
 | Service | Container Instances | Compute Pool Nodes | Instance Family |
 |---------|--------------------:|-------------------:|-----------------|
@@ -86,8 +86,8 @@ The workflow has three distinct phases that MUST be followed in order:
     { "id": 4,  "name": "Configure concurrency and fallback", "status": "pending" },
     { "id": 5,  "name": "Save benchmark query", "status": "pending" },
     { "id": 6,  "name": "Configure environment", "status": "pending" },
-    { "id": 7,  "name": "Deploy to SPCS", "status": "pending" },
-    { "id": 8,  "name": "Warm the cache", "status": "pending" },
+    { "id": 7,  "name": "Warm the cache", "status": "pending" },
+    { "id": 8,  "name": "Deploy to SPCS", "status": "pending" },
     { "id": 9,  "name": "Run baseline test", "status": "pending" },
     { "id": 10, "name": "Run load test", "status": "pending" },
     { "id": 11, "name": "Collect server-side metrics", "status": "pending" },
@@ -100,15 +100,20 @@ The workflow has three distinct phases that MUST be followed in order:
 
 3. Also call `system_todo_write` with all 14 items (first marked `in_progress`, rest `pending`).
 
-**Update protocol — at EVERY step boundary:**
+**Update protocol — at EVERY step boundary, use `update-progress.sh`:**
 
-- **Before starting a step:** Use `edit` on `progress.json` to set the step's `status` to `"in_progress"` and add a `"started_at"` timestamp. Update `current_step` and `updated_at` at the top level. Also call `system_todo_write` with matching statuses.
-- **After completing a step:** Use `edit` on `progress.json` to set the step's `status` to `"completed"` and add a `"completed_at"` timestamp. Update `updated_at`. Also call `system_todo_write`.
-- **On failure:** Set the step's `status` to `"failed"` and the top-level `status` to `"failed"`.
-- **On completion:** After the final step, set the top-level `status` to `"completed"`.
+The script `<SKILL_DIR>/benchmark/scripts/update-progress.sh` updates `progress.json` atomically. Usage:
 
-Valid step statuses: `"pending"`, `"in_progress"`, `"completed"`, `"failed"`, `"skipped"`.
-Valid top-level statuses: `"running"`, `"completed"`, `"failed"`.
+```bash
+<SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> <step_id> <action>
+```
+
+where `<action>` is one of: `start`, `complete`, `fail`, `skip`.
+
+- **Before starting a step:** Run `update-progress.sh <REPORT_DIR> <step_id> start` via `bash`. Also call `system_todo_write` with matching statuses.
+- **After completing a step:** Run `update-progress.sh <REPORT_DIR> <step_id> complete` via `bash`. Also call `system_todo_write`.
+- **On failure:** Run `update-progress.sh <REPORT_DIR> <step_id> fail`.
+- **On completion:** The script auto-sets top-level status to `"completed"` when step 14 is completed.
 
 Only ONE step should be `"in_progress"` at a time. Each step section below begins with a **PROGRESS** checkpoint as a reminder.
 
@@ -134,7 +139,9 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_STD`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_INT`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.14).
 
-**Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster)." Never create resources silently.
+**Interactive warehouse AUTO_SUSPEND:** Never set `AUTO_SUSPEND` on an interactive warehouse. When creating or altering an interactive warehouse, always set `AUTO_SUSPEND = 0` (never suspend) to ensure it remains running.
+
+**Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster, auto-suspend disabled)." Never create resources silently.
 
 **Do not proceed past Phase 1 until ALL items are confirmed.** Present the collected values back to the user in a summary table and use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed") to get approval before moving on.
 
@@ -144,7 +151,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 ## Phase 2: Validate Query Suitability
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 1 (Validate query suitability) `in_progress`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 start`. Update `system_todo_write`.
 
 **This phase determines whether the query is a good candidate for interactive warehouses. If it is not, STOP HERE — do not proceed to Phase 3.**
 
@@ -162,7 +169,7 @@ From this point, everything runs autonomously within the user-approved limits fr
 
 ### Step 3.1: Verify Docker is Running
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 2 `in_progress`, mark step 1 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 start`. Update `system_todo_write`.
 
 Use the `bash` tool:
 
@@ -176,7 +183,7 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 ### Step 3.2: Validate Interactive Setup
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 3 `in_progress`, mark step 2 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 start`. Update `system_todo_write`.
 
 Verify the interactive setup is correct before deploying.
 
@@ -226,11 +233,11 @@ Compare total working set size against the interactive warehouse size:
 
 ### Step 3.3: Configure Concurrency and Fallback
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 4 `in_progress`, mark step 3 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 start`. Update `system_todo_write`.
 
 **CRITICAL: Interactive warehouses scale concurrency *horizontally* (multi-cluster), not vertically. Configure `MAX_CLUSTER_COUNT` and a fallback warehouse BEFORE the load test.**
 
-**MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.12), you MUST run the cache warm-up procedure (Step 3.7) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
+**MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.12), you MUST run the cache warm-up procedure (Step 3.6) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
 
 **Load** `references/mcw-sizing.md` (via the `read` tool) for the full MCW sizing formula, including Cases A/B/C and levers (MAX_CONCURRENCY_LEVEL, warehouse size) that shift the answer.
 
@@ -244,7 +251,7 @@ where `MAX_CONCURRENCY_LEVEL` defaults to 8.
 
 Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point.
 
-**IMPORTANT — Use `resize-wh.sh` for any warehouse reconfiguration.** SPCS API workers hold persistent connections to the interactive warehouse and will resume it on every request, which blocks `ALTER WAREHOUSE ... SET WAREHOUSE_SIZE`. Direct `ALTER WAREHOUSE` via `snowflake_sql_execute` will fail or hang while services are running. Always use the `resize-wh.sh` script instead — it deterministically suspends SPCS services, drains connections, suspends the warehouse, applies changes, then resumes everything.
+**IMPORTANT — Use `resize-wh.sh` for any warehouse reconfiguration.** `ALTER WAREHOUSE ... SET WAREHOUSE_SIZE` fails with error 090094 on interactive warehouses that have attached tables — even when suspended. Direct `ALTER WAREHOUSE` via `snowflake_sql_execute` will not work. Always use the `resize-wh.sh` script instead — it reads current properties (size, MCW, fallback warehouse, attached tables), suspends SPCS services, runs `CREATE OR REPLACE INTERACTIVE WAREHOUSE` with the new settings and re-attached tables, restores the fallback warehouse, and resumes services. **Because `CREATE OR REPLACE` resets the data cache, the cache will be cold after `resize-wh.sh` completes. You MUST re-run the cache warm-up procedure (Step 3.6) before any load test.**
 
 Apply the initial cluster count via `bash`:
 
@@ -277,7 +284,7 @@ SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE' IN WAREHOUSE <INTERACTIVE_WAREHOUSE>;
 
 ### Step 3.4: Save the Benchmark Query
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 5 `in_progress`, mark step 4 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 start`. Update `system_todo_write`.
 
 The user provides the query to benchmark as part of their request to CoCo. Create `benchmark/test/benchmark-query.sql` from the template file `benchmark/test/benchmark-query.sql.template` by replacing the placeholder content with the actual query:
 
@@ -293,7 +300,7 @@ This file is the single query executed against the interactive warehouse during 
 
 ### Step 3.5: Configure Environment
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 6 `in_progress`, mark step 5 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 start`. Update `system_todo_write`.
 
 Both config files MUST be created from their templates — never edit the templates directly.
 
@@ -329,9 +336,44 @@ Both config files MUST be created from their templates — never edit the templa
 
 ---
 
-### Step 3.6: Deploy to SPCS
+### Step 3.6: Warm the Cache
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 7 `in_progress`, mark step 6 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 start`. Update `system_todo_write`.
+
+Before the load test measures anything, warm the interactive warehouse cache. This ensures the numbers reflect steady-state performance, not cold-start latency.
+
+**Cache warming guidance:**
+- If the warehouse was recently resumed, do NOT expect immediate sub-second latency. The cache must be populated first.
+- XS warehouses warm at roughly 300–400 MB/s; larger warehouses warm faster.
+- For a 100 GB working set on XS, expect ~4–5 minutes of warming time before the cache is fully populated.
+- Run the query multiple times (3–5 iterations) to ensure the relevant data pages are cached, not just once.
+
+**Warm-up procedure (execute each SQL statement via `snowflake_sql_execute`, since the SPCS API ingress requires Snowflake auth and can't be curled from the laptop with `externalbrowser` connections):**
+
+```sql
+ALTER SESSION SET USE_CACHED_RESULT = FALSE;
+
+-- Warm interactive warehouse and each attached table
+USE WAREHOUSE <INTERACTIVE_WAREHOUSE>;
+USE SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
+<THE QUERY>;               -- iteration 1
+<THE QUERY>;               -- iteration 2
+<THE QUERY>;               -- iteration 3
+```
+
+Also warm each *variant* query shape (`benchmark-query-q1.sql`, `benchmark-query-nation.sql`, etc.) at least once so the tail of the load test doesn't include cold-cache measurements.
+
+Check that the last warm-up iteration shows latency close to expected steady-state (e.g. sub-second for a well-fitted workload). If latency is still high on the final iteration, run more iterations or wait for background cache population to complete.
+
+Discard the results from these warm-up calls — they are not part of the benchmark.
+
+---
+
+### Step 3.7: Deploy to SPCS
+
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 start`. Update `system_todo_write`.
+
+**IMPORTANT — Cache must be warm before deploy:** Locust auto-starts immediately when its container becomes READY, so the load test will begin as soon as SPCS finishes provisioning. Ensure Step 3.6 (cache warming) is complete before running this step — otherwise Locust measures cold-cache latency.
 
 Use the `bash` tool with `run_in_background=true`:
 
@@ -364,42 +406,9 @@ This deploys:
 
 ---
 
-### Step 3.7: Warm the Cache
-
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 8 `in_progress`, mark step 7 `completed`.
-
-Before the load test measures anything, warm the interactive warehouse cache. This ensures the numbers reflect steady-state performance, not cold-start latency.
-
-**Cache warming guidance:**
-- If the warehouse was recently resumed, do NOT expect immediate sub-second latency. The cache must be populated first.
-- XS warehouses warm at roughly 300–400 MB/s; larger warehouses warm faster.
-- For a 100 GB working set on XS, expect ~4–5 minutes of warming time before the cache is fully populated.
-- Run the query multiple times (3–5 iterations) to ensure the relevant data pages are cached, not just once.
-
-**Warm-up procedure (execute each SQL statement via `snowflake_sql_execute`, since the SPCS API ingress requires Snowflake auth and can't be curled from the laptop with `externalbrowser` connections):**
-
-```sql
-ALTER SESSION SET USE_CACHED_RESULT = FALSE;
-
--- Warm interactive warehouse and each attached table
-USE WAREHOUSE <INTERACTIVE_WAREHOUSE>;
-USE SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
-<THE QUERY>;               -- iteration 1
-<THE QUERY>;               -- iteration 2
-<THE QUERY>;               -- iteration 3
-```
-
-Also warm each *variant* query shape (`benchmark-query-q1.sql`, `benchmark-query-nation.sql`, etc.) at least once so the tail of the load test doesn't include cold-cache measurements.
-
-Check that the last warm-up iteration shows latency close to expected steady-state (e.g. sub-second for a well-fitted workload). If latency is still high on the final iteration, run more iterations or wait for background cache population to complete.
-
-Discard the results from these warm-up calls — they are not part of the benchmark.
-
----
-
 ### Steps 3.8–3.9: Baseline Test + Load Test
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 9 `in_progress`, mark step 8 `completed`. When the baseline completes successfully, mark step 9 `completed` and step 10 `in_progress`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 9 start`. Update `system_todo_write`. When the baseline completes successfully, run `update-progress.sh <REPORT_DIR> 9 complete && update-progress.sh <REPORT_DIR> 10 start`.
 
 **Load** `references/benchmark-execution.md` (via the `read` tool) for the full baseline and load test procedure.
 
@@ -409,7 +418,7 @@ Discard the results from these warm-up calls — they are not part of the benchm
 
 ### Step 3.10: Analyze Results and Generate Recommendations
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 10 `completed` (if not already), no new `in_progress` yet (analysis is part of the metrics collection flow).
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 10 complete`. Update `system_todo_write`.
 
 After the load test completes, collect **three sets of measurements**:
 
@@ -436,7 +445,7 @@ Capture these recommendations for the report.
 
 ### Step 3.11: Post-Benchmark Server-Side Validation
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 11 `in_progress`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 start`. Update `system_todo_write`.
 
 After collecting the Locust CSV, **you MUST run server-side aggregation queries against Snowflake for the interactive warehouse**. This is not optional — the Locust numbers alone cannot distinguish API/HTTP overhead from Snowflake time.
 
@@ -450,7 +459,7 @@ The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every reques
 
 ### Step 3.12: Goal Check and Iterative Escalation
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 12 `in_progress`, mark step 11 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 start`. Update `system_todo_write`.
 
 After collecting the server-side percentiles from Step 3.11, evaluate them against the P95 latency goal captured in Phase 1.
 
@@ -466,7 +475,7 @@ After collecting the server-side percentiles from Step 3.11, evaluate them again
 
 **Do NOT ask for permission to scale within the defined limits.** The user already approved the scale-out limit (MAX_CLUSTER_COUNT) and scale-up limit (warehouse size) in Step 1. As long as the proposed change stays within those boundaries, proceed automatically — inform the user what you are doing (e.g. "P95 goal not met. Scaling warehouse from X-Small to Small — within your approved ceiling of Medium. Re-running benchmark.") but do NOT wait for confirmation. This keeps the benchmark moving without unnecessary interruptions.
 
-**After each escalation:** re-configure the warehouse using `resize-wh.sh` via `bash`. This script suspends SPCS services, drains connections, applies the warehouse changes, and resumes everything in one deterministic sequence. **Do NOT use `snowflake_sql_execute` with direct `ALTER WAREHOUSE` for size or MCW changes — SPCS workers will block the resize.**
+**After each escalation:** re-configure the warehouse using `resize-wh.sh` via `bash`. This script uses `CREATE OR REPLACE INTERACTIVE WAREHOUSE` (the only reliable path — `ALTER WAREHOUSE SET WAREHOUSE_SIZE` fails with 090094 on interactive warehouses with attached tables). It preserves attached tables and the fallback warehouse automatically. **Do NOT use `snowflake_sql_execute` with direct `ALTER WAREHOUSE` for size or MCW changes.**
 
 ```bash
 # Scale up only:
@@ -477,7 +486,7 @@ cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --mcw <NEW_MCW>
 cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --size <NEW_SIZE> --mcw <NEW_MCW>
 ```
 
-After `resize-wh.sh` completes (services are already resumed), re-warm the cache (Step 3.7), then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — `resize-wh.sh` only suspends/resumes the services, it does not recreate them. To re-trigger the load test, suspend/resume the Locust service via `snowflake_sql_execute` as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
+After `resize-wh.sh` completes (services are already resumed), **the data cache is cold** because `CREATE OR REPLACE` resets it. You MUST re-warm the cache (Step 3.6) before measuring anything — never run a load test against a cold warehouse. Then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — `resize-wh.sh` only suspends/resumes the services, it does not recreate them. To re-trigger the load test, suspend/resume the Locust service via `snowflake_sql_execute` as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
 
 **Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. **Only at this point should you stop and ask the user.** Tell them clearly, for example:
 
@@ -491,7 +500,7 @@ Then produce the Step 3.13 report with the ceiling-limited numbers and mark the 
 
 ### Step 3.13: Generate HTML Report
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 13 `in_progress`, mark step 12 `completed`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 start`. Update `system_todo_write`.
 
 **MANDATORY: Load the `html-authoring` skill first** by calling `skill(command="html-authoring")`. This skill provides the sandboxed-HTML rules that must be followed when writing the report file. Load it before any HTML file creation.
 
@@ -522,7 +531,7 @@ Each time the load test runs (Step 3.9), capture the full Locust output (via `ba
 
 ### Step 3.14: Resource Summary and Cleanup
 
-> **PROGRESS:** Update `progress.json` and `system_todo_write` — mark step 14 `in_progress`, mark step 13 `completed`. After cleanup completes, mark step 14 `completed` and set top-level `status` to `"completed"`.
+> **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 14 start`. Update `system_todo_write`. After cleanup completes, run `update-progress.sh <REPORT_DIR> 14 complete` (this auto-sets top-level status to `"completed"`).
 
 **Load** `references/cleanup.md` (via the `read` tool) for the full cleanup procedure.
 
@@ -548,7 +557,7 @@ Request body: `{"query_id": "<id>"}`. Response includes `elapsed_ms`, `row_count
 - ⚠️ **Phase 1** — Do not proceed until all inputs are confirmed by the user
 - ⚠️ **Phase 2 (Suitability Check)** — STOP if query exceeds 10s on standard, 5s on interactive, or shows no speedup. Do not enter Phase 3.
 - ⚠️ **Step 3.1** — STOP if Docker is not running. Cannot deploy SPCS without it.
-- ⚠️ **Step 3.6** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
+- ⚠️ **Step 3.7** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
 - ⚠️ **Step 3.8** — STOP if baseline test fails (high failure rate or p99). Infrastructure is not healthy.
 - ⚠️ **Step 3.12** — STOP and ask the user only when both scale-out and scale-up limits are exhausted and the P95 goal is still not met.
 - ⚠️ **Step 3.14** — Confirm cleanup choice before dropping any resources.

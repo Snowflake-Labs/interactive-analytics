@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# Reconfigure the interactive warehouse safely by suspending SPCS services first.
+# Reconfigure the interactive warehouse by replacing it (DROP + CREATE in one atomic op).
 #
-# SPCS API workers hold connections to the interactive warehouse and resume it
-# on every request, which blocks ALTER WAREHOUSE ... SET WAREHOUSE_SIZE.
-# This script deterministically:
-#   1. Suspends both SPCS services (Locust + API)
-#   2. Waits for connections to drain
-#   3. Suspends the warehouse
-#   4. Applies size and/or cluster changes
-#   5. Resumes the warehouse
+# ALTER WAREHOUSE ... SET WAREHOUSE_SIZE fails with error 090094 on interactive
+# warehouses that have attached tables — even when suspended. This script uses
+# CREATE OR REPLACE INTERACTIVE WAREHOUSE which is atomic and sidesteps the issue.
+#
+# Because CREATE OR REPLACE drops metadata like FALLBACK_WAREHOUSE, the script
+# captures it beforehand and re-applies it after the replace.
+#
+# Steps:
+#   1. Reads current warehouse properties (size, max_cluster_count, fallback)
+#   2. Discovers attached interactive tables
+#   3. Suspends both SPCS services (Locust + API)
+#   4. Replaces the warehouse with new settings + re-attached tables
+#   5. Restores fallback warehouse (if any)
 #   6. Resumes both SPCS services
+#
+# Note: after replacement the data cache is cold and warms in the background.
+# An XS warehouse warms at ~300-400 MB/s; larger sizes are faster.
+# Monitor cache readiness via remote read % in query profile.
 #
 # Usage:
 #   resize-wh.sh [--size <SIZE>] [--mcw <MAX_CLUSTER_COUNT>]
@@ -47,20 +56,69 @@ if [[ -z "$NEW_SIZE" && -z "$NEW_MCW" ]]; then
 fi
 
 FQ_WH="$INTERACTIVE_WAREHOUSE"
-DRAIN_WAIT=20
-MAX_DRAIN_RETRIES=6
+
+# --- Step 1: Read current warehouse properties ---
+echo "[1/6] Reading current warehouse properties..."
+CURRENT_PROPS="$(snow_sql_quiet <<EOF
+USE ROLE $ROLE;
+SHOW WAREHOUSES LIKE '${FQ_WH}';
+EOF
+)"
+
+CURRENT_SIZE="$(echo "$CURRENT_PROPS" | python3 -c "import sys,json; rows=json.load(sys.stdin); print(rows[-1]['size'] if rows else 'XSMALL')")"
+CURRENT_MCW="$(echo "$CURRENT_PROPS" | python3 -c "import sys,json; rows=json.load(sys.stdin); print(rows[-1]['max_cluster_count'] if rows else '1')")"
+CURRENT_FALLBACK="$(echo "$CURRENT_PROPS" | python3 -c "
+import sys, json
+rows = json.load(sys.stdin)
+fb = rows[-1].get('fallback_warehouse', '') if rows else ''
+print(fb if fb else '')
+" 2>/dev/null || true)"
+
+# Apply overrides: keep current value for anything not specified.
+SIZE="${NEW_SIZE:-$CURRENT_SIZE}"
+MCW="${NEW_MCW:-$CURRENT_MCW}"
 
 # Build description for logging.
 DESC=""
 [[ -n "$NEW_SIZE" ]] && DESC="size=$NEW_SIZE"
 [[ -n "$NEW_MCW" ]]  && DESC="${DESC:+$DESC, }max_cluster_count=$NEW_MCW"
 
+echo "  Current: size=$CURRENT_SIZE, max_cluster_count=$CURRENT_MCW"
+[[ -n "$CURRENT_FALLBACK" ]] && echo "  Fallback warehouse: $CURRENT_FALLBACK"
+echo "  Target:  size=$SIZE, max_cluster_count=$MCW"
+
+# --- Step 2: Discover attached interactive tables ---
+echo "[2/6] Discovering attached interactive tables..."
+ATTACHED_TABLES="$(snow_sql_quiet <<EOF
+USE ROLE $ROLE;
+SHOW INTERACTIVE TABLES IN SCHEMA ${API_DATABASE}.${INTERACTIVE_SCHEMA};
+EOF
+)"
+TABLE_LIST="$(echo "$ATTACHED_TABLES" | python3 -c "
+import sys, json
+rows = json.load(sys.stdin)
+names = [r['name'] for r in rows if r.get('warehouse_name','').upper() == '${FQ_WH}'.upper()]
+if names:
+    print(',\n        '.join(f'${API_DATABASE}.${INTERACTIVE_SCHEMA}.{n}' for n in names))
+" 2>/dev/null || true)"
+
+if [[ -n "$TABLE_LIST" ]]; then
+  echo "  Attached tables: $(echo "$TABLE_LIST" | tr '\n' ' ')"
+  TABLES_CLAUSE="TABLES (
+        ${TABLE_LIST}
+      )"
+else
+  echo "  No interactive tables attached."
+  TABLES_CLAUSE=""
+fi
+
+echo
 echo "=== Reconfigure interactive warehouse: $FQ_WH ($DESC) ==="
 echo
 
-# --- Step 1: Suspend SPCS services ---
-echo "[1/6] Suspending SPCS services..."
-cat <<EOF | snow_sql_run "suspend services"
+# --- Step 3: Suspend SPCS services ---
+echo "[3/6] Suspending SPCS services..."
+snow_sql_run "suspend services" <<EOF
 USE ROLE $ROLE;
 USE DATABASE $DB;
 USE SCHEMA $SCHEMA;
@@ -69,66 +127,36 @@ ALTER SERVICE IF EXISTS $API_SERVICE SUSPEND;
 EOF
 echo "  ✓ Services suspended."
 
-# --- Step 2: Wait for connections to drain ---
-echo "[2/6] Waiting ${DRAIN_WAIT}s for connections to drain..."
-sleep "$DRAIN_WAIT"
-
-cat <<EOF | snow_sql_run "abort queries"
+# --- Step 4: Replace the warehouse ---
+echo "[4/6] Replacing interactive warehouse (size=$SIZE, max_cluster_count=$MCW)..."
+snow_sql_run "replace interactive warehouse" <<EOF
 USE ROLE $ROLE;
-ALTER WAREHOUSE $FQ_WH ABORT ALL QUERIES;
+CREATE OR REPLACE INTERACTIVE WAREHOUSE $FQ_WH
+  ${TABLES_CLAUSE}
+  WAREHOUSE_SIZE = '$SIZE'
+  MIN_CLUSTER_COUNT = 1
+  MAX_CLUSTER_COUNT = $MCW
+  SCALING_POLICY = 'STANDARD'
+  AUTO_SUSPEND = NULL
+  AUTO_RESUME = TRUE;
 EOF
-echo "  ✓ Queries aborted."
+echo "  ✓ Warehouse replaced."
 
-# --- Step 3: Suspend the warehouse ---
-echo "[3/6] Suspending warehouse..."
-retries=0
-while (( retries < MAX_DRAIN_RETRIES )); do
-  if cat <<EOF | snow_sql_run "suspend warehouse" 2>/dev/null; then
+# --- Step 5: Restore fallback warehouse ---
+if [[ -n "$CURRENT_FALLBACK" ]]; then
+  echo "[5/6] Restoring fallback warehouse ($CURRENT_FALLBACK)..."
+  snow_sql_run "set fallback warehouse" <<EOF
 USE ROLE $ROLE;
-ALTER WAREHOUSE $FQ_WH SUSPEND;
+ALTER WAREHOUSE $FQ_WH SET FALLBACK_WAREHOUSE = $CURRENT_FALLBACK;
 EOF
-    echo "  ✓ Warehouse suspended."
-    break
-  fi
-  retries=$((retries + 1))
-  echo "  ⏳ Warehouse still active (attempt $retries/$MAX_DRAIN_RETRIES), waiting ${DRAIN_WAIT}s..."
-  sleep "$DRAIN_WAIT"
-done
-
-if (( retries == MAX_DRAIN_RETRIES )); then
-  echo "  ⚠ Could not suspend warehouse after $MAX_DRAIN_RETRIES attempts — proceeding anyway."
+  echo "  ✓ Fallback warehouse restored."
+else
+  echo "[5/6] No fallback warehouse to restore — skipping."
 fi
-
-# --- Step 4: Apply changes ---
-echo "[4/6] Applying changes..."
-
-if [[ -n "$NEW_SIZE" ]]; then
-  cat <<EOF | snow_sql_run "resize warehouse"
-USE ROLE $ROLE;
-ALTER WAREHOUSE $FQ_WH SET WAREHOUSE_SIZE='$NEW_SIZE';
-EOF
-  echo "  ✓ Warehouse size set to $NEW_SIZE."
-fi
-
-if [[ -n "$NEW_MCW" ]]; then
-  cat <<EOF | snow_sql_run "set max cluster count"
-USE ROLE $ROLE;
-ALTER WAREHOUSE $FQ_WH SET MAX_CLUSTER_COUNT=$NEW_MCW;
-EOF
-  echo "  ✓ Max cluster count set to $NEW_MCW."
-fi
-
-# --- Step 5: Resume warehouse ---
-echo "[5/6] Resuming warehouse..."
-cat <<EOF | snow_sql_run "resume warehouse"
-USE ROLE $ROLE;
-ALTER WAREHOUSE $FQ_WH RESUME IF SUSPENDED;
-EOF
-echo "  ✓ Warehouse resumed."
 
 # --- Step 6: Resume SPCS services ---
 echo "[6/6] Resuming SPCS services..."
-cat <<EOF | snow_sql_run "resume services"
+snow_sql_run "resume services" <<EOF
 USE ROLE $ROLE;
 USE DATABASE $DB;
 USE SCHEMA $SCHEMA;
@@ -139,4 +167,6 @@ echo "  ✓ Services resumed."
 
 echo
 echo "=== Done. $FQ_WH reconfigured ($DESC). ==="
+echo "Note: cache is cold after replacement and warms in the background."
+echo "Queries may see higher latency until warm (check remote read % in query profile)."
 echo "Run $SCRIPT_DIR/status.sh --wait to confirm services are back to READY."
