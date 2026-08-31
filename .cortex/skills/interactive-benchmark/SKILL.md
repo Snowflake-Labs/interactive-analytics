@@ -139,7 +139,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_STD`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_BENCH_WH_INT`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.14).
 
-**Interactive warehouse AUTO_SUSPEND:** Never set `AUTO_SUSPEND` on an interactive warehouse. When creating or altering an interactive warehouse, always set `AUTO_SUSPEND = 0` (never suspend) to ensure it remains running.
+**Interactive warehouse AUTO_SUSPEND:** Interactive warehouses require `AUTO_SUSPEND` to be at least 86400 seconds (24 hours). When creating or altering an interactive warehouse, always set `AUTO_SUSPEND = 86400` to use the minimum allowed value.
 
 **CRITICAL — DDL must use a standard warehouse:** Interactive warehouses reject DDL and CTAS operations. `CREATE INTERACTIVE TABLE ... AS SELECT` and any `CREATE TABLE ... AS SELECT` MUST execute on the **standard** warehouse, never on the interactive warehouse. Always `USE WAREHOUSE <STANDARD_WAREHOUSE>` before running any DDL, table-creation, or data-loading statements. The interactive warehouse is for SELECT queries only. When invoking the `snowflake-interactive` skill in Phase 2, explicitly tell it to use the standard warehouse for creating interactive tables.
 
