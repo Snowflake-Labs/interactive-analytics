@@ -51,10 +51,10 @@ In the Cortex Code chat panel, type something like:
 Benchmark this query on an interactive warehouse with 50 concurrent users and a P95 goal of 1 second:
 
 SELECT l_returnflag, l_linestatus,
-       SUM(l_quantity) AS sum_qty,
-       SUM(l_extendedprice) AS sum_base_price
+        SUM(l_quantity)       AS sum_qty,
+        SUM(l_extendedprice)  AS sum_base_price
 FROM   lineitem
-WHERE  l_shipdate <= DATEADD(day, -90, '1998-12-01')
+WHERE  l_shipdate BETWEEN '1998-08-01' AND '1998-08-31'
 GROUP  BY l_returnflag, l_linestatus
 ORDER  BY l_returnflag, l_linestatus;
 
