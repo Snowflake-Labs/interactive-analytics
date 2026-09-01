@@ -11,21 +11,47 @@ workloads.
 
 TPC-H benchmark harness for Snowflake **Interactive Warehouses**. Copies TPC-H tables from `SNOWFLAKE_SAMPLE_DATA` into a local benchmark database, then runs the 22 standard queries (original and modern rewrites) against standard or interactive tables at scale factors 1, 10, 100, and 1000. See [`tpc-h/README.md`](tpc-h/README.md) for setup and usage.
 
-### [`dashboard/`](dashboard/)
+### [`tpc-h-sample-dashboard/`](tpc-h-sample-dashboard/)
 
-Interactive Tables benchmarking dashboard. A FastAPI + Chart.js single-page app that compares Snowflake **Interactive Tables + Interactive Warehouse** vs **Standard Tables** using TPC-H-derived queries. Includes a Locust-based load test to simulate concurrent dashboard users and measure query latency under load, plus full Snowpark Container Services deployment scripts. See [`dashboard/README.md`](dashboard/README.md) for setup and usage.
+TPC-H interactive dashboard demo. A FastAPI + Chart.js single-page app that visualizes TPC-H data (KPIs, orders over time, segment/region breakdowns) with a Locust load generator for concurrent user simulation. Deployable to SPCS. See [`tpc-h-sample-dashboard/README.md`](tpc-h-sample-dashboard/README.md) for setup and usage.
 
-## Cortex Code (CoCo) Skill
+### [`.cortex/skills/interactive-benchmark/`](.cortex/skills/interactive-benchmark/)
 
-This repository includes a **project-level CoCo skill** (`interactive-tpch-benchmark`) that lets you run the TPC-H benchmark and deploy the dashboard entirely through conversational prompts in Cortex Code. The skill automates:
+A benchmark tool that tests Snowflake **Interactive Warehouse** performance under concurrent load using any user-provided SQL query. Includes a Locust-based load test to measure query latency and determine whether queries meet a specified P95 latency goal. See [INTERACTIVE-BENCHMARK.md](INTERACTIVE-BENCHMARK.md) for repository structure, local setup, sample prompts, and SPCS deployment instructions.
 
-- Setting up TPC-H tables and warehouses
-- Running benchmark queries against interactive or standard warehouses
-- Deploying the dashboard and Locust load test to Snowpark Container Services
-- Checking SPCS service status and ingress URLs
-- Tearing down benchmark resources
+## Cortex Code (CoCo) Skills
 
-To use it, open this project in Cortex Code and ask something like *"run the TPC-H benchmark"* or *"deploy the dashboard to SPCS"* — the skill will guide you through the rest.
+This repository includes three **project-level CoCo skills** that automate common workflows through conversational prompts in Cortex Code.
+
+### `interactive-benchmark`
+
+Benchmark **any SQL query** on interactive warehouses under concurrent load.
+
+- Chains the `snowflake-interactive` skill to create interactive tables and optimize the query
+- Deploys the benchmark API and Locust load test to Snowpark Container Services
+- Reports whether the query meets its P95 latency goal under load
+
+**Usage:** Ask something like *"benchmark my query on interactive vs standard"*.
+
+### `interactive-tpch-benchmark`
+
+Set up and run the **TPC-H benchmark locally** against interactive and standard warehouses.
+
+- Creates TPC-H tables at various scale factors (1, 10, 100, 1000)
+- Runs the 22 standard queries and collects timing results (JSON + CSV)
+- Supports both `original` and `modern` (window functions, QUALIFY) query variants
+
+**Usage:** Ask something like *"set up the TPC-H benchmark at scale 10"* or *"run tpch queries against interactive"*.
+
+### `interactive-tpch-dashboard`
+
+Deploy the **TPC-H dashboard demo** and Locust load test to SPCS.
+
+- Deploys FastAPI + Chart.js dashboard with real-time TPC-H visualizations
+- Deploys a Locust load generator for simulating concurrent dashboard users
+- Manages SPCS service lifecycle (deploy, status, update, teardown)
+
+**Usage:** Ask something like *"deploy the TPC-H dashboard to SPCS"* or *"check tpch dashboard status"*.
 
 ---
 

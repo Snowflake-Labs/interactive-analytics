@@ -1,18 +1,17 @@
 ---
 name: interactive-tpch-benchmark
-description: "Deploy and run the TPC-H benchmark on Snowflake Interactive Warehouses, and deploy the dashboard to SPCS. Use when: setting up the benchmark, running TPC-H queries, deploying the dashboard, tearing down resources, checking service status. Triggers: tpc-h, benchmark, interactive warehouse, interactive tables, deploy dashboard, spcs dashboard, locust, load test, setup benchmark, teardown."
+description: "Set up and run the TPC-H benchmark locally against Snowflake Interactive Warehouses vs Standard Warehouses. Use ONLY when the user explicitly mentions TPC-H benchmark, running TPC-H queries, or iwtpch. Do NOT use for the TPC-H dashboard demo (use interactive-tpch-dashboard instead) or for generic benchmarking of user queries (use interactive-benchmark instead). Triggers: tpc-h, tpch, TPC-H benchmark, TPC-H sample, setup tpch, teardown tpch, run tpch queries, iwtpch."
 ---
 
 # Interactive Analytics TPC-H Benchmark
 
-Guides users through deploying and running the TPC-H benchmark on Snowflake Interactive Warehouses, and deploying the interactive dashboard + load test to SPCS.
+Guides users through setting up and running the TPC-H benchmark locally against Snowflake Interactive Warehouses.
 
 ## Prerequisites
 
 - `uv` installed (Python package runner)
 - A Snowflake connection configured in `~/.snowflake/connections.toml`
-- Role with privileges to create databases, warehouses, compute pools, and services (e.g. `SYSADMIN` or `ACCOUNTADMIN`)
-- Docker installed (for SPCS dashboard deployment only)
+- Role with privileges to create databases and warehouses (e.g. `SYSADMIN` or `ACCOUNTADMIN`)
 
 ## Workflow
 
@@ -22,9 +21,7 @@ Ask the user what they want to do:
 
 1. **Setup** — Create TPC-H tables + warehouses for benchmarking
 2. **Run benchmark** — Execute TPC-H queries against interactive or standard warehouses
-3. **Deploy dashboard** — Deploy the FastAPI dashboard + Locust load test to SPCS
-4. **Check status** — Show SPCS service status and ingress URLs
-5. **Teardown** — Remove benchmark resources or SPCS services
+3. **Teardown** — Remove benchmark resources
 
 Route to the matching section below.
 
@@ -100,78 +97,11 @@ At SF1, result validation automatically checks against reference values in `tpc-
 
 ---
 
-### Deploy Dashboard to SPCS
-
-**Goal:** Deploy the FastAPI + Chart.js dashboard and Locust load test to Snowpark Container Services.
-
-**Actions:**
-
-1. Ensure `dashboard/.env` exists:
-   ```bash
-   cp dashboard/.env.example dashboard/.env
-   ```
-
-2. Ask the user for:
-   - `CONNECTION_NAME` — Snowflake connection
-   - `SOLUTION_NAME` — same as used for TPC-H setup (default: `IW_TPCH`)
-   - `DEFAULT_SCALE` — scale for the dashboard queries
-
-3. Update `dashboard/.env` with the values.
-
-4. Review `dashboard/spcs/config.env` — key settings:
-   - `CONNECTION` — Snowflake connection for SPCS deployment
-   - `ROLE` — role for creating SPCS objects (default: `ACCOUNTADMIN`)
-   - `DEPLOY_WAREHOUSE` — warehouse for deploy SQL session
-
-5. Create the denormalized dashboard table:
-   ```bash
-   cd <REPO_ROOT>/dashboard/spcs && ./deploy.sh sql
-   ```
-
-6. Deploy SPCS services (builds Docker images, pushes, creates compute pools and services):
-   ```bash
-   cd <REPO_ROOT>/dashboard/spcs && ./deploy.sh services
-   ```
-
-**Services deployed:**
-- `DASHBOARD` — browser UI + API (dashboard compute pool)
-- `DASHBOARD_API_LOCUST` — isolated API copy for load testing (locust compute pool)
-- `DASHBOARD_LOCUST` — Locust load generator (locust compute pool)
-
-**After deployment:** The script prints ingress URLs. Open the dashboard URL in a browser (Snowflake login prompts on first visit).
-
----
-
-### Check Status
-
-```bash
-cd <REPO_ROOT>/dashboard/spcs && ./status.sh
-```
-
-Options:
-- `./status.sh --wait` — poll until all services are READY
-- `./status.sh --urls-only` — print only ingress URLs
-
----
-
-### Update Dashboard (rebuild without changing URLs)
-
-```bash
-cd <REPO_ROOT>/dashboard/spcs && ./update.sh
-```
-
----
-
 ### Teardown
 
 **TPC-H resources** (drops warehouses for a specific scale):
 ```bash
 cd <REPO_ROOT>/tpc-h && ./iwtpch.sh teardown --scale <SCALE>
-```
-
-**SPCS services** (drops services, compute pools, image repo):
-```bash
-cd <REPO_ROOT>/dashboard/spcs && ./teardown.sh
 ```
 
 ---
@@ -180,7 +110,6 @@ cd <REPO_ROOT>/dashboard/spcs && ./teardown.sh
 
 - After detecting intent — confirm the action before proceeding
 - After collecting configuration values — confirm `.env` contents before running setup
-- Before `deploy.sh services` — warn that this builds Docker images and creates compute pools (cost implications)
 - Before teardown — confirm which resources to drop
 
 ## Troubleshooting
@@ -189,12 +118,8 @@ cd <REPO_ROOT>/dashboard/spcs && ./teardown.sh
 |-------|----------|
 | `uv: command not found` | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | `SNOWFLAKE_SAMPLE_DATA` not accessible | Ensure the role has USAGE on the shared database |
-| Docker build fails | Ensure Docker daemon is running; check `docker info` |
-| Service stuck in PENDING | Run `./logs.sh` to inspect container logs |
-| Service FAILED | Check `./logs.sh`; common cause is missing grants or network rules |
 | Connection errors | Verify connection name exists in `~/.snowflake/connections.toml` |
 
 ## Output
 
 - TPC-H benchmark results (JSON + CSV) in `tpc-h/results/`
-- Running SPCS services with public ingress URLs for the dashboard and Locust UI
