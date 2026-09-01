@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable
 
@@ -9,21 +10,18 @@ from src.tpch import config as _cfg
 from src.tpch.config import (
     EXPECTED_RESULTS_1GB_PATH,
     SQL_DIR,
+    SQL_EXTERNAL_VOLUME,
     SQL_SCHEMA_NAME,
-    iceberg_schema_for_scale,
     interactive_schema_for_scale,
-    schema_for_scale,
     schema_for_tables_type,
     sql_substitutions_for_scale,
     target_context,
-    warehouse_name_for_type,
 )
 from src.tpch.connection import (
     connect,
     ensure_warehouse_started,
     resolve_connection_name,
     use_benchmark_context,
-    _warehouse_row,
 )
 from src.tpch.execution import run_benchmark_iteration
 from src.tpch.queries import load_queries, parse_query_filter
@@ -37,6 +35,26 @@ from src.tpch.results import (
 from src.tpch.sql_scripts import execute_script, print_setup_tables
 from src.tpch.types import QueryResult
 from src.tpch.validation import apply_validation, load_expected_results_1gb
+
+
+def _resolve_external_volume(conn) -> str | None:
+    """Resolve the iceberg external volume name.
+
+    Returns the volume name, or None if it cannot be determined.
+    When ICEBERG_EXTERNAL_VOLUME is "auto", queries the account-level default.
+    """
+    vol = os.getenv("ICEBERG_EXTERNAL_VOLUME", "").strip()
+    if vol and vol.lower() != "auto":
+        return vol
+    cur = conn.cursor()
+    try:
+        cur.execute("SHOW PARAMETERS LIKE 'EXTERNAL_VOLUME' IN ACCOUNT")
+        row = cur.fetchone()
+        if row and row[1]:
+            return row[1]
+    finally:
+        cur.close()
+    return None
 
 
 def _run_sql_script_cmd(
@@ -110,6 +128,21 @@ def cmd_setup(args) -> int:
     subs[SQL_SCHEMA_NAME] = wh_schema
 
     with connect(connection_name=connection) as conn:
+        # Resolve the external volume for iceberg tables.
+        if "iceberg" in tbl_keys:
+            ext_vol = _resolve_external_volume(conn)
+            if not ext_vol:
+                print(
+                    "Error: ICEBERG_EXTERNAL_VOLUME is not set and no account-level\n"
+                    "default EXTERNAL_VOLUME is configured.\n"
+                    "Set ICEBERG_EXTERNAL_VOLUME in your .env file (or use 'auto'\n"
+                    "to pick the account default).",
+                    file=sys.stderr,
+                )
+                return 2
+            subs[SQL_EXTERNAL_VOLUME] = ext_vol
+            print(f"Using external volume: {ext_vol}")
+
         for script_name, label in scripts:
             script = SQL_DIR / script_name
             if not script.is_file():

@@ -13,8 +13,8 @@ from src.tpch.config import (
     TABLE_TYPES,
     WAREHOUSE_TYPES,
     WORKLOADS,
-    project_version,
     load_solution_name,
+    project_version,
 )
 
 

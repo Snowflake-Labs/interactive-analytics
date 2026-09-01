@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from pathlib import Path
 from typing import TypedDict
-
-import sys
 
 from dotenv import load_dotenv
 
@@ -74,6 +73,7 @@ SQL_SOLUTION_NAME = "{{SOLUTION_NAME}}"
 SQL_LOAD_WH_SIZE = "{{LOAD_WH_SIZE}}"
 SQL_BENCH_WH_SIZE = "{{BENCH_WH_SIZE}}"
 SQL_SCHEMA_NAME = "{{SCHEMA_NAME}}"
+SQL_EXTERNAL_VOLUME = "{{EXTERNAL_VOLUME}}"
 
 def sql_substitutions_for_scale(scale: str) -> dict[str, str]:
     config = SCALES[scale]

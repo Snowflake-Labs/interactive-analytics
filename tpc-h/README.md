@@ -80,10 +80,10 @@ Standard tables live in `TPCH_SF<scale>`, interactive tables in `TPCH_SF<scale>_
 | `<SOLUTION_NAME>_BENCH_DB` | Database | shared across scales; created if not exists |
 | `TPCH_SF<scale>` | Schema | 8 standard tables (CTAS from `SNOWFLAKE_SAMPLE_DATA.TPCH_SF<scale>`) |
 | `TPCH_SF<scale>_IT` | Schema | 8 interactive tables, clustered for the benchmark workload |
-| `TPCH_SF<scale>_ICE` | Schema | 8 iceberg tables (`CATALOG = 'SNOWFLAKE'`) |
+| `TPCH_SF<scale>_ICE` | Schema | 8 iceberg tables (`CATALOG = 'SNOWFLAKE'`, `EXTERNAL_VOLUME` from `ICEBERG_EXTERNAL_VOLUME` setting) |
 | `<SOLUTION_NAME>_BENCH_WH_LOAD` | Standard warehouse | temporary; sized for the CTAS load and dropped at the end of each table setup script |
 | `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` | Standard warehouse | used for standard warehouse benchmark |
-| `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` | Interactive warehouse | used for interactive warehouse benchmark; attached to the eight `TPCH_SF<scale>_IT` tables; `FALLBACK_WAREHOUSE` is `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` |
+| `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` | Interactive warehouse | used for interactive warehouse benchmark; attached to the tables in the schema selected by `--tables-type`; `FALLBACK_WAREHOUSE` is `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` (auto-created if not already requested) |
 
 Per scale (with `SOLUTION_NAME=TPCH`):
 
@@ -218,6 +218,7 @@ HAVING nation = 'ALGERIA' AND o_year = 1998;
 | Database | `<SOLUTION_NAME>_BENCH_DB` | `--database` on `run` |
 | Schema | `TPCH_SF<scale>` / `TPCH_SF<scale>_IT` / `TPCH_SF<scale>_ICE` | `--schema` on `run` |
 | Warehouse | `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` or `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` | `--warehouse` on `run` |
+| Iceberg external volume | `ICEBERG_EXTERNAL_VOLUME` in `.env` (default `auto`) | Set to a volume name or `auto` to use the account-level default |
 
 CLI flags take precedence over defaults derived from `--warehouse-type`, `--tables-type`, and `--scale`. Omit them to keep the built-in naming above.
 
@@ -234,7 +235,7 @@ CLI flags take precedence over defaults derived from `--warehouse-type`, `--tabl
 |---|---|---|
 | `standard` (default) | `TPCH_SF<scale>` | Standard tables |
 | `interactive` | `TPCH_SF<scale>_IT` | Interactive tables |
-| `iceberg` | `TPCH_SF<scale>_ICE` | Iceberg tables (`CATALOG = 'SNOWFLAKE'`) |
+| `iceberg` | `TPCH_SF<scale>_ICE` | Iceberg tables (`CATALOG = 'SNOWFLAKE'`, `EXTERNAL_VOLUME` from `.env`) |
 
 The query files use unqualified table names, so they resolve via `USE DATABASE`/`USE SCHEMA` and run unchanged on any combination of warehouse type, table type, and scale. Use `--database`, `--schema`, and `--warehouse` to point at a different Snowflake context without changing the query files.
 
@@ -253,7 +254,8 @@ Each query was analysed for opportunities to use modern Snowflake SQL (window fu
 
 ## Notes
 
-- Interactive warehouses can only query interactive tables, so a standard warehouse (`<SOLUTION_NAME>_BENCH_WH_LOAD`) is created for the CTAS load.
+- Interactive warehouses require a standard fallback warehouse, so `--warehouse-type interactive` always creates the standard warehouse too. The interactive warehouse is attached to whichever schema `--tables-type` selects (standard, interactive, or iceberg).
+- Iceberg tables require an external volume. Set `ICEBERG_EXTERNAL_VOLUME` in `.env` to a volume name, or `auto` to use the account-level default (`SHOW PARAMETERS LIKE 'EXTERNAL_VOLUME' IN ACCOUNT`). Setup will error out if neither is configured.
 - `client_elapsed_s` is wall-clock timing measured around `cur.execute` + `fetchall` (so it includes result transfer); `server_elapsed_s` is `TOTAL_ELAPSED_TIME` from Snowflake's query history.
 - Each query is executed `--repeats` times (default 3) and the **best** (minimum) client and server times are kept. The first execution warms the warehouse's local cache, so the best of the later runs reflects warm-cache performance (this replaces a separate warm-up phase). The JSON output also records every attempt's `query_id`. Use `--repeats 1` for a single execution per query.
 - With `--avg`, the strategy changes: each query first runs **one explicit warmup** (result discarded), then executes `--repeats` measured runs. The reported time is the **average** of those measured runs (both client and server). This gives a more representative picture of steady-state performance when variance between runs matters.
