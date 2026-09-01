@@ -1,6 +1,6 @@
 # Getting Started with the Interactive Benchmark Skill
 
-This skill benchmarks any SQL query against a Snowflake Interactive Warehouse under concurrent load. It deploys a FastAPI server and Locust load generator to Snowpark Container Services (SPCS), measures latency percentiles (P50/P95/P99), and auto-scales the warehouse until the P95 target is met.
+This skill benchmarks any SQL query against a Snowflake Interactive Warehouse under concurrent load. It deploys a FastAPI server and [Locust](https://locust.io) load generator to Snowpark Container Services (SPCS), measures latency percentiles (P50/P95/P99), and auto-scales the warehouse until the P95 target is met.
 
 ## 1. Clone the repo
 
@@ -47,16 +47,19 @@ Open the cloned `interactive-analytics` folder in Cortex Code Desktop, or `cd` i
 
 In the Cortex Code chat panel, type something like:
 
-> Benchmark this query on an interactive warehouse with 50 concurrent users and a P95 goal of 1 second:
-> ```sql
-> SELECT l_returnflag, l_linestatus,
->        SUM(l_quantity) AS sum_qty,
->        SUM(l_extendedprice) AS sum_base_price
-> FROM   lineitem
-> WHERE  l_shipdate <= DATEADD(day, -90, '1998-12-01')
-> GROUP  BY l_returnflag, l_linestatus
-> ORDER  BY l_returnflag, l_linestatus;
-> ```
+```text
+Benchmark this query on an interactive warehouse with 50 concurrent users and a P95 goal of 1 second:
+
+SELECT l_returnflag, l_linestatus,
+       SUM(l_quantity) AS sum_qty,
+       SUM(l_extendedprice) AS sum_base_price
+FROM   lineitem
+WHERE  l_shipdate <= DATEADD(day, -90, '1998-12-01')
+GROUP  BY l_returnflag, l_linestatus
+ORDER  BY l_returnflag, l_linestatus;
+
+use database MYDATABASE. The tables are in the schema MYSCHEMA.
+```
 
 The skill takes over from here. It will:
 
