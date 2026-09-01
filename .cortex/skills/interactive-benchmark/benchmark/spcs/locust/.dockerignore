@@ -1,0 +1,17 @@
+# Build context is the skill root (.cortex/skills/interactive-benchmark/).
+# Only include what we need.
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+**/.env
+**/snowflake.log
+**/node_modules
+templates/
+benchmark/api/
+benchmark/spcs/api/
+benchmark/spcs/specs/
+benchmark/spcs/sql/
+benchmark/spcs/*.sh
+benchmark/spcs/*.md
+benchmark/spcs/*.env

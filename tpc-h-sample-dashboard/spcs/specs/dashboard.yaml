@@ -12,13 +12,17 @@ spec:
         SNOWFLAKE_DATABASE: "${DASHBOARD_DATABASE}"
         SNOWFLAKE_ROLE: "${DASHBOARD_ROLE}"
         SNOWFLAKE_WAREHOUSE: "${DASHBOARD_WAREHOUSE}"
+        WORKERS: "${DASHBOARD_WORKERS}"
+        POOL_SIZE: "${DASHBOARD_POOL_SIZE}"
+        POOL_WARMUP: "${DASHBOARD_POOL_WARMUP}"
+        POOL_ACQUIRE_TIMEOUT: "${DASHBOARD_POOL_ACQUIRE_TIMEOUT}"
       resources:
         requests:
-          memory: 1Gi
-          cpu: "500m"
+          memory: "${DASHBOARD_MEMORY_REQUEST}"
+          cpu: "${DASHBOARD_CPU_REQUEST}"
         limits:
-          memory: 2Gi
-          cpu: "1000m"
+          memory: "${DASHBOARD_MEMORY_LIMIT}"
+          cpu: "${DASHBOARD_CPU_LIMIT}"
       readinessProbe:
         port: ${DASHBOARD_PORT}
         path: /api/config

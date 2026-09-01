@@ -103,7 +103,7 @@ process the browser uses.
 
 ## Naming convention
 
-All object names are derived from `SOLUTION_NAME` (set in `dashboard/.env`).
+All object names are derived from `SOLUTION_NAME` (set in `tpc-h-sample-dashboard/.env`).
 With `SOLUTION_NAME=DMTESTTPCH`, the objects created are:
 
 | Object | Name |
@@ -118,7 +118,7 @@ With `SOLUTION_NAME=DMTESTTPCH`, the objects created are:
 | Locust service | `DASHBOARD_LOCUST` |
 
 The general pattern is `${SOLUTION_NAME}_BENCH_*` for infrastructure objects.
-Change `SOLUTION_NAME` in `dashboard/.env` to deploy multiple independent
+Change `SOLUTION_NAME` in `tpc-h-sample-dashboard/.env` to deploy multiple independent
 instances in the same account.
 
 ## Compute pools
