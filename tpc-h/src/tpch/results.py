@@ -152,17 +152,20 @@ def _serialize_result(result: QueryResult) -> dict:
 
 
 def write_results(
-    target: str, scale: str, workload: str, results: list[QueryResult], summary: dict
+    warehouse_type: str, tables_type: str, scale: str, workload: str,
+    results: list[QueryResult], summary: dict,
 ) -> tuple[Path, Path]:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    json_path = RESULTS_DIR / f"run_{target}_sf{scale}_{workload}_{ts}.json"
-    csv_path = RESULTS_DIR / f"run_{target}_sf{scale}_{workload}_{ts}.csv"
+    base = f"run_{warehouse_type}-{tables_type}_sf{scale}_{workload}_{ts}"
+    json_path = RESULTS_DIR / f"{base}.json"
+    csv_path = RESULTS_DIR / f"{base}.csv"
 
     json_path.write_text(
         json.dumps(
             {
-                "target": target,
+                "warehouse_type": warehouse_type,
+                "tables_type": tables_type,
                 "scale": scale,
                 "workload": workload,
                 "summary": summary,

@@ -6,8 +6,9 @@ set -euo pipefail
 #
 # Usage:
 #   ./iwtpch.sh setup --scale 10
-#   ./iwtpch.sh run --target interactive --scale 10 --workload original
-#   ./iwtpch.sh run --target standard --scale 100 --queries 2,11,15 --repeats 5
+#   ./iwtpch.sh setup --scale 10 --tables-type iceberg --warehouse-type standard
+#   ./iwtpch.sh run --warehouse-type interactive --tables-type interactive --scale 10
+#   ./iwtpch.sh run --warehouse-type standard --tables-type iceberg --scale 100 --queries 2,11,15
 #   ./iwtpch.sh teardown
 #
 # Run `./iwtpch.sh --help` for full CLI options.

@@ -9,11 +9,14 @@ from src.tpch import config as _cfg
 from src.tpch.config import (
     EXPECTED_RESULTS_1GB_PATH,
     SQL_DIR,
+    SQL_SCHEMA_NAME,
+    iceberg_schema_for_scale,
     interactive_schema_for_scale,
     schema_for_scale,
+    schema_for_tables_type,
     sql_substitutions_for_scale,
     target_context,
-    warehouse_name_for_target,
+    warehouse_name_for_type,
 )
 from src.tpch.connection import (
     connect,
@@ -62,43 +65,136 @@ def _run_sql_script_cmd(
 
 
 def cmd_setup(args) -> int:
-    rc = _run_sql_script_cmd(
-        args,
-        script_name="setup.sql",
-        action_label="Setup",
-        post_run=print_setup_tables,
-    )
-    if rc != 0:
-        return rc
     scale = args.scale
+    tables_type = args.tables_type
+    warehouse_type = args.warehouse_type
+
+    try:
+        connection = resolve_connection_name(args.connection)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    subs = sql_substitutions_for_scale(scale)
+
+    table_scripts = {
+        "standard": "setup_standard_tables.sql",
+        "interactive": "setup_interactive_tables.sql",
+        "iceberg": "setup_iceberg_tables.sql",
+    }
+    warehouse_scripts = {
+        "standard": "setup_standard_warehouse.sql",
+        "interactive": "setup_interactive_warehouse.sql",
+    }
+
+    tbl_keys = list(table_scripts) if tables_type == "all" else [tables_type]
+    wh_keys = list(warehouse_scripts) if warehouse_type == "all" else [warehouse_type]
+
+    # An interactive warehouse requires a standard fallback warehouse.
+    if "interactive" in wh_keys and "standard" not in wh_keys:
+        wh_keys.insert(0, "standard")
+
+    scripts: list[tuple[str, str]] = []
+    for k in tbl_keys:
+        scripts.append((table_scripts[k], f"Setup {k} tables"))
+    for k in wh_keys:
+        scripts.append((warehouse_scripts[k], f"Setup {k} warehouse"))
+
+    # Warehouse scripts reference the schema where tables live.
+    # When tables_type is specific, use that schema; when "all", use the
+    # natural pairing (interactive tables for interactive warehouse).
+    if tables_type != "all":
+        wh_schema = schema_for_tables_type(tables_type, scale)
+    else:
+        wh_schema = interactive_schema_for_scale(scale)
+    subs[SQL_SCHEMA_NAME] = wh_schema
+
+    with connect(connection_name=connection) as conn:
+        for script_name, label in scripts:
+            script = SQL_DIR / script_name
+            if not script.is_file():
+                print(f"{label} script not found: {script}", file=sys.stderr)
+                return 2
+            print(f"Running {label.lower()} (scale {scale}) using connection '{connection}'\u2026")
+            execute_script(conn, script, subs)
+
+        # Run metadata query on the standard warehouse to avoid the
+        # interactive warehouse's short statement timeout.
+        if "interactive" in wh_keys:
+            cur = conn.cursor()
+            try:
+                cur.execute(f"USE WAREHOUSE {_cfg.SOLUTION_NAME}_BENCH_WH_STD_{scale}")
+            finally:
+                cur.close()
+        print_setup_tables(conn, scale)
+
     print(
-        f"Setup complete. Ready to benchmark:\n"
-        f"  interactive: {_cfg.BENCHMARK_DATABASE}.{interactive_schema_for_scale(scale)} "
-        f"on {warehouse_name_for_target('interactive', scale)}\n"
-        f"  standard   : {_cfg.BENCHMARK_DATABASE}.{schema_for_scale(scale)} "
-        f"on {warehouse_name_for_target('standard', scale)}"
+        f"\nSetup complete. Created:"
+        f"\n  tables     : {', '.join(tbl_keys)}"
+        f"\n  warehouses : {', '.join(wh_keys)}"
     )
     return 0
 
 
 def cmd_teardown(args) -> int:
-    rc = _run_sql_script_cmd(
-        args,
-        script_name="teardown.sql",
-        action_label="Teardown",
-    )
-    if rc != 0:
-        return rc
-    print("Teardown complete.")
+    scale = args.scale
+    tables_type = args.tables_type
+    warehouse_type = args.warehouse_type
+
+    try:
+        connection = resolve_connection_name(args.connection)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    subs = sql_substitutions_for_scale(scale)
+
+    table_scripts = {
+        "standard": "teardown_standard_tables.sql",
+        "interactive": "teardown_interactive_tables.sql",
+        "iceberg": "teardown_iceberg_tables.sql",
+    }
+    warehouse_scripts = {
+        "standard": "teardown_standard_warehouse.sql",
+        "interactive": "teardown_interactive_warehouse.sql",
+    }
+
+    tbl_keys = list(table_scripts) if tables_type == "all" else [tables_type]
+    wh_keys = list(warehouse_scripts) if warehouse_type == "all" else [warehouse_type]
+
+    # Warehouses must be dropped before schemas (interactive WH references IT tables)
+    scripts: list[tuple[str, str]] = []
+    for k in wh_keys:
+        scripts.append((warehouse_scripts[k], f"Teardown {k} warehouse"))
+    for k in tbl_keys:
+        scripts.append((table_scripts[k], f"Teardown {k} tables"))
+    if args.drop_database:
+        scripts.append(("teardown_database.sql", "Teardown database"))
+
+    with connect(connection_name=connection) as conn:
+        for script_name, label in scripts:
+            script = SQL_DIR / script_name
+            if not script.is_file():
+                print(f"{label} script not found: {script}", file=sys.stderr)
+                return 2
+            print(f"Running {label.lower()} (scale {scale}) using connection '{connection}'\u2026")
+            execute_script(conn, script, subs)
+
+    dropped = [f"tables: {', '.join(tbl_keys)}", f"warehouses: {', '.join(wh_keys)}"]
+    if args.drop_database:
+        dropped.append(f"database: {_cfg.BENCHMARK_DATABASE}")
+    print(f"Teardown complete. Dropped: {'; '.join(dropped)}")
     return 0
 
 
 def cmd_run(args) -> int:
-    target = args.target
+    warehouse_type = args.warehouse_type
+    tables_type = args.tables_type
     scale = args.scale
     workload = args.workload
     database, schema, warehouse = target_context(
-        target,
+        warehouse_type,
+        tables_type,
         scale,
         database=args.database,
         schema=args.schema,
@@ -128,7 +224,8 @@ def cmd_run(args) -> int:
         f"{mode_label}"
     )
     if not args.schema and not args.warehouse:
-        print(f"  target    : {target}")
+        print(f"  warehouse : {warehouse_type}")
+        print(f"  tables    : {tables_type}")
     print(f"  scale     : SF{scale}")
     print(f"  workload  : {workload}")
     print(f"  connection: {connection}")
@@ -148,7 +245,7 @@ def cmd_run(args) -> int:
             use_benchmark_context(cur, database, schema, warehouse)
         except snowflake.connector.errors.ProgrammingError as exc:
             print(f"\nCould not use {database}.{schema} on {warehouse}: {exc.msg}", file=sys.stderr)
-            if target == "interactive":
+            if tables_type == "interactive":
                 print(
                     f"The interactive schema {database}.{schema} is not set up. "
                     f"Run:  ./iwtpch.sh setup --scale {scale}",
@@ -202,7 +299,7 @@ def cmd_run(args) -> int:
     summary["server_version"] = version
     print_table(results)
     print_summary(summary)
-    json_path, csv_path = write_results(target, scale, workload, results, summary)
+    json_path, csv_path = write_results(warehouse_type, tables_type, scale, workload, results, summary)
     print(f"\nWrote {json_path}")
     print(f"Wrote {csv_path}")
     validation_failed = summary.get("validation_failed", 0)
