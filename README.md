@@ -5,6 +5,10 @@ get started with Snowflake [**Interactive Analytics**](https://docs.snowflake.co
 interactive warehouses, interactive tables, and low-latency, high-concurrency
 workloads.
 
+## Getting Started
+
+**Looking for the Interactive Benchmark skill?** Follow the [Getting Started guide](INTERACTIVE-BENCHMARK-GETTING-STARTED.md) to clone the repo, install prerequisites, and run your first interactive warehouse benchmark in minutes.
+
 ## Contents
 
 ### [`tpc-h/`](tpc-h/)
@@ -31,11 +35,11 @@ Benchmark **any SQL query** on interactive warehouses under concurrent load.
 - Deploys the benchmark API and Locust load test to Snowpark Container Services
 - Reports whether the query meets its P95 latency goal under load
 
-**Usage:** Ask something like *"benchmark my query on interactive vs standard"*.
+**Usage:** Ask something like *"benchmark my query on an interactive warehouse"*.
 
 ### `interactive-tpch-benchmark`
 
-Set up and run the **TPC-H benchmark locally** against interactive and standard warehouses.
+Set up and run the **TPC-H benchmark locally** against interactive warehouses.
 
 - Creates TPC-H tables at various scale factors (1, 10, 100, 1000)
 - Runs the 22 standard queries and collects timing results (JSON + CSV)
