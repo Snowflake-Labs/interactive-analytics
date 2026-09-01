@@ -1,6 +1,8 @@
 # Resource Summary and Cleanup — Step 3.14 Detail
 
-After the report is generated, present the user with a **complete list of all Snowflake resources created during this benchmark session**. Format it as a clear table:
+After the report is generated, present the user with a **complete list of all Snowflake resources created during this benchmark session**. The resource list depends on the `INTERACTIVE_MODE` captured in Step 2.1.
+
+**Interactive-table mode (`INTERACTIVE_MODE = interactive-tables`):**
 
 | Resource Type | Name | Location |
 |---|---|---|
@@ -15,9 +17,24 @@ After the report is generated, present the user with a **complete list of all Sn
 | Service (API) | `BENCHMARK_API` | In SPCS schema |
 | Service (Locust) | `BENCHMARK_LOCUST` | In SPCS schema |
 
+**Zero-copy mode (`INTERACTIVE_MODE = zero-copy`):**
+
+| Resource Type | Name | Location |
+|---|---|---|
+| Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level |
+| SPCS database | `<SOLUTION_NAME>_BENCH_DB` | Account-level |
+| SPCS schema | `<SOLUTION_NAME>_BENCH_DB.SPCS` | Contains services + image repo |
+| Compute pool (API) | `<SOLUTION_NAME>_BENCH_API_POOL` | Account-level |
+| Compute pool (Locust) | `<SOLUTION_NAME>_BENCH_LOCUST_POOL` | Account-level |
+| Image repository | `<SOLUTION_NAME>_BENCH_IMAGES` | In SPCS schema |
+| Service (API) | `BENCHMARK_API` | In SPCS schema |
+| Service (Locust) | `BENCHMARK_LOCUST` | In SPCS schema |
+
+Note: In zero-copy mode, no interactive schema or interactive tables are created — `INTERACTIVE_SCHEMA` is the **source schema** and must NOT be dropped.
+
 Then use `ask_user_question` to ask the user: **"Would you like me to clean up these resources, or keep them for further benchmarking?"** with the following three options:
-1. **Full cleanup** — tear down everything (SPCS services, compute pools, interactive tables, warehouse, schemas)
-2. **Tear down SPCS only** — remove services and compute pools but keep the interactive warehouse and tables
+1. **Full cleanup** — tear down everything (SPCS services, compute pools, interactive warehouse, and — if interactive-table mode — the interactive schema and tables)
+2. **Tear down SPCS only** — remove services and compute pools but keep the interactive warehouse (and interactive tables if applicable)
 3. **Keep everything** — leave all resources running for re-runs
 
 If the user chooses **full cleanup**, use the `bash` tool:
@@ -25,11 +42,21 @@ If the user chooses **full cleanup**, use the `bash` tool:
 cd <SKILL_DIR>/benchmark/scripts && ./teardown.sh
 ```
 
-Then drop the schemas and warehouse via `snowflake_sql_execute`:
+Then drop the schemas and warehouse via `snowflake_sql_execute`.
+
+**Interactive-table mode** — drop the interactive schema (it contains copied data):
 
 ```sql
 USE ROLE <ROLE>;
 DROP SCHEMA IF EXISTS <DATABASE>.<INTERACTIVE_SCHEMA>;
+DROP SCHEMA IF EXISTS <SOLUTION_NAME>_BENCH_DB.SPCS;
+DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
+```
+
+**Zero-copy mode** — do NOT drop `INTERACTIVE_SCHEMA` (it is the source schema with production data):
+
+```sql
+USE ROLE <ROLE>;
 DROP SCHEMA IF EXISTS <SOLUTION_NAME>_BENCH_DB.SPCS;
 DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
 ```

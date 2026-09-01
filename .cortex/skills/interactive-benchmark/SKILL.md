@@ -141,7 +141,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Interactive warehouse AUTO_SUSPEND:** Interactive warehouses require `AUTO_SUSPEND` to be at least 86400 seconds (24 hours). When creating or altering an interactive warehouse, always set `AUTO_SUSPEND = 86400` to use the minimum allowed value.
 
-**CRITICAL — DDL must use a standard warehouse:** Interactive warehouses reject DDL and CTAS operations. `CREATE INTERACTIVE TABLE ... AS SELECT` and any `CREATE TABLE ... AS SELECT` MUST execute on the **standard** warehouse, never on the interactive warehouse. Always `USE WAREHOUSE <STANDARD_WAREHOUSE>` before running any DDL, table-creation, or data-loading statements. The interactive warehouse is for SELECT queries only. When invoking the `snowflake-interactive` skill in Phase 2, explicitly tell it to use the standard warehouse for creating interactive tables.
+**CRITICAL — DDL must use a standard warehouse (interactive-table mode only):** Interactive warehouses reject DDL and CTAS operations. `CREATE INTERACTIVE TABLE ... AS SELECT` and any `CREATE TABLE ... AS SELECT` MUST execute on the **standard** warehouse, never on the interactive warehouse. Always `USE WAREHOUSE <STANDARD_WAREHOUSE>` before running any DDL, table-creation, or data-loading statements. The interactive warehouse is for SELECT queries only. When invoking the `snowflake-interactive` skill in Phase 2, explicitly tell it to use the standard warehouse for creating interactive tables. **In zero-copy mode, no DDL is needed — the interactive warehouse queries the source tables directly.**
 
 **Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster, auto-suspend disabled)." Never create resources silently.
 
@@ -159,7 +159,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Load** `references/suitability-check.md` (via the `read` tool) for the full Step 2.1 and Step 2.2 procedure.
 
-**Summary:** Invoke `snowflake-interactive` skill to create interactive tables/warehouse, then run the query on both standard and interactive warehouses. **CRITICAL: When invoking `snowflake-interactive`, explicitly instruct it to use the standard warehouse (`STANDARD_WAREHOUSE` from Phase 1) for ALL DDL and table creation — interactive warehouses reject `CREATE INTERACTIVE TABLE ... AS SELECT` and any CTAS.** Capture `INTERACTIVE_WAREHOUSE`, `INTERACTIVE_SCHEMA`, and `OPTIMIZED_QUERY` from the skill output. If the query exceeds 10s on standard or 5s on interactive, or shows no speedup — **STOP** and do not proceed to Phase 3.
+**Summary:** Invoke `snowflake-interactive` skill to analyze the query and determine the best approach — zero-copy interactive (querying source tables directly) or interactive tables (copied data). The skill owns this decision. Capture `INTERACTIVE_WAREHOUSE`, `INTERACTIVE_SCHEMA`, `OPTIMIZED_QUERY`, and `INTERACTIVE_MODE` (`zero-copy` or `interactive-tables`) from the skill output. Then run the query on both standard and interactive warehouses. **CRITICAL: If the skill chooses interactive-table mode (Path B), explicitly instruct it to use the standard warehouse (`STANDARD_WAREHOUSE` from Phase 1) for ALL DDL and table creation — interactive warehouses reject `CREATE INTERACTIVE TABLE ... AS SELECT` and any CTAS.** If the query exceeds 10s on standard or 5s on interactive, or shows no speedup — **STOP** and do not proceed to Phase 3.
 
 ---
 
@@ -187,7 +187,52 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 > **PROGRESS:** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 start`. Update `system_todo_write`.
 
-Verify the interactive setup is correct before deploying.
+Verify the interactive setup is correct before deploying. The validation differs depending on the `INTERACTIVE_MODE` captured in Step 2.1.
+
+---
+
+#### Mode A — Zero-copy (`INTERACTIVE_MODE = zero-copy`)
+
+In zero-copy mode the interactive warehouse queries the **original source tables** directly. There are no interactive tables to verify. Instead, validate:
+
+**1. Verify the interactive warehouse exists and is running** (via `snowflake_sql_execute`):
+
+```sql
+SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
+```
+
+Confirm the warehouse type is `INTERACTIVE` (or `SNOWPARK-OPTIMIZED` with interactive capabilities, depending on the account).
+
+**2. Verify source table clustering aligns with query predicates:**
+
+For each source table referenced by the query, check its clustering key (via `snowflake_sql_execute`):
+
+```sql
+SHOW TABLES LIKE '<TABLE_NAME>' IN SCHEMA <DATABASE>.<INTERACTIVE_SCHEMA>;
+```
+
+Compare the `cluster_by` column against the columns used in the query's WHERE/JOIN predicates. For zero-copy to perform well, the source tables' clustering should align with the query's filter and join columns. If clustering is missing or misaligned, warn the user — the `snowflake-interactive` skill should have caught this, but verify as a safety net.
+
+**3. Validate working set sizing** (via `snowflake_sql_execute`):
+
+```sql
+SELECT TABLE_NAME, BYTES / (1024*1024*1024) AS SIZE_GB
+FROM <DATABASE>.INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = '<INTERACTIVE_SCHEMA>';
+```
+
+Compare total working set size against the interactive warehouse size:
+- XS: up to ~350 GB working set
+- S: up to ~600 GB
+- M: up to ~1200 GB
+- L: up to ~2500 GB
+- XL+: larger working sets
+
+**If validation fails** (warehouse not found, severe clustering misalignment, or working set exceeds warehouse cache capacity): inform the user which check failed, then jump to Step 3.14 (cleanup).
+
+---
+
+#### Mode B — Interactive tables (`INTERACTIVE_MODE = interactive-tables`)
 
 **1. Verify interactive tables are attached to the interactive warehouse** (via `snowflake_sql_execute`):
 

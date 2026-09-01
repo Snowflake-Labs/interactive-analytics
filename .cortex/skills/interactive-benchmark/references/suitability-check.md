@@ -2,18 +2,7 @@
 
 ## Step 2.1: Invoke `snowflake-interactive` Skill
 
-Invoke the `snowflake-interactive` skill to:
-- Analyze the query for interactive warehouse suitability
-- Create interactive tables (copies of the source tables with appropriate clustering)
-- Create an interactive warehouse attached to those tables
-- Optimize the query for interactive warehouse execution
-
-**CRITICAL — Use the standard warehouse for all DDL:**
-Interactive warehouses reject DDL and CTAS operations. Both `CREATE INTERACTIVE TABLE ... AS SELECT` and `CREATE TABLE ... AS SELECT` will fail with errors like:
-- `Warehouse '...' must not be an interactive warehouse`
-- `Cannot run statement type 'CREATE_TABLE_AS_SELECT' on an interactive warehouse`
-
-When invoking the `snowflake-interactive` skill, you MUST explicitly instruct it to use the **standard warehouse** (from Phase 1) for creating interactive tables and any other DDL. The interactive warehouse should only be used for running SELECT queries after the tables are created and attached.
+Invoke the `snowflake-interactive` skill to analyze the query and set up the interactive warehouse. The skill will determine the best approach — **zero-copy interactive** or **interactive tables** — based on the source data characteristics.
 
 **Do this by calling:**
 ```
@@ -23,18 +12,43 @@ skill(command="snowflake-interactive")
 Provide the skill with:
 - The database and schema from Phase 1
 - The query to benchmark
-- The standard warehouse name — **explicitly state that this warehouse must be used for all DDL, table creation, and CTAS operations**
+- The standard warehouse name — **explicitly state that this warehouse must be used for all DDL, table creation, and CTAS operations** (if interactive tables turn out to be needed)
 
-The `snowflake-interactive` skill will:
-- Create interactive tables (copies of the source tables optimized for interactive workloads)
-- Determine the best size for the interactive warehouse based on the data and workload characteristics
-- Create an interactive warehouse with `TARGET_LAG` attached to those tables
-- Return the warehouse name and schema name to use
+**The `snowflake-interactive` skill owns the zero-copy vs interactive-table decision.** Do NOT pre-decide which path to use — let the skill's decision tree determine whether the source tables can be queried directly (zero-copy) or need to be copied into interactive tables. The skill considers:
+- Whether the source tables' existing clustering keys align with the query's WHERE/JOIN predicates
+- Whether the working set fits the target interactive warehouse cache
+- Whether the tables are standard or Iceberg (both support zero-copy)
+
+### Possible outcomes
+
+**Path A — Zero-copy interactive (preferred when viable):**
+The skill determines the source tables can be queried directly from an interactive warehouse without copying data. In this case:
+- `INTERACTIVE_SCHEMA` = the **source schema** (no new schema or tables created)
+- `INTERACTIVE_WAREHOUSE` = an interactive warehouse created/configured to query those tables directly
+- `OPTIMIZED_QUERY` = the original query (or a rewritten version), referencing the source tables
+- `INTERACTIVE_MODE` = `zero-copy`
+
+No data is copied. No interactive tables are created. The interactive warehouse queries the original tables.
+
+**Path B — Interactive tables (when zero-copy is not suitable):**
+The skill determines that interactive tables are needed (e.g., clustering misalignment, source tables lack clustering, or other factors). In this case:
+- `INTERACTIVE_SCHEMA` = a new schema containing interactive table copies
+- `INTERACTIVE_WAREHOUSE` = an interactive warehouse with `TARGET_LAG` attached to those tables
+- `OPTIMIZED_QUERY` = the query rewritten for the interactive schema
+- `INTERACTIVE_MODE` = `interactive-tables`
+
+**CRITICAL — Use the standard warehouse for all DDL (Path B only):**
+Interactive warehouses reject DDL and CTAS operations. Both `CREATE INTERACTIVE TABLE ... AS SELECT` and `CREATE TABLE ... AS SELECT` will fail with errors like:
+- `Warehouse '...' must not be an interactive warehouse`
+- `Cannot run statement type 'CREATE_TABLE_AS_SELECT' on an interactive warehouse`
+
+When the skill needs to create interactive tables, it MUST use the **standard warehouse** (from Phase 1) for all DDL. The interactive warehouse should only be used for running SELECT queries after setup is complete.
 
 Capture the output:
 - `INTERACTIVE_WAREHOUSE` — name of the interactive warehouse created (and its size)
-- `INTERACTIVE_SCHEMA` — schema with interactive tables
+- `INTERACTIVE_SCHEMA` — schema with interactive tables (Path B) or the source schema (Path A)
 - `OPTIMIZED_QUERY` — the query rewritten for the interactive schema (if different)
+- `INTERACTIVE_MODE` — `zero-copy` or `interactive-tables`
 
 ## Step 2.2: Suitability Check
 
@@ -51,7 +65,7 @@ USE SCHEMA <DATABASE>.<SCHEMA>;
 
 **10-second rule:** If the query exceeds 10 seconds on a standard warehouse despite proper clustering and optimization, it is highly improbable to meet the 5-second interactive execution threshold. **STOP HERE** and inform the user that the query needs further optimization before it can benefit from an interactive warehouse. Use the `snowflake-interactive` skill to provide improvement suggestions (query changes, better clustering, etc.).
 
-If the standard warehouse timing is acceptable (under 10 seconds), run the query on the interactive warehouse via `snowflake_sql_execute`:
+If the standard warehouse timing is acceptable (under 10 seconds), run the query on the interactive warehouse via `snowflake_sql_execute`. **Use `INTERACTIVE_SCHEMA` — which is the source schema for zero-copy or the interactive tables schema for interactive-table mode:**
 
 ```sql
 ALTER SESSION SET USE_CACHED_RESULT = FALSE;
