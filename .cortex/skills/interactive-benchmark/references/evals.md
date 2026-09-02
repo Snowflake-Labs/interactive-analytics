@@ -11,7 +11,7 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 **Expected behavior:**
 1. Phase 1 collects all 11 inputs, confirms with user
 2. `system_todo_write` called immediately after confirmation with 14 items
-3. Phase 2 invokes `snowflake-interactive`, creates interactive tables/warehouse, suitability check passes
+3. Phase 2 invokes `snowflake-interactive`, which determines the approach (zero-copy or interactive tables), creates the warehouse, suitability check passes
 4. Phase 3 deploys SPCS, warms cache, runs baseline + load test, collects server-side metrics
 5. P95 goal met — no escalation triggered
 6. HTML report generated from template, opened in browser
@@ -134,7 +134,31 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 
 ---
 
-## E8: Template Integrity
+## E9: Zero-Copy Path — Source Tables Already Clustered
+
+**Input:** TPC-H LINEITEM query filtered on `L_SHIPDATE` (the table's existing clustering key) on SF100, 50 concurrent users, P95 <= 1s, connection `PM`, Medium scale-up ceiling, 5 cluster ceiling.
+
+**Expected behavior:**
+1. Phase 1 collects all 11 inputs, confirms with user
+2. Phase 2 invokes `snowflake-interactive`, which detects that LINEITEM is already clustered on `L_SHIPDATE` (matching the query's WHERE predicate) and chooses **zero-copy mode**
+3. `INTERACTIVE_MODE` = `zero-copy`, `INTERACTIVE_SCHEMA` = source schema (no new schema created)
+4. No `CREATE INTERACTIVE TABLE` or CTAS executed — no data copied
+5. Step 3.2 validates via Mode A path (checks warehouse exists, clustering alignment, working set sizing)
+6. No `SHOW INTERACTIVE TABLES` executed (expected — zero-copy has none)
+7. Phase 3 deploys SPCS, warms cache, runs load test normally
+8. Cleanup step does NOT offer to drop `INTERACTIVE_SCHEMA` (it is the source schema)
+
+**Verification:**
+- No interactive tables created in any schema
+- `config.env` `INTERACTIVE_SCHEMA` matches the source schema name (not a `_INT` suffixed copy)
+- Step 3.2 logs show Mode A (zero-copy) validation, not Mode B
+- Cleanup resource table does not list "Interactive schema" or "Interactive tables" rows
+- `DROP SCHEMA` for `INTERACTIVE_SCHEMA` is NOT in the cleanup SQL
+- Report correctly identifies the mode as zero-copy in the executive summary
+
+---
+
+## E10: Template Integrity
 
 **Applies to every run.** After the HTML report is generated:
 
