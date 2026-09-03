@@ -75,6 +75,7 @@ def best_result(name: str, iteration: int, attempts: list[AttemptResult]) -> Que
             "client_elapsed_s": best["client_elapsed_s"],
             "query_id": best["query_id"],
             "attempt_query_ids": [a["query_id"] for a in ok_attempts],
+            "attempt_client_times": [a["client_elapsed_s"] for a in ok_attempts],
             "result_columns": best["columns"],
             "result_rows": best["rows"],
             "error": None,
@@ -88,6 +89,7 @@ def best_result(name: str, iteration: int, attempts: list[AttemptResult]) -> Que
         "client_elapsed_s": last["client_elapsed_s"],
         "query_id": last["query_id"],
         "attempt_query_ids": [a["query_id"] for a in attempts if a["query_id"]],
+        "attempt_client_times": [a["client_elapsed_s"] for a in attempts],
         "error": last["error"],
     }
 
@@ -108,6 +110,7 @@ def avg_result(name: str, iteration: int, attempts: list[AttemptResult]) -> Quer
             "client_elapsed_s": avg_elapsed,
             "query_id": last_ok["query_id"],
             "attempt_query_ids": [a["query_id"] for a in ok_attempts],
+            "attempt_client_times": [a["client_elapsed_s"] for a in ok_attempts],
             "result_columns": last_ok["columns"],
             "result_rows": last_ok["rows"],
             "error": None,
@@ -121,6 +124,7 @@ def avg_result(name: str, iteration: int, attempts: list[AttemptResult]) -> Quer
         "client_elapsed_s": last["client_elapsed_s"],
         "query_id": last["query_id"],
         "attempt_query_ids": [a["query_id"] for a in attempts if a["query_id"]],
+        "attempt_client_times": [a["client_elapsed_s"] for a in attempts],
         "error": last["error"],
     }
 

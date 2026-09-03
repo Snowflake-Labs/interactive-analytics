@@ -21,9 +21,11 @@ class QueryResult(TypedDict, total=False):
     client_elapsed_s: float
     query_id: str | None
     attempt_query_ids: list[str | None]
+    attempt_client_times: list[float]
     result_columns: list[str]
     result_rows: list[tuple[Any, ...]]
     server_elapsed_s: float | None
+    attempt_server_times: list[float]
     error: str | None
     validation: str
     validation_error: str | None

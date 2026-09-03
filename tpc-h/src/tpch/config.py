@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from pathlib import Path
 from typing import TypedDict
-
-import sys
 
 from dotenv import load_dotenv
 
@@ -52,8 +51,10 @@ def load_solution_name(name: str | None = None) -> None:
 
 load_solution_name()
 
-TARGETS = ("interactive", "standard")
-DEFAULT_TARGET = "interactive"
+WAREHOUSE_TYPES = ("interactive", "standard")
+DEFAULT_WAREHOUSE_TYPE = "interactive"
+TABLE_TYPES = ("interactive", "standard", "iceberg")
+DEFAULT_TABLE_TYPE = "standard"
 
 class ScaleConfig(TypedDict):
     load_warehouse: str
@@ -71,6 +72,8 @@ SQL_SCALE = "{{SCALE}}"
 SQL_SOLUTION_NAME = "{{SOLUTION_NAME}}"
 SQL_LOAD_WH_SIZE = "{{LOAD_WH_SIZE}}"
 SQL_BENCH_WH_SIZE = "{{BENCH_WH_SIZE}}"
+SQL_SCHEMA_NAME = "{{SCHEMA_NAME}}"
+SQL_EXTERNAL_VOLUME = "{{EXTERNAL_VOLUME}}"
 
 def sql_substitutions_for_scale(scale: str) -> dict[str, str]:
     config = SCALES[scale]
@@ -90,28 +93,35 @@ def interactive_schema_for_scale(scale: str) -> str:
     return f"{schema_for_scale(scale)}_IT"
 
 
-def schema_for_target(target: str, scale: str) -> str:
-    if target == "interactive":
+def iceberg_schema_for_scale(scale: str) -> str:
+    return f"{schema_for_scale(scale)}_ICE"
+
+
+def schema_for_tables_type(tables_type: str, scale: str) -> str:
+    if tables_type == "interactive":
         return interactive_schema_for_scale(scale)
+    if tables_type == "iceberg":
+        return iceberg_schema_for_scale(scale)
     return schema_for_scale(scale)
 
 
-def warehouse_name_for_target(target: str, scale: str) -> str:
-    prefix = INTERACTIVE_WH_PREFIX if target == "interactive" else STANDARD_WH_PREFIX
+def warehouse_name_for_type(warehouse_type: str, scale: str) -> str:
+    prefix = INTERACTIVE_WH_PREFIX if warehouse_type == "interactive" else STANDARD_WH_PREFIX
     return f"{prefix}_{scale}"
 
 
 def target_context(
-    target: str,
+    warehouse_type: str,
+    tables_type: str,
     scale: str,
     *,
     database: str | None = None,
     schema: str | None = None,
     warehouse: str | None = None,
 ) -> tuple[str, str, str]:
-    """Return (database, schema, warehouse) for the requested target + scale."""
+    """Return (database, schema, warehouse) for the requested types + scale."""
     return (
         database or BENCHMARK_DATABASE,
-        schema or schema_for_target(target, scale),
-        warehouse or warehouse_name_for_target(target, scale),
+        schema or schema_for_tables_type(tables_type, scale),
+        warehouse or warehouse_name_for_type(warehouse_type, scale),
     )

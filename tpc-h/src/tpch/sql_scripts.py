@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from src.tpch import config as _cfg
-from src.tpch.config import interactive_schema_for_scale, schema_for_scale
+from src.tpch.config import iceberg_schema_for_scale, interactive_schema_for_scale, schema_for_scale
 
 
 def split_statements(sql_text: str) -> list[str]:
@@ -36,11 +36,12 @@ def execute_script(conn, script_path: Path, substitutions: dict[str, str] | None
 def print_setup_tables(conn, scale: str) -> None:
     std_schema = schema_for_scale(scale)
     it_schema = interactive_schema_for_scale(scale)
+    ice_schema = iceberg_schema_for_scale(scale)
     sql = (
         f"SELECT TABLE_SCHEMA || '.' || TABLE_NAME AS table_name, "
         f"CLUSTERING_KEY, ROW_COUNT "
         f"FROM {_cfg.BENCHMARK_DATABASE}.INFORMATION_SCHEMA.TABLES "
-        f"WHERE TABLE_SCHEMA IN ('{std_schema}', '{it_schema}') "
+        f"WHERE TABLE_SCHEMA IN ('{std_schema}', '{it_schema}', '{ice_schema}') "
         f"ORDER BY TABLE_SCHEMA, TABLE_NAME"
     )
     cur = conn.cursor()

@@ -6,13 +6,15 @@ import sys
 from src.tpch.commands import cmd_list, cmd_run, cmd_setup, cmd_teardown
 from src.tpch.config import (
     DEFAULT_SCALE,
-    DEFAULT_TARGET,
+    DEFAULT_TABLE_TYPE,
+    DEFAULT_WAREHOUSE_TYPE,
     DEFAULT_WORKLOAD,
     SCALES,
-    TARGETS,
+    TABLE_TYPES,
+    WAREHOUSE_TYPES,
     WORKLOADS,
-    project_version,
     load_solution_name,
+    project_version,
 )
 
 
@@ -33,25 +35,55 @@ def _add_solution_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="TPC-H benchmark on Snowflake Interactive Warehouse")
+    p = argparse.ArgumentParser(description=f"TPC-H benchmark on Snowflake v{project_version()}")
     sub = p.add_subparsers(dest="command", required=True)
 
-    setup_p = sub.add_parser("setup", help="Create database, interactive tables and warehouse")
+    setup_p = sub.add_parser("setup", help="Create database, tables and warehouses")
     setup_p.add_argument(
         "--scale",
         choices=SCALES,
         default=DEFAULT_SCALE,
         help=f"TPC-H scale factor to load: 1, 10, 100, or 1000 (default {DEFAULT_SCALE})",
     )
+    setup_p.add_argument(
+        "--tables-type",
+        choices=(*TABLE_TYPES, "all"),
+        default="all",
+        help="Table format to set up: standard, interactive, iceberg, or all (default all)",
+    )
+    setup_p.add_argument(
+        "--warehouse-type",
+        choices=(*WAREHOUSE_TYPES, "all"),
+        default="all",
+        help="Warehouse type to create: standard, interactive, or all (default all)",
+    )
     _add_connection_arg(setup_p)
     _add_solution_arg(setup_p)
 
-    teardown_p = sub.add_parser("teardown", help="Drop benchmark warehouses for a scale factor")
+    teardown_p = sub.add_parser("teardown", help="Drop benchmark schemas and warehouses")
     teardown_p.add_argument(
         "--scale",
         choices=SCALES,
         default=DEFAULT_SCALE,
         help=f"TPC-H scale factor to tear down: 1, 10, 100, or 1000 (default {DEFAULT_SCALE})",
+    )
+    teardown_p.add_argument(
+        "--tables-type",
+        choices=(*TABLE_TYPES, "all"),
+        default="all",
+        help="Table format to tear down: standard, interactive, iceberg, or all (default all)",
+    )
+    teardown_p.add_argument(
+        "--warehouse-type",
+        choices=(*WAREHOUSE_TYPES, "all"),
+        default="all",
+        help="Warehouse type to drop: standard, interactive, or all (default all)",
+    )
+    teardown_p.add_argument(
+        "--drop-database",
+        action="store_true",
+        default=False,
+        help="Also drop the entire benchmark database (default: only drop selected schemas/warehouses)",
     )
     _add_connection_arg(teardown_p)
     _add_solution_arg(teardown_p)
@@ -62,13 +94,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_p = sub.add_parser("run", help="Run the TPC-H benchmark")
     run_p.add_argument(
-        "--target",
-        choices=TARGETS,
-        default=DEFAULT_TARGET,
-        help=(
-            f"Engine to run against: interactive (TPCH_SF<scale>_IT + interactive warehouse) "
-            f"or standard (TPCH_SF<scale> + standard warehouse). Default {DEFAULT_TARGET}"
-        ),
+        "--warehouse-type",
+        choices=WAREHOUSE_TYPES,
+        default=DEFAULT_WAREHOUSE_TYPE,
+        help=f"Warehouse engine: interactive or standard (default {DEFAULT_WAREHOUSE_TYPE})",
+    )
+    run_p.add_argument(
+        "--tables-type",
+        choices=TABLE_TYPES,
+        default=DEFAULT_TABLE_TYPE,
+        help=f"Table format to query: standard, interactive, or iceberg (default {DEFAULT_TABLE_TYPE})",
     )
     run_p.add_argument(
         "--scale",
@@ -113,17 +148,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--database",
         default=None,
-        help="Snowflake database to use (overrides the default for --target)",
+        help="Snowflake database to use (overrides the default)",
     )
     run_p.add_argument(
         "--schema",
         default=None,
-        help="Snowflake schema to use (overrides TPCH_SF<scale> or TPCH_SF<scale>_IT)",
+        help="Snowflake schema to use (overrides the default for --tables-type)",
     )
     run_p.add_argument(
         "--warehouse",
         default=None,
-        help="Snowflake warehouse to use (overrides the default for --target and --scale)",
+        help="Snowflake warehouse to use (overrides the default for --warehouse-type and --scale)",
     )
     _add_connection_arg(run_p)
     _add_solution_arg(run_p)
