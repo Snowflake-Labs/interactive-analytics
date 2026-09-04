@@ -8,19 +8,29 @@ ingress URLs you can hit from your laptop.
 
 Two services on two independent compute pools:
 
+```mermaid
+graph LR
+    subgraph API_COMPUTE_POOL["API_COMPUTE_POOL (1–4 nodes, CPU_X64_M)"]
+        API1[BENCHMARK_API #1]
+        API2[BENCHMARK_API #2]
+        API3[BENCHMARK_API #3]
+    end
+
+    subgraph LOCUST_COMPUTE_POOL["LOCUST_COMPUTE_POOL (1–2 nodes, CPU_X64_M)"]
+        LOCUST[BENCHMARK_LOCUST<br/>× 1 instance]
+    end
+
+    LOCUST -- "http://benchmark-api:3000" --> LB
+    USER1([curl]) -- "public ingress" --> LB
+    LB{{load balancer}} --> API1
+    LB --> API2
+    LB --> API3
+    USER2([locust REST API]) -- "public ingress" --> LOCUST
 ```
-API_COMPUTE_POOL                      LOCUST_COMPUTE_POOL
-┌──────────────────────────┐          ┌────────────────────────────────────────┐
-│                          │          │                                        │
-│  BENCHMARK_API           │          │  BENCHMARK_LOCUST (locust image)       │
-│  (benchmark API image)   │          │   - generates load                     │
-│   - serves /api/run/*    │◀─────────│   - targets http://benchmark-api:3000  │
-│   - serves /api/health   │          │                                        │
-│                          │          │                                        │
-└──────────────────────────┘          └────────────────────────────────────────┘
-       ▲                                     ▲
-       │ curl (public ingress)               │ locust REST API (public ingress)
-```
+
+The API service runs **3 instances** (`API_MIN_INSTANCES` / `API_MAX_INSTANCES`)
+spread across the API compute pool. Locust runs as a single instance. Instance
+counts and pool sizes are configured in `config.env`.
 
 ```
 spcs/
