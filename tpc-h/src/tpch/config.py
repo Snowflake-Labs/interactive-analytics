@@ -74,6 +74,7 @@ SQL_LOAD_WH_SIZE = "{{LOAD_WH_SIZE}}"
 SQL_BENCH_WH_SIZE = "{{BENCH_WH_SIZE}}"
 SQL_SCHEMA_NAME = "{{SCHEMA_NAME}}"
 SQL_EXTERNAL_VOLUME = "{{EXTERNAL_VOLUME}}"
+SQL_TARGET_FILE_SIZE = "{{TARGET_FILE_SIZE}}"
 
 def sql_substitutions_for_scale(scale: str) -> dict[str, str]:
     config = SCALES[scale]

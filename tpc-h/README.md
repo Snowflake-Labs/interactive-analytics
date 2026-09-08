@@ -105,6 +105,7 @@ Use `./iwtpch.sh` as a shorthand for `uv run iw-tpch` (both accept the same argu
 
 # Create only specific table/warehouse types
 ./iwtpch.sh setup --scale 10 --tables-type iceberg --warehouse-type standard
+./iwtpch.sh setup --scale 10 --tables-type iceberg --target-file-size 128
 ./iwtpch.sh setup --scale 10 --tables-type standard  # warehouses default to all
 
 # 2. List databases and warehouses created for this solution
@@ -219,6 +220,7 @@ HAVING nation = 'ALGERIA' AND o_year = 1998;
 | Schema | `TPCH_SF<scale>` / `TPCH_SF<scale>_IT` / `TPCH_SF<scale>_ICE` | `--schema` on `run` |
 | Warehouse | `<SOLUTION_NAME>_BENCH_WH_INT_<scale>` or `<SOLUTION_NAME>_BENCH_WH_STD_<scale>` | `--warehouse` on `run` |
 | Iceberg external volume | `ICEBERG_EXTERNAL_VOLUME` in `.env` (default `auto`) | Set to a volume name or `auto` to use the account-level default |
+| Iceberg target file size | `AUTO` | `--target-file-size` on `setup` (integer in MB, e.g. `128`, or `AUTO`) |
 
 CLI flags take precedence over defaults derived from `--warehouse-type`, `--tables-type`, and `--scale`. Omit them to keep the built-in naming above.
 

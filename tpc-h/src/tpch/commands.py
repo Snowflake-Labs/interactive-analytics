@@ -12,6 +12,7 @@ from src.tpch.config import (
     SQL_DIR,
     SQL_EXTERNAL_VOLUME,
     SQL_SCHEMA_NAME,
+    SQL_TARGET_FILE_SIZE,
     interactive_schema_for_scale,
     schema_for_tables_type,
     sql_substitutions_for_scale,
@@ -141,7 +142,31 @@ def cmd_setup(args) -> int:
                 )
                 return 2
             subs[SQL_EXTERNAL_VOLUME] = ext_vol
+            raw_fs = args.target_file_size
+            if raw_fs.upper() == "AUTO":
+                file_size = "AUTO"
+            elif raw_fs.upper().endswith("MB"):
+                try:
+                    int(raw_fs[:-2])
+                    file_size = raw_fs.upper()
+                except ValueError:
+                    print(
+                        f"Error: --target-file-size must be an integer (with optional MB suffix) or 'AUTO', got '{raw_fs}'",
+                        file=sys.stderr,
+                    )
+                    return 2
+            else:
+                try:
+                    file_size = f"{int(raw_fs)}MB"
+                except ValueError:
+                    print(
+                        f"Error: --target-file-size must be an integer (with optional MB suffix) or 'AUTO', got '{raw_fs}'",
+                        file=sys.stderr,
+                    )
+                    return 2
+            subs[SQL_TARGET_FILE_SIZE] = file_size
             print(f"Using external volume: {ext_vol}")
+            print(f"Using target file size: {file_size}")
 
         for script_name, label in scripts:
             script = SQL_DIR / script_name
@@ -298,6 +323,21 @@ def cmd_run(args) -> int:
         version = cur.fetchone()[0]
         print(f"  version   : {version}")
 
+        file_sizes: dict[str, str] = {}
+        if tables_type == "iceberg":
+            cur.execute(f"SHOW ICEBERG TABLES IN SCHEMA {database}.{schema}")
+            cols = [c[0].upper() for c in cur.description]
+            name_idx = cols.index("NAME") if "NAME" in cols else 0
+            tbl_names = [r[name_idx] for r in cur.fetchall()]
+            for tbl in tbl_names:
+                cur.execute(
+                    f"SHOW PARAMETERS LIKE 'TARGET_FILE_SIZE' "
+                    f"IN TABLE {database}.{schema}.{tbl}"
+                )
+                row = cur.fetchone()
+                file_sizes[tbl] = row[1] if row else "unknown"
+            print(f"  file size : {', '.join(f'{t}={s}' for t, s in file_sizes.items())}")
+
         for iteration in range(1, args.iterations + 1):
             print(f"\n--- iteration {iteration} ---")
             iter_results = run_benchmark_iteration(
@@ -330,6 +370,8 @@ def cmd_run(args) -> int:
     summary["warehouse"] = warehouse
     summary["warehouse_size"] = wh_size
     summary["server_version"] = version
+    if file_sizes:
+        summary["target_file_size"] = file_sizes
     print_table(results)
     print_summary(summary)
     json_path, csv_path = write_results(warehouse_type, tables_type, scale, workload, results, summary)
