@@ -7,7 +7,7 @@ workloads.
 
 ## Getting Started
 
-**Looking for the Interactive Benchmark skill?** Follow the [Getting Started guide](INTERACTIVE-BENCHMARK-GETTING-STARTED.md) to clone the repo, install prerequisites, and run your first interactive warehouse benchmark in minutes.
+**Looking for the Interactive Benchmark skill?** Follow the [Getting Started guide](./interactive-benchmark/GETTING-STARTED.md) to clone the repo, install prerequisites, and run your first interactive warehouse benchmark in minutes.
 
 ## Contents
 
