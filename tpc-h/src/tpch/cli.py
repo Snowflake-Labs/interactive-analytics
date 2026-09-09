@@ -57,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
         help="Warehouse type to create: standard, interactive, or all (default all)",
     )
+    setup_p.add_argument(
+        "--target-file-size",
+        default="AUTO",
+        help="TARGET_FILE_SIZE for iceberg tables (default AUTO)",
+    )
     _add_connection_arg(setup_p)
     _add_solution_arg(setup_p)
 
