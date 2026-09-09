@@ -9,7 +9,7 @@ To use it, open this project in Cortex Code and describe what you want to benchm
 Below is a sample prompt you can use with the `interactive-benchmark` CoCo skill. It works against a TPC-H database that can be created using the setup script in the [`tpc-h/`](../tpc-h/) folder (run `./iwtpch.sh setup --scale 100`).
 
 ```
-hi, I have the following query
+$interactive-benchmark hi, I have the following query
 
 SELECT
 	N_NAME,

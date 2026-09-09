@@ -1,6 +1,6 @@
 # Benchmark API + Locust on Snowpark Container Services
 
-This folder contains everything needed to run the benchmark API server
+The benchmark infrastructure (under `.cortex/skills/interactive-benchmark/benchmark/`) runs the API server
 **and** the [Locust](https://locust.io) load test entirely inside Snowflake, with public
 ingress URLs you can hit from your laptop.
 
