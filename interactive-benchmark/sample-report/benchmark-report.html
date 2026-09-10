@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Interactive Warehouse Benchmark — IWB_202609091200 — 2026-09-09 (50 users)</title>
+<style>
+  :root { --snow-blue:#29B5E8; --snow-navy:#11567F; --ok:#1a9c5b; --warn:#c98600; --bad:#c74141; --bg:#f7fbfd; --fg:#1d2939; --muted:#5b6b7a; --card:#ffffff; --border:#e3ebf1; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif; margin:0; padding:0; background:var(--bg); color:var(--fg); line-height:1.5; }
+  header { background:linear-gradient(135deg,var(--snow-navy),var(--snow-blue)); color:white; padding:28px 40px; }
+  header h1 { margin:0 0 4px; font-size:24px; font-weight:600; }
+  header .sub { opacity:.9; font-size:14px; }
+  main { max-width:1180px; margin:0 auto; padding:28px 40px 80px; }
+  section { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:22px 26px; margin-bottom:20px; }
+  section h2 { margin:0 0 14px; font-size:18px; color:var(--snow-navy); border-bottom:2px solid var(--snow-blue); padding-bottom:8px; }
+  section h3 { font-size:15px; color:var(--snow-navy); margin:18px 0 8px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
+  th { background:#eef7fb; color:var(--snow-navy); font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; font-family:"SF Mono",Menlo,monospace; }
+  code, pre { font-family:"SF Mono",Menlo,Consolas,monospace; font-size:13px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:14px 16px; border-radius:6px; overflow-x:auto; }
+  .kv { display:grid; grid-template-columns:220px 1fr; gap:6px 20px; font-size:14px; }
+  .kv dt { color:var(--muted); }
+  .kv dd { margin:0; font-family:"SF Mono",Menlo,monospace; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; }
+  .ok { background:#e2f5ec; color:var(--ok); }
+  .warn { background:#fbf1d9; color:var(--warn); }
+  .bad { background:#fbe1e1; color:var(--bad); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .metric { padding:14px; border:1px solid var(--border); border-radius:8px; background:#f9fcfe; }
+  .metric .lbl { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .metric .val { font-size:28px; font-weight:600; color:var(--snow-navy); font-variant-numeric:tabular-nums; }
+  .bar { height:22px; background:var(--snow-blue); border-radius:4px; }
+  .bar-row { display:grid; grid-template-columns:70px 1fr 110px; align-items:center; gap:12px; margin:6px 0; font-size:13px; }
+  .bar-row .lbl { color:var(--muted); font-family:"SF Mono",Menlo,monospace; }
+  .bar-row .val { text-align:right; font-family:"SF Mono",Menlo,monospace; font-weight:600; }
+  ul { margin:0; padding-left:22px; }
+  li { margin:4px 0; }
+  .note { background:#fbf1d9; border-left:4px solid var(--warn); padding:10px 14px; border-radius:4px; font-size:13px; margin:12px 0; }
+  .good { background:#e2f5ec; border-left:4px solid var(--ok); padding:10px 14px; border-radius:4px; font-size:13px; margin:12px 0; }
+  .bad-box { background:#fbe1e1; border-left:4px solid var(--bad); padding:10px 14px; border-radius:4px; font-size:13px; margin:12px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Interactive Warehouse Benchmark</h1>
+  <div class="sub">Solution: <strong>IWB_202609091200</strong> &nbsp;·&nbsp; TPC-H SF100 (150M orders, 15M customers) &nbsp;·&nbsp; 2026-09-09 &nbsp;·&nbsp; 50 concurrent users &nbsp;·&nbsp; 3-minute run</div>
+</header>
+
+<main>
+
+<section>
+  <h2>Executive Summary</h2>
+  <div class="grid3">
+    <div class="metric">
+      <div class="lbl">P95 — Snowflake (server-side)</div>
+      <div class="val">816 ms <span class="pill ok">under goal</span></div>
+    </div>
+    <div class="metric">
+      <div class="lbl">P50 — Snowflake (server-side)</div>
+      <div class="val">498 ms <span class="pill ok">under goal</span></div>
+    </div>
+    <div class="metric">
+      <div class="lbl">P50 — Client (end-to-end)</div>
+      <div class="val">530 ms <span class="pill ok">under goal</span></div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Throughput</div>
+      <div class="val">31.6 req/s</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Total requests</div>
+      <div class="val">5657</div>
+    </div>
+    <div class="metric">
+      <div class="lbl">Failures</div>
+      <div class="val">0 / 5657 <span class="pill ok">100% success</span></div>
+    </div>
+  </div>
+  <div class="good">
+    <strong>Goal met.</strong> With 50 concurrent dashboard users hitting five query variants (variable date range, nation, region and market filters) at ~31.6 req/s, both client-side P95 (850&nbsp;ms) and Snowflake server-side P95 (816&nbsp;ms) stay under the 1000&nbsp;ms target. Zero failures, zero queueing, zero fallback hits. Winning configuration reached in one scale-up step: <strong>Interactive Small warehouse with MIN=7 / MAX=10 clusters</strong>, zero-copy over the source tables in <code>DM_TESTTPCH_BENCH_DB.TPCH_SF100</code>.
+  </div>
+</section>
+
+<section>
+  <h2>Benchmark Setup</h2>
+  <dl class="kv">
+    <dt>Connection</dt><dd>PM</dd>
+    <dt>Database / schema (interactive)</dt><dd>DM_TESTTPCH_BENCH_DB.TPCH_SF100</dd>
+    <dt>Interactive warehouse</dt><dd>IWB_202609091200_BENCH_WH_INT · Small · MIN=7 / MAX=10 clusters · STANDARD scaling · fallback IWB_202609091200_BENCH_WH_STD (X-Small)</dd>
+    <dt>Clusters used</dt><dd>8 of 10 clusters served queries during the load test</dd>
+    <dt>Users</dt><dd>50 concurrent (locust <code>--users 50 --spawn-rate 5</code>)</dd>
+    <dt>Duration</dt><dd>3-minute run (180 s)</dd>
+    <dt>Load driver</dt><dd>SPCS BENCHMARK_LOCUST (Locust 2.45.0, auto-start / auto-quit)</dd>
+    <dt>API layer</dt><dd>SPCS BENCHMARK_API (FastAPI + Snowflake connector) · 4 uvicorn workers · POOL_SIZE=50 · CPU_X64_M · 3 instances</dd>
+    <dt>Result caching</dt><dd><code>USE_CACHED_RESULT=FALSE</code> (measures Snowflake, not the result cache)</dd>
+    <dt>Query tag</dt><dd><code>QUERY_TAG='IWB_202609091200'</code> (used for server-side isolation)</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>Query and Filter Variants</h2>
+  <p>Locust rotates through the query variants uniformly at random per request, simulating a dashboard where the user changes the date range or applies filters.</p>
+  <pre>SELECT
+  N_NAME,
+  COUNT(*) AS ORDERS
+FROM ORDERS AS O
+INNER JOIN CUSTOMER AS C ON O_CUSTKEY = C_CUSTKEY
+INNER JOIN NATION   AS N ON C_NATIONKEY = N_NATIONKEY
+WHERE O_ORDERDATE BETWEEN '1996-01-01' AND '1996-12-31'
+GROUP BY ROLLUP (N_NAME)
+ORDER BY N_NAME NULLS LAST;</pre>
+  <table>
+    <thead><tr><th>Variant</th><th>Additional predicate</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>base (benchmark-query.sql)</td><td><code>O_ORDERDATE BETWEEN '1996-01-01' AND '1996-12-31'</code></td><td>Full-year rollup, no dimension filter — worst case for the interactive WH.</td></tr>
+      <tr><td>q2 — narrow date</td><td><code>O_ORDERDATE BETWEEN '1995-06-01' AND '1996-06-30'</code></td><td>Different 13-month window — validates pruning on cold date ranges.</td></tr>
+      <tr><td>q3 — nation filter</td><td><code>AND N_NAME = 'GERMANY'</code></td><td>Dashboard filter on a single nation.</td></tr>
+      <tr><td>q4 — region filter</td><td><code>AND R_NAME = 'EUROPE'</code> (adds REGION join)</td><td>Region roll-up — 5 nations, verifies extra join stays cheap.</td></tr>
+      <tr><td>q5 — market filter</td><td><code>AND C_MKTSEGMENT = 'BUILDING'</code></td><td>Customer market-segment filter (~20% of CUSTOMER rows).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Table Details (Interactive)</h2>
+  <table>
+    <thead><tr><th>Table</th><th class="num">Rows</th><th class="num">Bytes (GB)</th><th>Cluster key</th><th>Aligned with query predicates?</th></tr></thead>
+    <tbody>
+      <tr><td>ORDERS</td><td class="num">150,000,000</td><td class="num">3.73</td><td><code>LINEAR(O_ORDERDATE)</code></td><td>Yes — matches the WHERE clause on <code>O_ORDERDATE</code>.</td></tr>
+      <tr><td>CUSTOMER</td><td class="num">15,000,000</td><td class="num">0.87</td><td><code>LINEAR(C_CUSTKEY)</code></td><td>Yes — matches the join key.</td></tr>
+      <tr><td>NATION</td><td class="num">25</td><td class="num">~0.00</td><td><code>LINEAR(N_NATIONKEY)</code></td><td>Yes — matches the join key (tiny table, effectively broadcasted).</td></tr>
+      <tr><td>REGION</td><td class="num">5</td><td class="num">~0.00</td><td><code>LINEAR(R_REGIONKEY)</code></td><td>Yes — only touched by q4; join key matches.</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:12px">Total working set ≈ <strong>4.6 GB</strong>. This is 1% of an X-Small warehouse's ~350&nbsp;GB cache and fits comfortably in a Small warehouse's ~600&nbsp;GB cache. All tables are already clustered on the columns used by the workload, so <strong>zero-copy is the right path</strong> — no interactive-table copies were needed.</p>
+</section>
+
+<section>
+  <h2>Performance Results — Client-side (Locust HTTP)</h2>
+  <p>End-user-observed latency: HTTP round-trip through the SPCS API + Snowflake execution.</p>
+  <table>
+    <thead><tr><th>Endpoint</th><th class="num">Requests</th><th class="num">req/s</th><th class="num">Min</th><th class="num">P50</th><th class="num">P90</th><th class="num">P95</th><th class="num">P99</th><th class="num">Max</th></tr></thead>
+    <tbody>
+      <tr><td><code>POST /api/run/interactive</code></td><td class="num">5,657</td><td class="num">31.6</td><td class="num">185</td><td class="num">530</td><td class="num">790</td><td class="num">850</td><td class="num">990</td><td class="num">1,224</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:8px;color:var(--muted);font-size:13px">All values in milliseconds.</p>
+</section>
+
+<section>
+  <h2>Performance Results — Server-side (Snowflake)</h2>
+  <p>What Snowflake alone spent — compile + execute + queue — measured from <code>INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE</code> over the run window, filtered to <code>QUERY_TAG='IWB_202609091200'</code>.</p>
+  <table>
+    <thead><tr><th>Warehouse</th><th class="num">N</th><th class="num">P50</th><th class="num">P90</th><th class="num">P95</th><th class="num">P99</th><th class="num">Avg compile</th><th class="num">Avg exec</th><th class="num">Avg queue</th><th class="num">Avg MB scan</th><th class="num">Clusters used</th></tr></thead>
+    <tbody>
+      <tr><td>IWB_202609091200_BENCH_WH_INT (Small)</td><td class="num">5,678</td><td class="num">498</td><td class="num">762</td><td class="num">816</td><td class="num">966</td><td class="num">92</td><td class="num">417</td><td class="num">0</td><td class="num">~1,470</td><td class="num">8 of 10</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:8px;color:var(--muted);font-size:13px">All values in milliseconds unless labelled. N is the count of SUCCESS queries observed.</p>
+</section>
+
+<section>
+  <h2>Client vs Server — Bottleneck Diagnosis</h2>
+  <p>The gap between the client-observed latency (Locust) and the server-side latency (Snowflake) tells us where to optimize.</p>
+  <table>
+    <thead><tr><th>Percentile</th><th class="num">Locust (client)</th><th class="num">Snowflake (server)</th><th class="num">Delta (API/HTTP)</th></tr></thead>
+    <tbody>
+      <tr><td>P50</td><td class="num">530</td><td class="num">498</td><td class="num">32 ms</td></tr>
+      <tr><td>P95</td><td class="num">850</td><td class="num">816</td><td class="num">34 ms</td></tr>
+      <tr><td>P99</td><td class="num">990</td><td class="num">966</td><td class="num">24 ms</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Analysis</h3>
+  <p>Client-vs-server delta is small and constant across percentiles (24–34&nbsp;ms). This lines up with the baseline test where the no-op endpoint returned P99=10&nbsp;ms — so ~15–25&nbsp;ms per request is round-trip HTTP + connection-pool acquire + response framing, and the rest is Snowflake time. The delta is flat, not growing with the percentile, so there is no worker/GIL saturation and no connection-pool contention on the API tier. Snowflake is doing effectively all of the observed work.</p>
+
+  <div class="good">
+    <strong>Verdict: Snowflake is the (small remaining) bottleneck.</strong> The API layer contributes ~25&nbsp;ms of overhead — negligible against the 500–800&nbsp;ms of Snowflake time. To push P95 lower you would need to reduce Snowflake time (larger warehouse, tighter clustering, pre-aggregated summary table). Adding more API instances or workers would not move the needle.
+  </div>
+</section>
+
+<section>
+  <h2>Client-Side Percentile Comparison</h2>
+  <div class="bar-row"><div class="lbl">P50</div><div class="bar" style="width:54%"></div><div class="val">530 ms</div></div>
+  <div class="bar-row"><div class="lbl">P95</div><div class="bar" style="width:86%"></div><div class="val">850 ms</div></div>
+  <div class="bar-row"><div class="lbl">P99</div><div class="bar" style="width:100%"></div><div class="val">990 ms</div></div>
+
+  <h3>Server-Side Percentile Comparison (Snowflake alone)</h3>
+  <div class="bar-row"><div class="lbl">P50</div><div class="bar" style="width:52%"></div><div class="val">498 ms</div></div>
+  <div class="bar-row"><div class="lbl">P95</div><div class="bar" style="width:84%"></div><div class="val">816 ms</div></div>
+  <div class="bar-row"><div class="lbl">P99</div><div class="bar" style="width:100%"></div><div class="val">966 ms</div></div>
+</section>
+
+<section>
+  <h2>Query Profile Health (Interactive, top-slowest)</h2>
+  <table>
+    <thead><tr><th>QUERY_ID</th><th class="num">Total (ms)</th><th class="num">Compile (ms)</th><th class="num">Execute (ms)</th><th class="num">Queued (ms)</th><th class="num">MB scanned</th></tr></thead>
+    <tbody>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f1917</code></td><td class="num">1,204</td><td class="num">88</td><td class="num">1,116</td><td class="num">0</td><td class="num">1,505.6</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f18db</code></td><td class="num">1,142</td><td class="num">101</td><td class="num">1,041</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f18cf</code></td><td class="num">1,141</td><td class="num">95</td><td class="num">1,046</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f18fb</code></td><td class="num">1,134</td><td class="num">97</td><td class="num">1,037</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f587-0e1a-1410-0009-7101b37f10e7</code></td><td class="num">1,119</td><td class="num">124</td><td class="num">995</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f606b</code></td><td class="num">1,100</td><td class="num">121</td><td class="num">979</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f587-0e1a-1410-0009-7101b37f10c3</code></td><td class="num">1,065</td><td class="num">102</td><td class="num">963</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f2e5f</code></td><td class="num">1,060</td><td class="num">100</td><td class="num">960</td><td class="num">0</td><td class="num">1,548.9</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f193b</code></td><td class="num">1,056</td><td class="num">89</td><td class="num">967</td><td class="num">0</td><td class="num">1,505.6</td></tr>
+      <tr><td><code>01c6f588-0e1a-1410-0009-7101b37f2e73</code></td><td class="num">1,043</td><td class="num">80</td><td class="num">963</td><td class="num">0</td><td class="num">1,505.6</td></tr>
+    </tbody>
+  </table>
+  <h3>Verdict</h3>
+  <ul>
+    <li><strong>Compile is well under control</strong> — 80–124&nbsp;ms across the tail. Plan cache is doing its job; no compile-driven spikes.</li>
+    <li><strong>No queueing at any percentile</strong> — <code>QUEUED_OVERLOAD_TIME=0</code> for every query. MCW at 7-10 is sized right for 50 users.</li>
+    <li><strong>Execute time dominates the tail</strong> — the slowest queries are 960–1116&nbsp;ms of pure execute. This is fundamental per-query cost on Small for a 12-month rollup over 150M orders; reducing further requires either a larger SKU or a pre-aggregated table.</li>
+    <li><strong>Scan volume is uniform (~1.5&nbsp;GB per query)</strong> — pruning on <code>O_ORDERDATE</code> is working; each query reads only the partitions in its date window.</li>
+    <li><strong>Zero fallbacks</strong> — no query exceeded 5&nbsp;s (max observed: 1,204&nbsp;ms), the interactive-cancel threshold. All work stayed on the interactive warehouse.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Escalation Path</h2>
+  <p>Each row is one benchmark iteration. If only one row is present, the target latency was met at the initial configuration and no scale-up or scale-out was required. If multiple rows are present, they show the sequence of Step 13c decisions that led to the reported numbers.</p>
+  <table>
+    <thead><tr><th class="num">Iter</th><th>WH size</th><th class="num">MIN / MAX clusters</th><th class="num">Clusters used</th><th class="num">Server P95 (ms)</th><th class="num">Client P95 (ms)</th><th class="num">Throughput (rps)</th><th class="num">Queue avg (ms)</th><th>Decision</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>X-Small</td><td class="num">7 / 10</td><td class="num">10 of 10</td><td class="num">1,684</td><td class="num">1,700</td><td class="num">25.7</td><td class="num">0</td><td>P95 goal missed by ~700 ms. No queueing observed → scale-out cannot help. Diagnosis: per-query execute time bound. <strong>Scale up X-Small → Small.</strong></td></tr>
+      <tr><td class="num">2</td><td>Small</td><td class="num">7 / 10</td><td class="num">8 of 10</td><td class="num"><strong>816</strong></td><td class="num"><strong>850</strong></td><td class="num">31.6</td><td class="num">0</td><td><strong>Goal met.</strong> Server-side and client-side P95 both under 1000&nbsp;ms. Stop.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Optimization Recommendations</h2>
+  <h3>To meet the latency goal</h3>
+  <ol>
+    <li>Already met at <strong>Small × MCW 7-10</strong> with zero-copy on the source tables. No further tuning is required for the current workload shape.</li>
+  </ol>
+
+  <h3>Already correct — keep these</h3>
+  <ul>
+    <li><strong>Clustering keys are correct on all three tables.</strong> <code>ORDERS.O_ORDERDATE</code>, <code>CUSTOMER.C_CUSTKEY</code>, <code>NATION.N_NATIONKEY</code>: each matches the query predicates and join keys, giving strong pruning and cheap joins.</li>
+    <li><strong>Zero-copy path is the right choice.</strong> All tables are standard and already well-clustered; no interactive-table copies are needed. Any future refresh of the base tables is instantly visible to the interactive warehouse.</li>
+    <li><strong>Fallback warehouse is set.</strong> <code>IWB_202609091200_BENCH_WH_STD</code> (X-Small) will catch any accidental query that exceeds the 5-s interactive cancel — during this run none was needed, but the safety net is in place for future ad-hoc queries.</li>
+    <li><strong>MIN=7 clusters is warm at the start of a spike.</strong> New users pay ~30–50&nbsp;ms of cold-cluster warm-up on a fresh cluster; keeping seven clusters up front avoids the cold-start tax during peak dashboard hours.</li>
+    <li><strong>MAX=10 gives headroom.</strong> Only 8 of the 10 configured clusters were used at 50 concurrent users, so you have ~25% burst headroom before more clusters spin up.</li>
+  </ul>
+
+  <h3>General guidance for dashboards on Interactive</h3>
+  <ul>
+    <li><strong>Keep the dashboard's date-range default aligned with hot cache.</strong> The Small warehouse can hold the full 4.6&nbsp;GB working set. If users routinely pick multi-year ranges, keep the tables attached to the WH (already done) so proactive caching keeps them warm across clusters.</li>
+    <li><strong>Consider a pre-aggregated Dynamic Table for the "top of the funnel" tile</strong> (nation-level rollup by month, no other filter). It would reduce that tile to a few hundred rows of scan and drop its latency into double-digit ms — freeing capacity for the detail tiles.</li>
+    <li><strong>Watch queue time as concurrency grows.</strong> If <code>AVG_QUEUE_MS &gt; 0</code> starts appearing in <code>QUERY_HISTORY_BY_WAREHOUSE</code>, bump MAX_CLUSTER_COUNT (scale out). If queue stays at 0 but P95 drifts up, bump the SKU (scale up). The current run is 0 on both — plenty of margin.</li>
+    <li><strong>Guard against runaway ad-hoc queries.</strong> The fallback warehouse (X-Small) will catch anything exceeding 5&nbsp;s; monitor its usage in ACCOUNT_USAGE to spot dashboard cards that grew beyond the interactive envelope.</li>
+    <li><strong>Cache warm-up matters after any WH change.</strong> <code>CREATE OR REPLACE INTERACTIVE WAREHOUSE</code> (used by resize) resets the data cache. After a resize, run a handful of primer queries before letting real users in — an X-Small warms at ~300–400&nbsp;MB/s, so 4.6&nbsp;GB takes ~15&nbsp;s.</li>
+    <li><strong>Result cache is disabled in this benchmark by design</strong> (<code>USE_CACHED_RESULT=FALSE</code>). In production, leave it on: identical dashboard queries within 24&nbsp;h return in single-digit ms.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Configuration Used</h2>
+  <div class="grid2">
+    <div>
+      <h3>Compute pools</h3>
+      <ul>
+        <li>IWB_202609091200_BENCH_API_POOL — CPU_X64_M · 1–4 nodes · hosts 3 API instances</li>
+        <li>IWB_202609091200_BENCH_LOCUST_POOL — CPU_X64_M · 1–2 nodes · hosts 1 Locust instance</li>
+      </ul>
+    </div>
+    <div>
+      <h3>API server (per uvicorn worker)</h3>
+      <ul>
+        <li>Framework: FastAPI + Snowflake Python connector</li>
+        <li>Instances: 3 · Workers per instance: 4 · POOL_SIZE=50</li>
+        <li>CPU: 2000m request / 4000m limit · Memory: 2Gi request / 4Gi limit</li>
+        <li>Endpoints: <code>/api/run/interactive</code>, <code>/api/run/baseline</code>, <code>/api/health</code></li>
+      </ul>
+    </div>
+    <div>
+      <h3>Interactive warehouse</h3>
+      <ul>
+        <li>Name: IWB_202609091200_BENCH_WH_INT</li>
+        <li>Size: Small · MIN_CLUSTER_COUNT=7 · MAX_CLUSTER_COUNT=10 · SCALING_POLICY=STANDARD</li>
+        <li>AUTO_SUSPEND=86400 s (24 h) · AUTO_RESUME=TRUE</li>
+        <li>Attached tables: ORDERS, CUSTOMER, NATION, REGION (proactive cache)</li>
+        <li>Fallback: IWB_202609091200_BENCH_WH_STD (X-Small)</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Locust</h3>
+      <ul>
+        <li>Version: 2.45.0 · Mode: non-headless with --autostart --autoquit</li>
+        <li>Users: 50 · Spawn rate: 5/s · Duration: 180 s</li>
+        <li>Target: <code>http://benchmark-api:3000</code> (SPCS internal DNS)</li>
+        <li>Two-phase: baseline (<code>/api/run/baseline</code>) → benchmark (<code>/api/run/interactive</code>) with 5 SQL variants</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>

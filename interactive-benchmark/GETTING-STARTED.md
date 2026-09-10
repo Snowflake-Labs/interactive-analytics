@@ -48,7 +48,7 @@ Open the cloned `interactive-analytics` folder in Cortex Code Desktop, or `cd` i
 In the Cortex Code chat panel, type something like:
 
 ```text
-Benchmark this query on an interactive warehouse with 50 concurrent users and a P95 goal of 1 second:
+$interactive-benchmark Benchmark this query on an interactive warehouse with 50 concurrent users and a P95 goal of 1 second:
 
 SELECT l_returnflag, l_linestatus,
         SUM(l_quantity)       AS sum_qty,

@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Benchmark Skill</title>
+
+    <!-- Fonts: Texta (bundled) + Lato (Google) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Nunito+Sans:wght@800;900&display=swap" rel="stylesheet">
+
+    <style>
+        /* ===========================================
+           TEXTA — BUNDLED WOFF2
+           =========================================== */
+        @font-face { font-family:'Texta'; src:url('assets/fonts/texta/Texta-Bold.woff2') format('woff2');  font-weight:700; font-display:swap; }
+        @font-face { font-family:'Texta'; src:url('assets/fonts/texta/Texta-Heavy.woff2') format('woff2'); font-weight:800; font-display:swap; }
+        @font-face { font-family:'Texta'; src:url('assets/fonts/texta/Texta-Black.woff2') format('woff2'); font-weight:900; font-display:swap; }
+
+        /* ===========================================
+           CSS CUSTOM PROPERTIES — SNOWFLAKE LIGHT
+           =========================================== */
+        :root {
+            /* Brand palette */
+            --sf-blue: #29B5E8;
+            --sf-mid-blue: #11567F;
+            --sf-midnight: #000000;
+            --sf-star-blue: #71D3DC;
+            --sf-valencia: #FF9F36;
+            --sf-purple-moon: #7D44CF;
+            --sf-first-light: #D45B90;
+            --sf-windy-city: #8A999E;
+            --sf-iceberg: #003545;
+            --sf-winter: #24323D;
+            --competitor: #B0121A;
+
+            /* Semantic tokens — LIGHT */
+            --slide-bg: #FFFFFF;
+            --stage-bg: #E9EEF2;
+            --text-primary: #1A2026;
+            --text-secondary: #5B6770;
+            --text-muted: #8A999E;
+            --accent: #29B5E8;
+            --accent-strong: #11567F;
+            --card-bg: #EAF6FC;
+            --card-bg-2: #D6EEF9;
+            --hairline: #D9E1E7;
+            --footer-mark: #8A999E;
+
+            /* App chrome — light shell */
+            --film-bg: #F2F5F8;
+            --split:   #DCE4EA;
+
+            /* Typography */
+            --font-display: 'Texta', 'Nunito Sans', system-ui, sans-serif;
+            --font-body: 'Lato', system-ui, sans-serif;
+            --title-size: 88px;
+            --title-size-xl: 116px;
+            --subtitle-size: 40px;
+            --section-label: 22px;
+            --body-size: 28px;
+            --body-lg: 32px;
+            --caption-size: 20px;
+
+            /* Spacing */
+            --slide-padding: 96px;
+
+            /* Animation */
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --reveal-dur: 0.6s;
+            --reveal-ease: var(--ease-out-expo);
+            --reveal-offset: 24px;
+            --reveal-stagger: 0.08s;
+        }
+
+        /* ===========================================
+           BASE RESET
+           =========================================== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: var(--font-body); color: var(--text-primary); }
+        h1, h2, h3, .headline { font-family: var(--font-display); font-weight: 900; letter-spacing: -0.01em; line-height: 1.04; color: var(--text-primary); }
+
+        /* ===========================================
+           VIEWPORT BASE (mandatory — from viewport-base.css)
+           =========================================== */
+html, body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--film-bg,#11181e); }
+.deck-topbar { position:fixed; top:0; left:0; right:0; height:46px; z-index:1200; display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:0 14px; background:var(--film-bg,#11181e); border-bottom:1px solid var(--split,#1c262e); }
+.deck-topbar .tb-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:32px; padding:0 12px; border:1px solid var(--split,#1c262e); border-radius:8px; background:transparent; color:var(--text-primary,#fff); cursor:pointer; font:600 14px/1 var(--font-body,system-ui,sans-serif); transition:background .15s, border-color .15s; }
+.deck-topbar .tb-btn:hover { background:var(--card-bg,rgba(255,255,255,.08)); border-color:var(--accent,#29B5E8); }
+.deck-topbar .tb-btn:focus-visible { outline:2px solid var(--accent,#29B5E8); outline-offset:2px; }
+.deck-topbar .tb-btn[hidden] { display:none; }
+.deck-topbar .tb-btn .glyph { width:18px; height:18px; color:var(--accent,#29B5E8); }
+:root[data-theme="dark"] .deck-topbar .tb-btn { color:var(--text-primary,#fff); }
+.tb-div { width:1px; height:22px; background:var(--split,#1c262e); margin:0 4px; }
+.tb-badge { display:inline-flex; min-width:18px; height:18px; padding:0 5px; margin-left:6px; border-radius:9px; background:var(--sf-valencia,#FF9F36); color:#1a1a1a; font:700 11px/18px var(--font-body,system-ui,sans-serif); align-items:center; justify-content:center; }
+.deck-topbar .tb-btn.is-active { border-color:var(--sf-valencia,#FF9F36); color:var(--sf-valencia,#FF9F36); }
+.deck-topbar .tb-btn.is-active .glyph { color:var(--sf-valencia,#FF9F36); }
+.deck-topbar .tb-seg { display:inline-flex; align-items:stretch; height:32px; border:1px solid var(--split,#1c262e); border-radius:8px; overflow:hidden; }
+.deck-topbar .tb-seg:hover { border-color:var(--accent,#29B5E8); }
+.deck-topbar .tb-seg button { display:inline-flex; align-items:center; gap:8px; height:100%; padding:0 12px; border:0; background:transparent; color:var(--text-primary,#fff); cursor:pointer; font:600 14px/1 var(--font-body,system-ui,sans-serif); transition:background .15s, color .15s; }
+.deck-topbar .tb-seg button:hover { background:var(--card-bg,rgba(255,255,255,.08)); }
+.deck-topbar .tb-seg button:focus-visible { outline:2px solid var(--accent,#29B5E8); outline-offset:-2px; }
+.deck-topbar .tb-seg .glyph { width:18px; height:18px; color:var(--accent,#29B5E8); }
+.deck-topbar .tb-seg-panel { border-left:1px solid var(--split,#1c262e); padding:0 11px; }
+.deck-topbar .tb-seg-panel[hidden] { display:none; }
+.deck-topbar .tb-seg button.is-active { color:var(--sf-valencia,#FF9F36); }
+.deck-topbar .tb-seg button.is-active .glyph { color:var(--sf-valencia,#FF9F36); }
+.deck-topbar .tb-seg .tb-badge { margin-left:2px; }
+.deck-topbar .tb-exit { margin-right:auto; }
+.deck-topbar .tb-exit .glyph { color:var(--competitor,#B0121A); }
+.deck-topbar .tb-exit:hover { border-color:var(--competitor,#B0121A); color:var(--competitor,#B0121A); background:rgba(176,18,26,.10); }
+.deck-topbar .tb-exit:hover .glyph { color:var(--competitor,#B0121A); }
+.deck-stopped { position:fixed; inset:0; z-index:2000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    background:var(--film-bg,#11181e); color:var(--text-primary,#fff); font:600 20px var(--font-body,system-ui,sans-serif); text-align:center; }
+.deck-stopped .sub { font-weight:400; font-size:14px; color:var(--text-muted,#8A999E); }
+.deck-app { position:fixed; top:46px; left:0; right:0; bottom:0; display:flex; --film-w:280px; }
+:root.is-present .deck-topbar, :root.is-maxed .deck-topbar { display:none; }
+:root.is-present .deck-app, :root.is-maxed .deck-app { top:0; }
+.deck-filmstrip { flex:0 0 var(--film-w); width:var(--film-w); height:100%; overflow-y:auto; overflow-x:hidden;
+    background:var(--film-bg,#11181e); padding:16px 14px; display:flex; flex-direction:column; gap:14px; }
+.deck-splitter { flex:0 0 6px; cursor:col-resize; background:var(--split,#1c262e); transition:background .15s; }
+.deck-splitter:hover, .deck-splitter.drag { background:var(--accent,#29B5E8); }
+.deck-main { flex:1; min-width:0; position:relative; background:var(--stage-bg,#000); }
+.deck-viewport { position:absolute; inset:0; overflow:hidden; background:var(--stage-bg,#000); }
+.deck-stage { position:absolute; left:0; top:0; width:1920px; height:1080px; overflow:hidden;
+    transform-origin:0 0; background:var(--slide-bg,#fff); }
+:root.is-present .deck-filmstrip, :root.is-present .deck-splitter, :root.is-maxed .deck-filmstrip, :root.is-maxed .deck-splitter { display:none; }
+.slide { position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden; display:block;
+    visibility:hidden; opacity:0; pointer-events:none; background:var(--slide-bg,#fff); }
+.slide.active, .slide.visible { visibility:visible; opacity:1; pointer-events:auto; z-index:1; }
+img, video, canvas, svg { max-width:100%; max-height:100%; }
+.fs-tile { position:relative; flex:0 0 auto; border:2px solid transparent; border-radius:9px; overflow:hidden;
+    cursor:pointer; background:#fff; box-shadow:0 2px 9px rgba(0,0,0,.28); transition:border-color .12s, transform .12s;
+    text-align:left; font-family:var(--font-body,system-ui,sans-serif); font-size:16px; line-height:1.5; letter-spacing:normal; color:var(--text-primary,#000); -webkit-appearance:none; appearance:none; padding:0; }
+.fs-tile:hover { transform:translateY(-2px); }
+.fs-tile.is-current { border-color:var(--accent,#29B5E8); }
+.fs-tile:focus-visible { outline:3px solid var(--accent,#29B5E8); outline-offset:2px; }
+.fs-canvas { width:1920px; height:1080px; transform-origin:0 0; pointer-events:none; }
+.fs-canvas .slide { position:absolute; visibility:visible !important; opacity:1 !important; }
+.fs-canvas .reveal { opacity:1 !important; transform:none !important; }
+.fs-num { position:absolute; left:7px; bottom:6px; z-index:2; font:600 11px/1 system-ui,sans-serif;
+    color:#fff; background:rgba(0,0,0,.6); padding:2px 7px; border-radius:5px; }
+.deck-nav { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); z-index:1000;
+    display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:999px;
+    background:var(--nav-bg,rgba(20,28,34,.82)); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    box-shadow:0 6px 24px rgba(0,0,0,.22); transition:opacity .35s, transform .2s ease; }
+.deck-nav.is-hidden { opacity:0; pointer-events:none; }
+.deck-nav .nav-btn { appearance:none; border:0; cursor:pointer; width:34px; height:34px; border-radius:50%;
+    background:transparent; color:var(--nav-fg,#fff); font-size:19px; line-height:1; display:inline-flex; align-items:center;
+    justify-content:center; transition:background .2s; }
+.deck-nav .nav-btn svg { display:block; width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.deck-nav .nav-btn:hover { background:rgba(255,255,255,.16); }
+.deck-nav .nav-btn:focus-visible { outline:2px solid var(--accent,#29B5E8); outline-offset:2px; }
+.deck-nav .nav-count { color:var(--nav-fg,#fff); font:600 14px/1 system-ui,sans-serif; padding:0 8px;
+    min-width:50px; text-align:center; font-variant-numeric:tabular-nums; }
+.deck-tip { position:fixed; z-index:1700; display:flex; align-items:center; gap:8px; padding:5px 9px; border-radius:7px;
+    background:rgba(20,28,36,.92); color:#fff; font:600 12px/1 var(--font-body,system-ui,sans-serif); white-space:nowrap;
+    opacity:0; transform:translateY(2px); transition:opacity .12s ease, transform .12s ease; pointer-events:none;
+    box-shadow:0 4px 14px rgba(0,0,0,.3); }
+.deck-tip.show { opacity:1; transform:none; }
+.deck-tip kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px;
+    border-radius:4px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.25);
+    font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace; }
+@media print {
+    @page { size:1920px 1080px; margin:0; }
+    html, body { width:1920px; height:auto; overflow:visible; background:#fff; }
+    .deck-topbar, .deck-filmstrip, .deck-splitter, .deck-nav, .deck-tip { display:none !important; }
+    .deck-app { position:static; display:block; top:0; }
+    .deck-main, .deck-viewport { position:static; overflow:visible; background:#fff; }
+    .deck-stage { position:static; width:1920px; height:auto; transform:none !important; background:none; }
+    .slide { position:relative; visibility:visible !important; opacity:1 !important;
+        width:1920px; height:1080px; break-after:page; page-break-after:always;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .slide:last-child { break-after:auto; page-break-after:auto; }
+    .reveal { opacity:1 !important; transform:none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.2s !important; }
+}
+:root.rv-on .deck-stage { cursor:crosshair; }
+.rv-hover { outline:2px dashed var(--sf-valencia,#FF9F36) !important; outline-offset:2px; }
+.rv-selected { outline:3px solid var(--sf-valencia,#FF9F36) !important; outline-offset:2px; }
+.rv-anchor { position:relative; }
+.rv-badge { position:absolute; top:-12px; left:-12px; z-index:6; min-width:22px; height:22px; padding:0 5px; border-radius:11px; background:var(--sf-valencia,#FF9F36); color:#1a1a1a; font:700 12px/22px var(--font-body,system-ui,sans-serif); text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.3); cursor:pointer; }
+.rv-commented { outline:2px solid rgba(255,159,54,.7); outline-offset:2px; }
+.rv-marquee { position:fixed; z-index:1350; display:none; border:1.5px solid var(--sf-valencia,#FF9F36); background:rgba(255,159,54,.14); pointer-events:none; }
+.rv-region, .rv-region-draft { position:absolute; z-index:5; border:2px dashed var(--sf-valencia,#FF9F36); background:rgba(255,159,54,.10); border-radius:6px; pointer-events:none; }
+.rv-region .rv-badge { pointer-events:auto; }
+.rv-offline { position:fixed; left:16px; bottom:16px; z-index:1600; display:none; align-items:center; gap:6px; background:#7a1e12; color:#fff; padding:8px 12px; border-radius:8px; font:600 12px/1.3 var(--font-body,system-ui,sans-serif); box-shadow:0 4px 16px rgba(0,0,0,.35); }
+.rv-offline.show { display:flex; }
+.rv-offline code { background:rgba(255,255,255,.18); padding:1px 6px; border-radius:4px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.rv-panel { position:fixed; top:46px; right:0; bottom:0; width:340px; max-width:90vw; z-index:1250; display:flex; flex-direction:column; background:var(--film-bg,#11181e); border-left:1px solid var(--split,#1c262e); transform:translateX(100%); transition:transform .2s ease; }
+:root.rv-panel-open .rv-panel { transform:none; }
+:root.rv-panel-open .deck-viewport { right:340px; }
+:root.rv-panel-open .deck-nav,
+:root.rv-panel-open .rv-composer,
+:root.rv-panel-open .rv-chip,
+:root.rv-panel-open .rv-toast { transform:translateX(calc(-50% - 170px)); }
+@media (max-width:900px){ :root.rv-panel-open .deck-viewport { right:0; }
+  :root.rv-panel-open .deck-nav,
+  :root.rv-panel-open .rv-composer,
+  :root.rv-panel-open .rv-chip,
+  :root.rv-panel-open .rv-toast { transform:translateX(-50%); } }
+.rv-panel-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--split,#1c262e); flex:0 0 auto; }
+.rv-panel-title { font:700 14px var(--font-body,system-ui,sans-serif); color:var(--text-primary,#fff); }
+.rv-panel-close { border:0; background:transparent; color:var(--text-muted,#8A999E); font-size:22px; line-height:1; cursor:pointer; padding:0 4px; }
+.rv-panel-close:hover { color:var(--text-primary,#fff); }
+.rv-panel-list { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px; }
+.rv-panel-empty { color:var(--text-muted,#8A999E); font:400 13px/1.5 var(--font-body,system-ui,sans-serif); padding:16px 10px; text-align:center; }
+.rv-item { background:var(--card-bg,rgba(255,255,255,.06)); border:1px solid transparent; border-radius:10px; padding:10px 12px; cursor:pointer; transition:border-color .15s, background .15s; }
+.rv-item:hover { border-color:var(--accent,#29B5E8); }
+.rv-item.is-active { border-color:var(--sf-valencia,#FF9F36); }
+.rv-item-top { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.rv-item-slide { font:700 11px var(--font-body,system-ui,sans-serif); color:#fff; background:var(--accent,#29B5E8); border-radius:5px; padding:2px 7px; }
+.rv-item-kind { font:600 11px var(--font-body,system-ui,sans-serif); color:var(--text-muted,#8A999E); text-transform:uppercase; letter-spacing:.04em; }
+.rv-item-del { margin-left:auto; border:0; background:transparent; color:var(--text-muted,#8A999E); font-size:18px; line-height:1; cursor:pointer; padding:0 4px; border-radius:4px; }
+.rv-item-del:hover { color:#fff; background:var(--competitor,#B0121A); }
+.rv-item-note { font:400 13px/1.45 var(--font-body,system-ui,sans-serif); color:var(--text-primary,#e8eef2); white-space:pre-wrap; word-break:break-word; }
+.rv-item-prev { font:400 12px var(--font-body,system-ui,sans-serif); color:var(--text-muted,#8A999E); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rv-flash { animation:rvFlash 1.2s ease; }
+@keyframes rvFlash { 0%,100% { box-shadow:0 0 0 0 rgba(255,159,54,0); } 30% { box-shadow:0 0 0 4px rgba(255,159,54,.75); } }
+.rv-status { margin-left:2px; font:700 10px var(--font-body,system-ui,sans-serif); text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:999px; white-space:nowrap; }
+.rv-status.st-open { color:var(--text-muted,#8A999E); background:rgba(138,153,158,.16); }
+.rv-status.st-prog { color:#08202b; background:var(--accent,#29B5E8); }
+.rv-status.st-addr { color:#1a1206; background:var(--sf-valencia,#FF9F36); }
+.rv-status.st-done { color:#06210f; background:#3FB950; }
+.rv-status.st-reopen { color:#fff; background:var(--competitor,#B0121A); }
+.rv-item.is-st-done { opacity:.7; }
+.rv-item.is-st-addr { border-color:var(--sf-valencia,#FF9F36); }
+.rv-agent { margin-top:8px; padding:8px 10px; border-radius:8px; background:rgba(41,181,232,.10); border:1px solid rgba(41,181,232,.30); }
+.rv-agent-lbl { display:block; font:800 9px var(--font-body,system-ui,sans-serif); text-transform:uppercase; letter-spacing:.08em; color:var(--accent,#29B5E8); margin-bottom:3px; }
+.rv-agent-note { display:block; font:400 12px/1.5 var(--font-body,system-ui,sans-serif); color:var(--text-primary,#e8eef2); white-space:pre-wrap; word-break:break-word; }
+.rv-followup { margin-top:6px; padding:6px 10px; border-radius:8px; background:rgba(176,18,26,.14); border:1px solid rgba(176,18,26,.35); font:400 12px/1.45 var(--font-body,system-ui,sans-serif); color:#f2c9cc; white-space:pre-wrap; word-break:break-word; }
+.rv-item-actions { display:flex; gap:8px; margin-top:10px; }
+.rv-item-actions button { border:0; border-radius:7px; padding:6px 12px; cursor:pointer; font:700 12px var(--font-body,system-ui,sans-serif); }
+.rv-resolve { background:#3FB950; color:#06210f; }
+.rv-more { background:var(--hairline,#243139); color:var(--text-primary,#e8eef2); }
+.rv-more-field { margin-top:8px; }
+.rv-more-field textarea { width:100%; min-height:56px; box-sizing:border-box; border:1px solid var(--hairline,#2A3942); border-radius:8px; padding:8px; font:400 12px var(--font-body,system-ui,sans-serif); background:var(--slide-bg,#0b141b); color:var(--text-primary,#e8eef2); resize:vertical; }
+.rv-more-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
+.rv-more-actions button { border:0; border-radius:7px; padding:5px 11px; cursor:pointer; font:700 12px var(--font-body,system-ui,sans-serif); }
+.rv-more-send { background:var(--accent,#29B5E8); color:#06202a; }
+.rv-more-cancel { background:transparent; color:var(--text-muted,#8A999E); }
+.rv-badge-in_progress { background:var(--accent,#29B5E8) !important; color:#08202b !important; }
+.rv-badge-addressed { background:var(--sf-valencia,#FF9F36) !important; }
+.rv-badge-resolved { background:#3FB950 !important; color:#06210f !important; }
+.rv-badge-reopened { background:var(--competitor,#B0121A) !important; color:#fff !important; }
+.rv-activity { flex:0 0 auto; padding:10px 12px; border-bottom:1px solid var(--split,#1c262e); background:rgba(41,181,232,.06); }
+.rv-activity[hidden] { display:none; }
+.rv-think { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--text-muted,#8A999E); margin-right:8px; vertical-align:middle; }
+.rv-activity.is-thinking .rv-think { background:var(--accent,#29B5E8); animation:rvPulse 1s ease-in-out infinite; }
+@keyframes rvPulse { 0%,100% { opacity:.35; transform:scale(.8); } 50% { opacity:1; transform:scale(1.15); } }
+.rv-activity-cur { font:700 12px var(--font-body,system-ui,sans-serif); color:var(--text-primary,#e8eef2); }
+.rv-activity-lines { margin-top:6px; max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
+.rv-activity-line { font:400 11px/1.4 var(--font-body,system-ui,sans-serif); color:var(--text-muted,#8A999E); }
+.rv-activity-top { display:flex; align-items:center; }
+.rv-activity-meta { display:flex; justify-content:space-between; gap:8px; margin-top:4px; font:600 10px var(--font-body,system-ui,sans-serif); letter-spacing:.02em; }
+.rv-activity-prog { color:var(--accent-strong,#71D3DC); }
+.rv-activity-ago { font-weight:400; color:var(--text-muted,#8A999E); opacity:.85; }
+.rv-line-t { margin-right:6px; font:400 10px/1.4 ui-monospace,Menlo,monospace; color:var(--text-muted,#8A999E); opacity:.65; }
+.rv-status.st-prog::before { content:''; display:inline-block; width:6px; height:6px; margin-right:5px; border-radius:50%; background:#08202b; animation:rvPulse 1s ease-in-out infinite; vertical-align:middle; }
+.rv-item.is-st-prog { border-color:var(--accent,#29B5E8); }
+.rv-panel-tools { flex:0 0 auto; display:flex; justify-content:flex-end; padding:8px 12px; border-bottom:1px solid var(--split,#1c262e); }
+.rv-panel-tools:has(> .rv-clear-resolved[hidden]) { display:none; }
+.rv-clear-resolved { border:1px solid var(--hairline,#2A3942); background:transparent; color:var(--text-secondary,#9fb0ba); border-radius:7px; padding:5px 12px; cursor:pointer; font:700 12px var(--font-body,system-ui,sans-serif); }
+.rv-clear-resolved:hover { color:#fff; border-color:var(--accent,#29B5E8); }
+.rv-clear-resolved[hidden] { display:none; }
+.rv-chip { position:fixed; left:50%; bottom:74px; transform:translateX(-50%); z-index:1300; display:none; align-items:center; gap:12px; background:#1f2933; color:#fff; padding:10px 16px; border-radius:999px; box-shadow:0 6px 24px rgba(0,0,0,.3); font:600 14px var(--font-body,system-ui,sans-serif); }
+.rv-chip.show { display:flex; }
+.rv-chip button { border:0; border-radius:8px; padding:6px 12px; cursor:pointer; font:600 13px var(--font-body,system-ui,sans-serif); }
+.rv-chip .rv-add { background:var(--sf-valencia,#FF9F36); color:#1a1a1a; }
+.rv-chip .rv-clear { background:transparent; color:#cbd5e1; }
+.rv-composer { position:fixed; left:50%; top:110px; transform:translateX(-50%); z-index:1400; width:380px; max-width:92vw; background:var(--slide-bg,#fff); color:var(--text-primary,#1a1a2a); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.35); padding:16px; display:none; }
+.rv-composer.show { display:block; }
+.rv-composer h4 { font:700 15px var(--font-body,system-ui,sans-serif); margin-bottom:6px; color:var(--text-primary,#1a1a2a); }
+.rv-composer .rv-ctx { font:400 12px var(--font-body,system-ui,sans-serif); color:var(--text-secondary,#5B6770); margin-bottom:10px; max-height:64px; overflow:auto; }
+.rv-composer textarea { width:100%; min-height:96px; border:1px solid var(--split,#d9e1e7); border-radius:8px; padding:10px; font:400 14px var(--font-body,system-ui,sans-serif); resize:vertical; box-sizing:border-box; }
+.rv-composer .rv-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.rv-composer button { border:0; border-radius:8px; padding:8px 14px; cursor:pointer; font:600 13px var(--font-body,system-ui,sans-serif); }
+.rv-composer .rv-save { background:var(--sf-blue,#29B5E8); color:#fff; }
+.rv-composer .rv-cancel { background:var(--card-bg,#eef2f5); color:var(--text-primary,#33414d); }
+.rv-toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:1500; background:#1f2933; color:#fff; padding:10px 18px; border-radius:10px; font:600 14px var(--font-body,system-ui,sans-serif); opacity:0; transition:opacity .25s; pointer-events:none; }
+.rv-toast.show { opacity:1; }
+:root.is-present .rv-chip, :root.is-present .rv-composer, :root.is-present .rv-badge, :root.is-present .rv-marquee, :root.is-present .rv-region, :root.is-present .rv-region-draft, :root.is-present .rv-offline, :root.is-present .rv-panel { display:none !important; }
+:root.is-present .rv-commented { outline:none !important; }
+@media print { .rv-chip, .rv-composer, .rv-toast, .rv-badge, .rv-marquee, .rv-region, .rv-region-draft, .rv-offline, .rv-panel { display:none !important; } .rv-commented, .rv-selected, .rv-hover { outline:none !important; } }
+
+        /* ===========================================
+           LIGHT-THEME CHROME POLISH
+           =========================================== */
+        .deck-topbar { border-bottom:1px solid var(--hairline); }
+        .deck-topbar .tb-btn:hover,
+        .deck-topbar .tb-seg button:hover { background:#E3EAEF; }
+        .fs-tile { box-shadow:0 1px 4px rgba(26,32,38,.16); border-color:var(--hairline); }
+        .fs-tile.is-current { border-color:var(--accent); }
+        .rv-panel-close:hover { color:var(--text-primary); }
+
+        /* ===========================================
+           GLYPH ICON BASE
+           =========================================== */
+        .glyph { fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+        /* ===========================================
+           ANIMATIONS — RESTRAINED SNOWFLAKE MOTION
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(var(--reveal-offset));
+            transition: opacity var(--reveal-dur) var(--reveal-ease),
+                        transform var(--reveal-dur) var(--reveal-ease);
+        }
+        .slide:is(.active, .visible) .reveal {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal:nth-child(1) { transition-delay: calc(0 * var(--reveal-stagger)); }
+        .reveal:nth-child(2) { transition-delay: calc(1 * var(--reveal-stagger)); }
+        .reveal:nth-child(3) { transition-delay: calc(2 * var(--reveal-stagger)); }
+        .reveal:nth-child(4) { transition-delay: calc(3 * var(--reveal-stagger)); }
+        .reveal:nth-child(5) { transition-delay: calc(4 * var(--reveal-stagger)); }
+        .reveal:nth-child(6) { transition-delay: calc(5 * var(--reveal-stagger)); }
+
+        /* ===========================================
+           SNOWFLAKE BRAND CHROME — LOGO, ACCENT BAR, KICKER
+           =========================================== */
+        .brand-logo {
+            position: absolute; top: 56px; left: 96px; z-index: 2;
+            width: 150px; height: 34px;
+            background: url('assets/logos/snowflake-blue.svg') no-repeat center / contain;
+        }
+        .slide-title {
+            position: relative; padding-left: 40px;
+            font-family: var(--font-display); font-weight: 900;
+            font-size: var(--title-size); line-height: 1.04;
+            color: var(--text-primary);
+        }
+        .slide-title::before {
+            content:""; position:absolute; left:0; top:0.12em;
+            width:16px; height:0.82em; background: var(--accent); border-radius:3px;
+        }
+        .kicker {
+            display:inline-block; font-family:var(--font-display); font-weight:800;
+            font-size:var(--section-label); letter-spacing:0.08em; text-transform:uppercase;
+            color:#fff; background:var(--accent); padding:6px 16px; border-radius:6px;
+        }
+        .sec-label {
+            font-family: var(--font-display); font-weight: 800;
+            font-size: var(--section-label); letter-spacing: 0.06em;
+            text-transform: uppercase; color: var(--accent);
+        }
+
+        /* ===========================================
+           FOOTER (injected by DeckController)
+           =========================================== */
+        .slide-footer {
+            position:absolute; left:96px; right:96px; bottom:40px;
+            display:flex; justify-content:space-between; align-items:center;
+            font-family:var(--font-body); font-size:19px; color:var(--text-muted);
+        }
+        .slide-footer .foot-left, .slide-footer .foot-right { display:flex; align-items:center; gap:16px; }
+        .slide-footer .mark { width:20px; height:20px; color:var(--footer-mark); display:inline-flex; }
+        .slide-footer .mark svg { width:20px; height:20px; }
+        .slide-footer .confidential {
+            font-family:var(--font-display); font-weight:800; letter-spacing:.06em;
+            text-transform:uppercase; font-size:15px;
+        }
+        .on-dark .slide-footer, .on-dark .slide-footer .mark { color:rgba(255,255,255,.68); }
+
+        /* ===========================================
+           SLIDE LAYOUTS — CONTENT AREA
+           =========================================== */
+        .slide-body {
+            position: absolute;
+            top: 140px; left: 96px; right: 96px; bottom: 100px;
+            display: flex; flex-direction: column; justify-content: flex-start;
+        }
+        .slide-body .kicker { margin-bottom: 20px; }
+        .slide-body .slide-title { margin-bottom: 40px; }
+
+        /* === P1 COVER — full-bleed Snowflake Blue === */
+        .cover-slide {
+            background: var(--sf-blue) !important;
+        }
+        .cover-slide .brand-logo {
+            background-image: url('assets/logos/snowflake-blue.svg');
+            filter: brightness(0) invert(1);
+        }
+        .cover-slide .cover-content {
+            position: absolute; left: 96px; bottom: 160px; right: 96px;
+        }
+        .cover-slide h1 {
+            font-family: var(--font-display); font-weight: 900;
+            font-size: 100px; line-height: 1.04; text-transform: uppercase;
+        }
+        .cover-slide h1 .line1 { color: #fff; display: block; }
+        .cover-slide h1 .line2 { color: var(--text-primary); display: block; }
+        .cover-slide .cover-sub {
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 36px; color: var(--text-primary); margin-top: 20px;
+        }
+        .cover-slide .presenter {
+            margin-top: 40px; color: #fff;
+        }
+        .cover-slide .presenter .name {
+            font-family: var(--font-display); font-weight: 800; font-size: 28px;
+        }
+        .cover-slide .presenter .role {
+            font-family: var(--font-body); font-size: 22px; opacity: 0.85; margin-top: 4px;
+        }
+
+        /* === SECTION DIVIDER === */
+        .divider-slide {
+            background: var(--sf-midnight) !important;
+        }
+        .divider-slide .brand-logo {
+            filter: brightness(0) invert(1);
+        }
+        .divider-slide .divider-content {
+            position: absolute; left: 96px; bottom: 200px; right: 400px;
+        }
+        .divider-slide .kicker {
+            margin-bottom: 24px;
+        }
+        .divider-slide h1 {
+            font-family: var(--font-display); font-weight: 900;
+            font-size: 96px; line-height: 1.04; color: #fff;
+        }
+
+        /* === CONTENT SLIDES — bullet list === */
+        .blue-bullets { list-style: none; padding: 0; margin: 0; }
+        .blue-bullets li {
+            position: relative; padding-left: 32px;
+            font-size: var(--body-lg); line-height: 1.5;
+            color: var(--text-secondary); margin-bottom: 24px;
+        }
+        .blue-bullets li::before {
+            content: ""; position: absolute; left: 0; top: 0.5em;
+            width: 12px; height: 12px; border-radius: 50%;
+            background: var(--accent);
+        }
+        .blue-bullets li strong {
+            color: var(--text-primary); font-weight: 700;
+        }
+
+        /* === PAIN CARD GRID === */
+        .pain-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+            margin-top: 32px;
+        }
+        .pain-card {
+            background: var(--card-bg); border-radius: 20px; padding: 36px 32px;
+            border-top: 3px solid var(--sf-valencia);
+        }
+        .pain-card .pain-icon {
+            width: 48px; height: 48px; color: var(--sf-valencia); margin-bottom: 20px;
+        }
+        .pain-card h3 {
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 30px; color: var(--accent-strong); margin-bottom: 12px;
+        }
+        .pain-card p {
+            font-size: 22px; color: var(--text-secondary); line-height: 1.45;
+        }
+
+        /* === SOLUTION CARD GRID === */
+        .solution-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+            margin-top: 32px;
+        }
+        .solution-card {
+            background: var(--card-bg); border-radius: 20px; padding: 36px 32px;
+            border-top: 3px solid var(--accent);
+        }
+        .solution-card .sol-icon {
+            width: 48px; height: 48px; color: var(--accent); margin-bottom: 20px;
+        }
+        .solution-card h3 {
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 28px; color: var(--accent-strong); margin-bottom: 12px;
+        }
+        .solution-card p {
+            font-size: 22px; color: var(--text-secondary); line-height: 1.45;
+        }
+
+        /* === BEFORE / AFTER === */
+        .before-after { display: flex; flex-direction: column; gap: 28px; margin-top: 20px; }
+        .ba-row {
+            display: flex; align-items: stretch; gap: 0; border-radius: 18px; overflow: hidden;
+        }
+        .ba-label {
+            flex: 0 0 160px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--font-display); font-weight: 900; font-size: 24px;
+            letter-spacing: 0.05em; text-transform: uppercase; color: #fff;
+        }
+        .ba-before .ba-label { background: var(--sf-windy-city); }
+        .ba-after .ba-label { background: var(--accent); }
+        .ba-content {
+            flex: 1; padding: 28px 36px; display: flex; align-items: center;
+        }
+        .ba-before .ba-content { background: #F1F4F6; }
+        .ba-after .ba-content { background: var(--card-bg); }
+        .ba-content p {
+            font-size: 28px; line-height: 1.5; color: var(--text-secondary);
+        }
+        .ba-content p strong { color: var(--text-primary); }
+
+        /* === BIG QUOTE / CTA === */
+        .big-quote {
+            font-family: var(--font-display); font-weight: 900;
+            font-size: 64px; line-height: 1.15; color: var(--accent-strong);
+            max-width: 1400px; margin-top: 40px;
+        }
+        .big-quote em {
+            font-style: normal; color: var(--accent);
+        }
+
+        /* === FEATURE STRIP === */
+        .feature-strip {
+            display: flex; gap: 24px; margin-top: 32px;
+        }
+        .feature-chip {
+            flex: 1; background: var(--card-bg); border-radius: 16px; padding: 28px 24px;
+            text-align: center;
+        }
+        .feature-chip .fc-icon {
+            width: 44px; height: 44px; color: var(--accent); margin: 0 auto 14px;
+        }
+        .feature-chip h4 {
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 22px; color: var(--accent-strong); margin-bottom: 8px;
+        }
+        .feature-chip p {
+            font-size: 19px; color: var(--text-secondary); line-height: 1.4;
+        }
+
+        /* === ARCHITECTURE DIAGRAM === */
+        .arch-diagram {
+            position: relative; margin-top: 24px;
+            height: 700px; width: 100%;
+        }
+        /* Compute pool containers */
+        .arch-pool {
+            position: absolute; border: 2px solid var(--hairline);
+            border-radius: 20px; background: var(--slide-bg);
+        }
+        .arch-pool-label {
+            position: absolute; top: -14px; left: 24px;
+            background: var(--slide-bg); padding: 0 12px;
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 16px; color: var(--text-muted); letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        /* Boxes inside pools */
+        .arch-box {
+            position: absolute; border-radius: 14px; padding: 16px 20px;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; text-align: center;
+        }
+        .arch-box h4 {
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 20px; margin-bottom: 6px;
+        }
+        .arch-box p {
+            font-size: 15px; line-height: 1.35; color: var(--text-secondary);
+        }
+        .arch-box.locust {
+            background: var(--card-bg-2); border: 2px solid var(--accent);
+        }
+        .arch-box.locust h4 { color: var(--accent-strong); }
+        .arch-box.api {
+            background: var(--card-bg); border: 1.5px solid var(--hairline);
+        }
+        .arch-box.api h4 { color: var(--accent-strong); }
+        .arch-box.lb {
+            background: var(--sf-blue); border: none; border-radius: 10px;
+        }
+        .arch-box.lb h4 { color: #fff; font-size: 17px; margin: 0; }
+        .arch-box.wh {
+            background: var(--sf-mid-blue); border: none;
+        }
+        .arch-box.wh h4 { color: #fff; font-size: 22px; }
+        .arch-box.wh p { color: rgba(255,255,255,0.8); }
+        /* Arrows — SVG lines drawn on top */
+        .arch-arrows {
+            position: absolute; inset: 0; pointer-events: none; z-index: 2;
+        }
+        .arch-arrows line, .arch-arrows path {
+            stroke: var(--accent); stroke-width: 2.5;
+            fill: none; marker-end: url(#arrowhead);
+        }
+        .arch-arrows .dashed { stroke-dasharray: 8 5; }
+        /* Labels on arrows */
+        .arch-label {
+            position: absolute; background: var(--slide-bg);
+            padding: 2px 10px; border-radius: 6px;
+            font-size: 14px; color: var(--text-muted);
+            font-family: var(--font-body); font-weight: 700;
+            white-space: nowrap; z-index: 3;
+        }
+        /* Phase badges */
+        .arch-phase-badge {
+            position: absolute; display: flex; align-items: center; gap: 8px;
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase;
+            padding: 6px 14px; border-radius: 8px;
+        }
+        .arch-phase-badge.phase1 { background: rgba(41,181,232,0.12); color: var(--accent); }
+        .arch-phase-badge.phase2 { background: rgba(41,181,232,0.12); color: var(--accent); }
+
+        /* === WORKFLOW PIPELINE === */
+        .wf-pipeline {
+            display: flex; gap: 0; align-items: stretch; margin-top: 28px;
+            height: 680px;
+        }
+        .wf-phase {
+            flex: 1; display: flex; flex-direction: column;
+            background: var(--card-bg); border-radius: 20px;
+            overflow: hidden; position: relative;
+        }
+        .wf-phase + .wf-phase { margin-left: 24px; }
+        .wf-phase-head {
+            padding: 22px 28px; color: #fff;
+            font-family: var(--font-display); font-weight: 800;
+            font-size: 22px; letter-spacing: 0.04em; text-transform: uppercase;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .wf-phase-head .glyph { width: 24px; height: 24px; color: #fff; }
+        .wf-phase:nth-child(1) .wf-phase-head { background: var(--sf-star-blue); }
+        .wf-phase:nth-child(2) .wf-phase-head { background: var(--sf-blue); }
+        .wf-phase:nth-child(3) .wf-phase-head { background: var(--sf-mid-blue); }
+        .wf-steps {
+            flex: 1; padding: 20px 24px; display: flex; flex-direction: column;
+            gap: 12px; overflow: hidden;
+        }
+        .wf-step {
+            display: flex; align-items: flex-start; gap: 14px;
+            font-size: 20px; line-height: 1.4; color: var(--text-secondary);
+        }
+        .wf-step .wf-dot {
+            flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%;
+            background: var(--accent); margin-top: 6px;
+        }
+        .wf-step strong { color: var(--text-primary); font-weight: 700; }
+        .wf-gate {
+            margin: 8px 24px 20px; padding: 12px 16px;
+            background: rgba(255,159,54,0.12); border: 1.5px solid var(--sf-valencia);
+            border-radius: 10px; font-size: 18px; color: var(--text-secondary);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .wf-gate .glyph { width: 20px; height: 20px; color: var(--sf-valencia); flex: 0 0 20px; }
+        .wf-gate strong { color: var(--sf-valencia); }
+        .wf-arrow {
+            position: absolute; right: -18px; top: 50%; transform: translateY(-50%);
+            z-index: 2; width: 28px; height: 28px; color: var(--accent);
+        }
+
+        /* === CLOSING SLIDE === */
+        .closing-slide {
+            background: var(--sf-blue) !important;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .closing-slide .brand-logo {
+            filter: brightness(0) invert(1);
+        }
+        .closing-slide .close-content {
+            text-align: center;
+        }
+        .closing-slide h1 {
+            font-family: var(--font-display); font-weight: 900;
+            font-size: 96px; color: #fff; margin-bottom: 16px;
+        }
+        .closing-slide p {
+            font-family: var(--font-body); font-size: 32px; color: var(--text-primary);
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <!-- === ICON SPRITE (inlined for single-file portability) === -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+        <symbol id="ic-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></symbol>
+        <symbol id="ic-comment" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+        <symbol id="ic-send" viewBox="0 0 24 24"><path d="M4 11.5 20 4l-7.5 16-2.2-6.3z"/><path d="M10.3 13.7 20 4"/></symbol>
+        <symbol id="ic-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16M6.5 9.5h4M6.5 13h3"/></symbol>
+        <symbol id="ic-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M7.5 6.5a7 7 0 1 0 9 0"/></symbol>
+        <symbol id="ic-outline" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h9"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+        <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+        <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 20a6 6 0 0 0-4-5.6"/></symbol>
+        <symbol id="ic-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M22 12h-3M5 12H2M19 5l-2 2M7 17l-2 2M19 19l-2-2M7 7L5 5"/></symbol>
+        <symbol id="ic-chart-bar" viewBox="0 0 24 24"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M8 20v-6M13 20v-10M18 20v-4"/></symbol>
+        <symbol id="ic-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></symbol>
+        <symbol id="ic-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 6"/></symbol>
+        <symbol id="ic-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+        <symbol id="ic-code" viewBox="0 0 24 24"><path d="M8 7l-4 5 4 5M16 7l4 5-4 5M13.5 5l-3 14"/></symbol>
+        <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6z"/></symbol>
+        <symbol id="ic-ai" viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
+        <symbol id="ic-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7" ry="2.8"/><path d="M5 5.5v13c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-13"/><path d="M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/></symbol>
+        <symbol id="ic-arrow-right" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+    </svg>
+
+    <!-- === FOOTER BUG TEMPLATE (hidden, used by DeckController.injectFooters) === -->
+    <template id="bugTpl"><svg viewBox="0 0 44 44" style="width:20px;height:20px;color:currentColor" fill="currentColor"><g transform="translate(-0.002027, 0.531250)" fill-rule="nonzero"><path d="M37.26 33.13L28.09 27.83c-1.29-.74-2.94-.3-3.69.99-.29.51-.4 1.07-.35 1.61v10.36c0 1.48 1.2 2.68 2.69 2.68 1.48 0 2.68-1.2 2.68-2.68v-5.96l5.14 2.97c1.29.75 2.94.3 3.68-.99.75-1.29.3-2.94-.98-3.68"/><path d="M14.44 21.77c.02-.96-.48-1.85-1.32-2.33L3.95 14.14c-.4-.23-.86-.35-1.31-.35-.94 0-1.82.5-2.28 1.32-.73 1.26-.3 2.87.95 3.59l5.29 3.05-5.29 3.05c-.61.35-1.05.92-1.23 1.6-.18.68-.09 1.39.26 2 .47.81 1.35 1.31 2.28 1.31.46 0 .92-.12 1.32-.35l9.18-5.3c.82-.48 1.32-1.36 1.32-2.31"/><path d="M6.03 10.39l9.18 5.3c1.07.62 2.39.42 3.23-.24.54-.49.87-1.2.87-1.98V2.69C19.31 1.2 18.11 0 16.63 0 15.14 0 13.94 1.2 13.94 2.69v6.04l-5.21-3.01c-1.29-.75-2.94-.3-3.68.99-.75 1.29-.3 2.94.99 3.68"/><path d="M28.09 15.69l9.18-5.3c1.29-.74 1.73-2.39.99-3.68-.75-1.29-2.39-1.73-3.68-.98l-5.14 2.97V2.69C29.43 1.2 28.22 0 26.74 0c-1.48 0-2.69 1.2-2.69 2.69v10.41c-.05.54.06 1.1.35 1.61.75 1.29 2.4 1.73 3.69.98"/><path d="M17.05 27.52c-.61-.12-1.26-.02-1.84.31l-9.18 5.3c-1.29.74-1.73 2.39-.99 3.68.75 1.29 2.39 1.73 3.68.99l5.21-3.01v5.99c0 1.48 1.2 2.68 2.69 2.68 1.48 0 2.68-1.2 2.68-2.68V30.17c0-1.34-.98-2.45-2.26-2.65"/><path d="M43 15.08c-.74-1.29-2.39-1.73-3.68-.99l-9.18 5.3c-.88.51-1.36 1.44-1.35 2.39-.01.94.47 1.86 1.35 2.36l9.18 5.3c1.29.74 2.94.3 3.68-.99.75-1.29.3-2.94-.99-3.68l-5.19-3 5.19-3c1.29-.74 1.73-2.39.99-3.68"/></g></svg></template>
+
+    <!-- === TOPBAR === -->
+    <div class="deck-topbar" id="deckTopbar">
+        <button class="tb-btn tb-exit" id="exitBtn" data-tip="Stop server &amp; close" aria-label="Stop dev server and close tab">
+            <svg class="glyph"><use href="#ic-power"></use></svg>Stop
+        </button>
+        <div class="tb-seg" role="group" aria-label="Comments">
+            <button class="tb-seg-main" id="commentBtn" data-tip="Comment mode" data-kbd="C" aria-label="Toggle comment mode">
+                <svg class="glyph"><use href="#ic-comment"></use></svg>Comments
+            </button>
+            <button class="tb-seg-panel" id="panelBtn" data-tip="All comments" data-kbd="A" aria-label="Show all comments" hidden>
+                <svg class="glyph"><use href="#ic-panel"></use></svg><span class="tb-badge" id="commentCount" hidden>0</span>
+            </button>
+        </div>
+        <button class="tb-btn" id="sendBtn" data-tip="Submit for review" data-kbd="S" aria-label="Submit comments for review" hidden>
+            <svg class="glyph"><use href="#ic-send"></use></svg>Review
+        </button>
+        <button class="tb-btn" id="outlineBtn" data-tip="Edit outline" aria-label="Open the outline editor" hidden><svg class="glyph"><use href="#ic-outline"></use></svg>Outline</button>
+        <span class="tb-div"></span>
+        <button class="tb-btn" id="pdfBtn" data-tip="Export PDF" data-kbd="P" aria-label="Export to PDF">
+            <svg class="glyph"><use href="#ic-download"></use></svg>PDF
+        </button>
+        <button class="tb-btn" id="maxBtn" data-tip="Fill this tab" data-kbd="M" aria-label="Fill tab"><svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Fill tab</button>
+    </div>
+
+    <!-- === DECK APP SHELL === -->
+    <div class="deck-app" id="deckApp">
+        <aside class="deck-filmstrip" id="filmstrip" aria-label="Slide thumbnails"></aside>
+        <div class="deck-splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize thumbnail panel"></div>
+        <div class="deck-main" id="deckMain">
+            <div class="deck-viewport" id="deckViewport">
+                <main class="deck-stage" id="deckStage">
+
+                    <!-- ===========================
+                         SLIDE 1: COVER
+                         =========================== -->
+                    <section class="slide cover-slide active" data-nofooter>
+                        <div class="brand-logo"></div>
+                        <div class="cover-content">
+                            <h1 class="reveal">
+                                <span class="line1">Interactive</span>
+                                <span class="line2">Benchmark Skill</span>
+                            </h1>
+                            <p class="cover-sub reveal">Know your query will perform before it hits production</p>
+                            <div class="presenter reveal">
+                                <div class="name">Davide Mauri</div>
+                                <div class="role">Staff Product Manager</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 2: CUSTOMER INTEREST
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">The Opportunity</span>
+                            <h2 class="slide-title reveal">Customers want to prove<br>Interactive works for them</h2>
+                            <div style="display:flex; gap:48px; margin-top:36px; align-items:flex-start;">
+                                <div style="flex:1;" class="reveal">
+                                    <p style="font-size:30px; line-height:1.6; color:var(--text-secondary);">
+                                        Interactive Warehouses are designed for <strong style="color:var(--accent-strong);">high-concurrency, low-latency</strong> workloads &mdash; dashboards, APIs, real-time apps.
+                                    </p>
+                                    <p style="font-size:30px; line-height:1.6; color:var(--text-secondary); margin-top:24px;">
+                                        Customers are excited about the promise. But before committing, they need to answer one question:
+                                    </p>
+                                    <div class="big-quote reveal" style="margin-top:32px; font-size:46px;">
+                                        Can it sustain <em>my</em> workload at <em>my</em> scale?
+                                    </div>
+                                </div>
+                                <div style="flex:0 0 520px; display:flex; flex-direction:column; gap:20px;" class="reveal">
+                                    <div style="background:var(--card-bg); border-radius:16px; padding:28px 32px; border-left:4px solid var(--accent);">
+                                        <div style="font-family:var(--font-display); font-weight:800; font-size:22px; color:var(--accent-strong); margin-bottom:8px;">They want to stress test it</div>
+                                        <p style="font-size:20px; color:var(--text-secondary); line-height:1.45;">Run their actual queries under realistic concurrent load to validate latency targets.</p>
+                                    </div>
+                                    <div style="background:var(--card-bg); border-radius:16px; padding:28px 32px; border-left:4px solid var(--accent);">
+                                        <div style="font-family:var(--font-display); font-weight:800; font-size:22px; color:var(--accent-strong); margin-bottom:8px;">They want proof, not promises</div>
+                                        <p style="font-size:20px; color:var(--text-secondary); line-height:1.45;">P95 latency under N concurrent users &mdash; measured, not estimated.</p>
+                                    </div>
+                                    <div style="background:var(--card-bg); border-radius:16px; padding:28px 32px; border-left:4px solid var(--accent);">
+                                        <div style="font-family:var(--font-display); font-weight:800; font-size:22px; color:var(--accent-strong); margin-bottom:8px;">They want the right sizing</div>
+                                        <p style="font-size:20px; color:var(--text-secondary); line-height:1.45;">Which warehouse size and cluster count will deliver the SLA without overspending?</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 3: THE CHALLENGE
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">The Challenge</span>
+                            <h2 class="slide-title reveal">Performance testing<br>is painful</h2>
+                            <div class="pain-grid">
+                                <div class="pain-card reveal">
+                                    <svg class="pain-icon glyph"><use href="#ic-clock"></use></svg>
+                                    <h3>Latency guarantees</h3>
+                                    <p>Will this query run under 200ms with 50 concurrent users? Customers can't answer this without a real test.</p>
+                                </div>
+                                <div class="pain-card reveal">
+                                    <svg class="pain-icon glyph"><use href="#ic-gear"></use></svg>
+                                    <h3>Sizing guesswork</h3>
+                                    <p>What warehouse size? How many clusters? Trial-and-error is expensive and slow.</p>
+                                </div>
+                                <div class="pain-card reveal">
+                                    <svg class="pain-icon glyph"><use href="#ic-code"></use></svg>
+                                    <h3>Complex setup</h3>
+                                    <p>Standing up a proper load-test environment with realistic concurrency is tricky to get right.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 3: THE HARD PARTS
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">Why It's Hard</span>
+                            <h2 class="slide-title reveal">What customers face today</h2>
+                            <div class="before-after">
+                                <div class="ba-row ba-before reveal">
+                                    <div class="ba-label">Query<br>tuning</div>
+                                    <div class="ba-content">
+                                        <p><strong>No clear path to optimize</strong> a query for interactive latency targets. Manual EXPLAIN plans, guessing at clustering keys, iterating blindly.</p>
+                                    </div>
+                                </div>
+                                <div class="ba-row ba-before reveal">
+                                    <div class="ba-label">Load<br>testing</div>
+                                    <div class="ba-content">
+                                        <p><strong>Setting up a load test is the hardest part.</strong> Deploying Locust, configuring compute pools, warming caches, collecting server-side metrics.</p>
+                                    </div>
+                                </div>
+                                <div class="ba-row ba-before reveal">
+                                    <div class="ba-label">Right-<br>sizing</div>
+                                    <div class="ba-content">
+                                        <p><strong>Over-provision or under-deliver.</strong> Without iterative testing, customers either waste credits on oversized warehouses or miss their SLA.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 4: THE SOLUTION — BEFORE/AFTER
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">The Solution</span>
+                            <h2 class="slide-title reveal">Just say what you need</h2>
+                            <div class="before-after" style="margin-top: 32px;">
+                                <div class="ba-row ba-before reveal">
+                                    <div class="ba-label">Before</div>
+                                    <div class="ba-content">
+                                        <p>Manually deploy Locust, configure SPCS compute pools, write test scripts, warm caches, collect metrics, resize warehouses, repeat.</p>
+                                    </div>
+                                </div>
+                                <div class="ba-row ba-after reveal">
+                                    <div class="ba-label">After</div>
+                                    <div class="ba-content">
+                                        <p><strong>"I want this query to run under 200ms with 50 concurrent users."</strong> The skill handles everything else.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="big-quote reveal" style="margin-top: 40px; font-size: 48px;">
+                                You set the <em>goal</em>. The skill figures out <em>how to get there</em>.
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 5: HOW IT WORKS
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">How It Works</span>
+                            <h2 class="slide-title reveal">Automated end-to-end</h2>
+                            <div class="solution-grid">
+                                <div class="solution-card reveal">
+                                    <svg class="sol-icon glyph"><use href="#ic-shield"></use></svg>
+                                    <h3>Suitability gate</h3>
+                                    <p>Validates the query is a good fit for interactive workloads before spending any credits on load testing.</p>
+                                </div>
+                                <div class="solution-card reveal">
+                                    <svg class="sol-icon glyph"><use href="#ic-bolt"></use></svg>
+                                    <h3>Full load test</h3>
+                                    <p>Deploys Locust + FastAPI on SPCS, warms caches, runs baseline and real tests with your concurrency target.</p>
+                                </div>
+                                <div class="solution-card reveal">
+                                    <svg class="sol-icon glyph"><use href="#ic-chart-bar"></use></svg>
+                                    <h3>Iterative scaling</h3>
+                                    <p>If P95 misses the goal, it automatically scales out clusters or up warehouse size within your limits.</p>
+                                </div>
+                            </div>
+                            <div class="feature-strip" style="margin-top: 28px;">
+                                <div class="feature-chip reveal">
+                                    <h4>Guardrails</h4>
+                                    <p>Set max warehouse size and cluster count so costs stay controlled</p>
+                                </div>
+                                <div class="feature-chip reveal">
+                                    <h4>Query variations</h4>
+                                    <p>Tests a single query with variations or a set of provided queries</p>
+                                </div>
+                                <div class="feature-chip reveal">
+                                    <h4>HTML report</h4>
+                                    <p>P50 / P95 / P99 latencies, throughput, and optimization recommendations</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 6: WORKFLOW
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">The Workflow</span>
+                            <h2 class="slide-title reveal">Three phases, fully automated</h2>
+                            <div class="wf-pipeline">
+                                <div class="wf-phase reveal" style="transition-delay:.1s">
+                                    <div class="wf-phase-head">
+                                        <svg class="glyph"><use href="#ic-users"></use></svg>
+                                        Phase 1 &mdash; Gather Inputs
+                                    </div>
+                                    <div class="wf-steps">
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Collect parameters</strong> &mdash; database, warehouse, latency goal, concurrency, max sizes</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Present summary</strong> &mdash; all values in a single confirmation table</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>User confirms</strong> &mdash; nothing runs until you approve</span></div>
+                                    </div>
+                                    <div class="wf-gate">
+                                        <svg class="glyph"><use href="#ic-shield"></use></svg>
+                                        <span><strong>Gate:</strong> All inputs confirmed</span>
+                                    </div>
+                                    <svg class="wf-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+                                </div>
+                                <div class="wf-phase reveal" style="transition-delay:.25s">
+                                    <div class="wf-phase-head">
+                                        <svg class="glyph"><use href="#ic-check"></use></svg>
+                                        Phase 2 &mdash; Validate Suitability
+                                    </div>
+                                    <div class="wf-steps">
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Analyze the query</strong> &mdash; determine zero-copy vs. interactive tables approach</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Run on both warehouses</strong> &mdash; standard vs. interactive, measure speedup</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Suitability decision</strong> &mdash; stops early if query &gt;10s or no speedup</span></div>
+                                    </div>
+                                    <div class="wf-gate">
+                                        <svg class="glyph"><use href="#ic-alert"></use></svg>
+                                        <span><strong>Gate:</strong> &lt;5s interactive, measurable speedup</span>
+                                    </div>
+                                    <svg class="wf-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+                                </div>
+                                <div class="wf-phase reveal" style="transition-delay:.4s">
+                                    <div class="wf-phase-head">
+                                        <svg class="glyph"><use href="#ic-bolt"></use></svg>
+                                        Phase 3 &mdash; Run Benchmark
+                                    </div>
+                                    <div class="wf-steps">
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Deploy to SPCS</strong> &mdash; FastAPI + Locust on dedicated compute pools</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Warm cache &amp; baseline</strong> &mdash; reliable results, no cold-cache noise</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Load test</strong> &mdash; real concurrency, P50/P95/P99 latencies</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>Escalate if needed</strong> &mdash; auto scale-out/up, re-test within limits</span></div>
+                                        <div class="wf-step"><span class="wf-dot"></span><span><strong>HTML report</strong> &mdash; results, recommendations, cleanup options</span></div>
+                                    </div>
+                                    <div class="wf-gate">
+                                        <svg class="glyph"><use href="#ic-chart-bar"></use></svg>
+                                        <span><strong>Goal:</strong> P95 meets your latency target</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 7: SPCS ARCHITECTURE
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">Architecture</span>
+                            <h2 class="slide-title reveal">SPCS deployment</h2>
+
+                            <!-- Horizontal architecture: Locust → LB+APIs (stacked) → Warehouse, Results below -->
+                            <div style="position:relative; margin-top:20px; height:640px;" class="reveal">
+                            <div style="position:relative; width:1266px; height:640px; margin:0 auto;">
+
+                                <!-- Arrowhead marker -->
+                                <svg style="position:absolute;width:0;height:0">
+                                    <defs><marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)"/></marker></defs>
+                                </svg>
+
+                                <!-- COL 1: LOCUST -->
+                                <div class="arch-pool" style="left:0; top:0; width:260px; height:380px;">
+                                    <span class="arch-pool-label">Locust Pool</span>
+                                    <div class="arch-box locust" style="left:14px; top:34px; width:232px; height:324px;">
+                                        <svg class="glyph" style="width:40px;height:40px;color:var(--accent);margin-bottom:10px;"><use href="#ic-users"></use></svg>
+                                        <h4 style="font-size:24px;">Locust</h4>
+                                        <p style="font-size:18px; margin-top:8px;">1 instance</p>
+                                        <p style="font-size:18px;">autostart mode</p>
+                                        <div style="margin-top:20px; padding-top:16px; border-top:1.5px solid var(--hairline); text-align:left; width:100%;">
+                                            <p style="font-size:16px; color:var(--text-muted); line-height:1.6;">
+                                                <strong style="color:var(--accent-strong);">Phase 1</strong> Baseline<br>
+                                                <strong style="color:var(--accent-strong);">Phase 2</strong> Load test<br>
+                                                N concurrent users
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- COL 2: LB (standalone) + API Pool with 3 APIs stacked -->
+
+                                <!-- LB sits between Locust and API pool -->
+                                <div class="arch-box lb" style="left:300px; top:130px; width:56px; height:120px; border-radius:10px; padding:10px 6px;">
+                                    <h4 style="font-size:14px; writing-mode:vertical-rl; text-orientation:mixed; letter-spacing:0.06em;">LOAD BALANCER</h4>
+                                </div>
+
+                                <div class="arch-pool" style="left:396px; top:0; width:260px; height:416px;">
+                                    <span class="arch-pool-label">API Pool &middot; CPU_X64_M</span>
+
+                                    <!-- 3 stacked APIs -->
+                                    <div class="arch-box api" style="left:20px; top:36px; width:220px; height:96px;">
+                                        <h4 style="font-size:18px;">Benchmark API #1</h4>
+                                        <p style="font-size:15px;">FastAPI &middot; 4 workers &middot; 50 conn</p>
+                                    </div>
+                                    <div class="arch-box api" style="left:20px; top:148px; width:220px; height:96px;">
+                                        <h4 style="font-size:18px;">Benchmark API #2</h4>
+                                        <p style="font-size:15px;">FastAPI &middot; 4 workers &middot; 50 conn</p>
+                                    </div>
+                                    <div class="arch-box api" style="left:20px; top:260px; width:220px; height:96px;">
+                                        <h4 style="font-size:18px;">Benchmark API #3</h4>
+                                        <p style="font-size:15px;">FastAPI &middot; 4 workers &middot; 50 conn</p>
+                                    </div>
+
+                                    <!-- OAuth note -->
+                                    <div style="position:absolute; left:14px; top:370px; right:14px; text-align:center;">
+                                        <p style="font-size:13px; color:var(--text-muted); line-height:1.4;">OAuth token<br>QUERY_TAG &middot; no cache</p>
+                                    </div>
+                                </div>
+
+                                <!-- COL 3: INTERACTIVE WAREHOUSE -->
+                                <div class="arch-box wh" style="left:746px; top:0; width:380px; height:380px; border-radius:24px;">
+                                    <svg class="glyph" style="width:48px;height:48px;color:#fff;margin-bottom:10px;stroke:#fff;"><use href="#ic-database"></use></svg>
+                                    <h4 style="font-size:30px;">Interactive<br>Warehouse</h4>
+                                    <p style="font-size:20px; margin-top:16px;">Multi-cluster</p>
+                                    <p style="font-size:20px;">1 &ndash; N clusters</p>
+                                    <div style="margin-top:20px; padding-top:16px; border-top:1.5px solid rgba(255,255,255,0.2); text-align:center;">
+                                        <p style="font-size:16px; color:rgba(255,255,255,0.7); line-height:1.6;">
+                                            USE_CACHED_RESULT = False<br>
+                                            Standard scaling policy<br>
+                                            Interactive tables or zero-copy
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- BOTTOM: RESULTS (spans full width) -->
+                                <div class="arch-box" style="left:0; top:450px; width:1126px; height:170px; background:var(--card-bg); border:2px solid var(--sf-valencia); border-radius:18px; flex-direction:column;">
+                                    <h4 style="color:var(--sf-valencia); font-size:22px; margin-bottom:12px;">Results Collection &amp; Escalation Loop</h4>
+                                    <div style="display:flex; gap:40px; text-align:left; align-items:flex-start;">
+                                        <div style="flex:1;">
+                                            <p style="font-size:17px; color:var(--accent-strong); font-weight:700; margin-bottom:4px;">Client-side (Locust)</p>
+                                            <p style="font-size:15px;">HTTP timing &middot; P50 / P95 / P99 &middot; Failure rate &middot; RPS</p>
+                                        </div>
+                                        <div style="width:1.5px; height:48px; background:var(--hairline);"></div>
+                                        <div style="flex:1;">
+                                            <p style="font-size:17px; color:var(--accent-strong); font-weight:700; margin-bottom:4px;">Server-side (Snowflake)</p>
+                                            <p style="font-size:15px;">QUERY_HISTORY &middot; Execution time &middot; Queue wait &middot; Cluster usage</p>
+                                        </div>
+                                        <div style="width:1.5px; height:48px; background:var(--hairline);"></div>
+                                        <div style="flex:0 0 240px;">
+                                            <p style="font-size:17px; color:var(--sf-valencia); font-weight:700; margin-bottom:4px;">Goal Check</p>
+                                            <p style="font-size:15px;">P95 &le; target? &rarr; Report.<br>Missed? Scale &amp; re-test.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- ===== ARROWS: clean horizontal routing ===== -->
+                                <svg style="position:absolute;inset:0;width:1266px;height:640px;pointer-events:none;z-index:2;">
+                                    <!-- Locust → LB (horizontal) -->
+                                    <line x1="260" y1="190" x2="298" y2="190" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+
+                                    <!-- LB → API #1 -->
+                                    <line x1="356" y1="152" x2="414" y2="104" stroke="var(--accent)" stroke-width="2" marker-end="url(#ah)"/>
+                                    <!-- LB → API #2 -->
+                                    <line x1="356" y1="190" x2="414" y2="216" stroke="var(--accent)" stroke-width="2" marker-end="url(#ah)"/>
+                                    <!-- LB → API #3 -->
+                                    <line x1="356" y1="228" x2="414" y2="328" stroke="var(--accent)" stroke-width="2" marker-end="url(#ah)"/>
+
+                                    <!-- APIs → Warehouse (horizontal) -->
+                                    <line x1="656" y1="104" x2="744" y2="120" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#ah)"/>
+                                    <line x1="656" y1="216" x2="744" y2="190" stroke="var(--accent)" stroke-width="2" marker-end="url(#ah)" opacity="0.6"/>
+                                    <line x1="656" y1="328" x2="744" y2="260" stroke="var(--accent)" stroke-width="2" marker-end="url(#ah)" opacity="0.6"/>
+
+                                    <!-- Warehouse → Results (down) -->
+                                    <line x1="936" y1="380" x2="936" y2="448" stroke="var(--sf-valencia)" stroke-width="2.5" marker-end="url(#ah)"/>
+
+                                    <!-- Locust → Results (dashed, client metrics) -->
+                                    <line x1="130" y1="380" x2="130" y2="448" stroke="var(--accent)" stroke-width="2" stroke-dasharray="8 5" marker-end="url(#ah)"/>
+                                </svg>
+
+                                <!-- Arrow labels -->
+                                <div class="arch-label" style="left:254px; top:166px; font-size:13px;">DNS</div>
+                                <div class="arch-label" style="left:668px; top:142px; font-size:13px;">SQL</div>
+                                <div class="arch-label" style="left:84px; top:400px; font-size:12px; color:var(--accent);">metrics</div>
+                                <div class="arch-label" style="left:900px; top:400px; font-size:12px; color:var(--sf-valencia);">results</div>
+                            </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 9: GUARDRAILS & CONTROL
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">Guardrails</span>
+                            <h2 class="slide-title reveal">You stay in control</h2>
+                            <ul class="blue-bullets" style="margin-top: 32px; max-width: 1400px;">
+                                <li class="reveal"><strong>Set a latency target</strong> &mdash; "Run under 200ms at P95" and the skill works toward that goal</li>
+                                <li class="reveal"><strong>Cap warehouse size</strong> &mdash; won't go beyond the max size you approve (e.g. no 3XL)</li>
+                                <li class="reveal"><strong>Cap cluster count</strong> &mdash; controls multi-cluster scaling to keep costs predictable</li>
+                                <li class="reveal"><strong>Automatic cache warming</strong> &mdash; resets and warms cache between each iteration so results are reliable</li>
+                                <li class="reveal"><strong>Clean up when done</strong> &mdash; offers full teardown of SPCS services and compute pools</li>
+                            </ul>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 10: SKILL COMPLEXITY
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">Under the Hood</span>
+                            <h2 class="slide-title reveal">What the skill handles for you</h2>
+
+                            <!-- Row 1: Scale -->
+                            <div style="display:flex; gap:20px; margin-top:22px;">
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">~4,000</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Total Lines</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Across 46 authored files</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">16</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Workflow Steps</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Across 3 phases</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">2</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Sub-Skills</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">snowflake-interactive, html-authoring</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">26</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Tools &amp; Scripts</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">CoCo tools, bash, docker, SQL</p>
+                                </div>
+                            </div>
+
+                            <!-- Row 2: Complexity -->
+                            <div style="display:flex; gap:20px; margin-top:16px;">
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--sf-valencia); line-height:1;">36</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Decision Branches</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Gates, conditionals, 3-way splits</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--sf-valencia); line-height:1;">9</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Stopping Points</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">User confirmations + hard-stop gates</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--sf-valencia); line-height:1;">~32</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Cyclomatic Complexity</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Branches minus merge points</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--sf-valencia); line-height:1;">48</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Max Graph Depth</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Longest path with 5 escalations</p>
+                                </div>
+                            </div>
+
+                            <!-- Row 3: Infrastructure -->
+                            <div style="display:flex; gap:20px; margin-top:16px;">
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">4</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">SPCS Resources</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">2 services + 2 compute pools</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">N</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Escalation Loops</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">User-configurable (default 5)</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">11</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Reference Docs</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Sizing, validation, troubleshooting</p>
+                                </div>
+                                <div style="flex:1; background:var(--card-bg); border-radius:16px; padding:24px 20px; text-align:center;" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--accent); line-height:1;">27</div>
+                                    <div style="font-family:var(--font-display); font-weight:800; font-size:18px; color:var(--accent-strong); margin-top:8px;">Files Managed</div>
+                                    <p style="font-size:14px; color:var(--text-secondary); margin-top:4px;">Templates, configs, scripts, reports</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 11: DEMO
+                         =========================== -->
+                    <section class="slide" data-nofooter style="background:var(--sf-blue) !important; display:flex; align-items:center; justify-content:center;">
+                        <div class="brand-logo" style="filter:brightness(0) invert(1);"></div>
+                        <div style="text-align:center;">
+                            <span class="kicker reveal" style="background:#fff; color:var(--sf-mid-blue);">Live</span>
+                            <h1 class="reveal" style="font-family:var(--font-display); font-weight:900; font-size:120px; color:#fff; margin-top:24px;">Demo</h1>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 12: LESSONS LEARNED
+                         =========================== -->
+                    <section class="slide">
+                        <div class="brand-logo"></div>
+                        <div class="slide-body">
+                            <span class="kicker reveal">Takeaways</span>
+                            <h2 class="slide-title reveal">Lessons learned</h2>
+
+                            <div style="display:flex; gap:36px; margin-top:36px;">
+                                <!-- Lesson 1 -->
+                                <div style="flex:1; background:var(--card-bg); border-radius:20px; padding:40px 36px; border-top:4px solid var(--accent);" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:64px; color:var(--accent); opacity:0.15; line-height:1; margin-bottom:12px;">01</div>
+                                    <h3 style="font-family:var(--font-display); font-weight:800; font-size:28px; color:var(--accent-strong); margin-bottom:16px;">Natural language<br>for flexibility</h3>
+                                    <p style="font-size:22px; color:var(--text-secondary); line-height:1.55;">Define the workflow in natural language. It gives the AI agent the flexibility to adapt, recover from errors, and handle edge cases that rigid code cannot anticipate.</p>
+                                </div>
+
+                                <!-- Lesson 2 -->
+                                <div style="flex:1; background:var(--card-bg); border-radius:20px; padding:40px 36px; border-top:4px solid var(--sf-valencia);" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:64px; color:var(--sf-valencia); opacity:0.15; line-height:1; margin-bottom:12px;">02</div>
+                                    <h3 style="font-family:var(--font-display); font-weight:800; font-size:28px; color:var(--accent-strong); margin-bottom:16px;">Deterministic tools<br>for predictability</h3>
+                                    <p style="font-size:22px; color:var(--text-secondary); line-height:1.55;">Wrap key operations in scripts and tools. The more deterministic tools you give the agent, the easier it is to define the workflow and get predictable, repeatable outcomes.</p>
+                                </div>
+
+                                <!-- Lesson 3 -->
+                                <div style="flex:1; background:var(--card-bg); border-radius:20px; padding:40px 36px; border-top:4px solid var(--sf-mid-blue);" class="reveal">
+                                    <div style="font-family:var(--font-display); font-weight:900; font-size:64px; color:var(--sf-mid-blue); opacity:0.15; line-height:1; margin-bottom:12px;">03</div>
+                                    <h3 style="font-family:var(--font-display); font-weight:800; font-size:28px; color:var(--accent-strong); margin-bottom:16px;">Tools are as important<br>as the skill itself</h3>
+                                    <p style="font-size:22px; color:var(--text-secondary); line-height:1.55;">A skill is only as good as the tools it can call. Invest in building reliable, well-scoped tools &mdash; they are the foundation the entire skill definition rests on.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===========================
+                         SLIDE 13: CLOSING
+                         =========================== -->
+                    <section class="slide closing-slide" data-nofooter>
+                        <div class="brand-logo"></div>
+                        <div class="close-content">
+                            <h1 class="reveal">Thank you</h1>
+                            <p class="reveal">Interactive Benchmark Skill</p>
+                        </div>
+                    </section>
+
+                </main>
+            </div>
+            <nav class="deck-nav" id="deckNav" aria-label="Slide navigation">
+                <button class="nav-btn" data-act="prev" data-tip="Previous" data-kbd="&#8592;" aria-label="Previous slide"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+                <span class="nav-count"><span id="navCur">1</span>&#8202;/&#8202;<span id="navTotal">1</span></span>
+                <button class="nav-btn" data-act="next" data-tip="Next" data-kbd="&#8594;" aria-label="Next slide"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+                <button class="nav-btn" data-act="present" data-tip="Present" data-kbd="F" aria-label="Present / fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+            </nav>
+        </div>
+    </div>
+
+    <script>
+    /* Frontend Slides runtime — DeckController + ReviewLayer.
+   DeckController: keyboard nav, resizable filmstrip (non-fullscreen), single-slide present (fullscreen),
+     cursor-hotzone dock nav, injected footers (data-footer-note), window.print() PDF export, dev live-reload restore.
+   ReviewLayer: marquee/box-select any element (or empty region) -> comment -> submit to dev-server /__review (server required; heartbeat via /__ping; NO clipboard fallback).
+   Exposes window.deck and window.review. */
+class DeckController {
+  constructor(){
+    this.root=document.documentElement;
+    this.app=document.getElementById('deckApp');
+    this.filmstrip=document.getElementById('filmstrip');
+    this.splitter=document.getElementById('splitter');
+    this.viewport=document.getElementById('deckViewport');
+    this.stage=document.getElementById('deckStage');
+    this.nav=document.getElementById('deckNav');
+    this.slides=Array.from(this.stage.querySelectorAll('.slide'));
+    this.index=0; this.jumpBuf=''; this.idle=null;
+    document.getElementById('navTotal').textContent=this.slides.length;
+    this.injectFooters();
+    this.buildFilmstrip();
+    this.wireSplitter(); this.wireChrome(); this.wireKeyboard(); this.wireFullscreen(); this.wireTips();
+    this.layout(); this.show(0);
+    try{ const di=sessionStorage.getItem('__deck_dev_index'); if(di!==null) this.show(parseInt(di,10)); }catch(_){}
+    window.addEventListener('resize',()=>this.layout());
+  }
+  injectFooters(){
+    const bug=document.getElementById('bugTpl').innerHTML;
+    const qs=new URLSearchParams(location.search);
+    const rawStart=qs.get('pageno-start') || document.body.dataset.pagenoStart;
+    const start=Number.parseInt(rawStart,10);
+    const first=Number.isFinite(start) ? start : 1;
+    this.slides.forEach((s,i)=>{
+      if(s.hasAttribute('data-nofooter')) return;
+      const note=s.dataset.footerNote || '\u00a9 2026 Snowflake Inc. All Rights Reserved';
+      const f=document.createElement('div'); f.className='slide-footer';
+      f.innerHTML=`<span class="foot-left"><span class="mark">${bug}</span>${note}</span>`+
+                  `<span class="foot-right"><span class="confidential">Snowflake Confidential</span><span class="pageno">${i+first}</span></span>`;
+      s.appendChild(f);
+    });
+  }
+  buildFilmstrip(){
+    this.slides.forEach((slide,i)=>{
+      const tile=document.createElement('button'); tile.className='fs-tile'; tile.setAttribute('aria-label','Slide '+(i+1));
+      const canvas=document.createElement('div'); canvas.className='fs-canvas';
+      const clone=slide.cloneNode(true); clone.classList.add('active');
+      clone.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+      canvas.appendChild(clone); tile.appendChild(canvas);
+      const num=document.createElement('span'); num.className='fs-num'; num.textContent=i+1; tile.appendChild(num);
+      tile.addEventListener('click',()=>this.show(i));
+      this.filmstrip.appendChild(tile);
+    });
+    this.tiles=Array.from(this.filmstrip.querySelectorAll('.fs-tile'));
+  }
+  layoutFilmstrip(){ const f=(this.filmstrip.clientWidth-28)/1920;
+    this.tiles?.forEach(t=>{t.style.height=(1080*f)+'px';t.querySelector('.fs-canvas').style.transform='scale('+f+')';}); }
+  scaleStage(){ const w=this.viewport.clientWidth,h=this.viewport.clientHeight,f=Math.min(w/1920,h/1080);
+    this.stage.style.transform=`translate(${(w-1920*f)/2}px,${(h-1080*f)/2}px) scale(${f})`; }
+  layout(){ this.scaleStage(); this.layoutFilmstrip(); }
+  wireSplitter(){
+    let d=false; const start=()=>{d=true;this.splitter.classList.add('drag');document.body.style.userSelect='none';};
+    const end=()=>{if(d){d=false;this.splitter.classList.remove('drag');document.body.style.userSelect='';}};
+    const move=e=>{if(!d)return;const w=Math.max(170,Math.min(Math.min(640,innerWidth*0.5),e.clientX));this.app.style.setProperty('--film-w',w+'px');this.layout();};
+    this.splitter.addEventListener('pointerdown',e=>{e.preventDefault();start();this.splitter.setPointerCapture(e.pointerId);});
+    this.splitter.addEventListener('pointermove',move);
+    this.splitter.addEventListener('pointerup',end);
+    this.splitter.addEventListener('lostpointercapture',end);
+    this.splitter.addEventListener('keydown',e=>{const c=parseInt(getComputedStyle(this.app).getPropertyValue('--film-w'))||280;
+      if(e.key==='ArrowLeft'){this.app.style.setProperty('--film-w',Math.max(170,c-24)+'px');this.layout();}
+      if(e.key==='ArrowRight'){this.app.style.setProperty('--film-w',Math.min(640,c+24)+'px');this.layout();}});
+  }
+  show(i){ this.index=Math.max(0,Math.min(i,this.slides.length-1));
+    this.slides.forEach((s,n)=>s.classList.toggle('active',n===this.index));
+    this.tiles?.forEach((t,n)=>t.classList.toggle('is-current',n===this.index));
+    document.getElementById('navCur').textContent=this.index+1;
+    this.tiles?.[this.index]?.scrollIntoView({block:'nearest'}); }
+  next(){this.show(this.index+1);} prev(){this.show(this.index-1);}
+  enterPresent(){this.root.classList.add('is-present');const el=this.app;if(el.requestFullscreen)el.requestFullscreen().catch(()=>{});requestAnimationFrame(()=>this.layout());this.hideNav();}
+  exitPresent(){this.root.classList.remove('is-present');if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});requestAnimationFrame(()=>this.layout());this.showNav();}
+  togglePresent(){this.root.classList.contains('is-present')?this.exitPresent():this.enterPresent();}
+  presenting(){ return this.root.classList.contains('is-present')||this.root.classList.contains('is-maxed'); }
+  enterMaxed(){ this.root.classList.add('is-maxed'); document.getElementById('maxBtn')?.classList.add('is-active'); this.hideNav(); requestAnimationFrame(()=>this.layout()); }
+  exitMaxed(){ this.root.classList.remove('is-maxed'); document.getElementById('maxBtn')?.classList.remove('is-active'); this.showNav(); requestAnimationFrame(()=>this.layout()); }
+  toggleMaxed(){ this.root.classList.contains('is-maxed')?this.exitMaxed():this.enterMaxed(); }
+  wireFullscreen(){document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement)this.root.classList.remove('is-present');requestAnimationFrame(()=>this.layout());});}
+  wireTips(){
+    this.tip=document.createElement('div'); this.tip.className='deck-tip'; this.tip.setAttribute('role','tooltip'); document.body.appendChild(this.tip);
+    const show=el=>{ const label=el.getAttribute('data-tip')||''; const key=el.getAttribute('data-kbd')||'';
+      if(!label&&!key)return;
+      this.tip.innerHTML=(label?'<span class="tip-label">'+label+'</span>':'')+(key?'<kbd>'+key+'</kbd>':'');
+      const r=el.getBoundingClientRect(), t=this.tip.getBoundingClientRect();
+      const below = r.top < innerHeight*0.55;
+      const top = below ? r.bottom+8 : r.top - t.height - 8;
+      const left = Math.max(8, Math.min(r.left + r.width/2 - t.width/2, innerWidth - t.width - 8));
+      this.tip.style.left=left+'px'; this.tip.style.top=top+'px'; this.tip.classList.add('show'); };
+    const hide=()=>this.tip.classList.remove('show');
+    document.addEventListener('mouseover',e=>{ const el=e.target.closest('[data-tip],[data-kbd]'); if(el)show(el); });
+    document.addEventListener('mouseout',e=>{ const el=e.target.closest('[data-tip],[data-kbd]'); if(el)hide(); });
+    document.addEventListener('mousedown',hide);
+  }
+  exportPDF(){ window.print(); }
+  async shutdown(){
+    try{ await fetch('/__shutdown',{method:'POST'}); }catch(_){}
+    try{ window.close(); }catch(_){}
+    this.root.classList.add('is-stopped');
+    if(document.body) document.body.innerHTML='<div class="deck-stopped"><p>Dev server stopped.</p><p class="sub">You can close this tab.</p></div>';
+  }
+  showNav(){this.nav.classList.remove('is-hidden');clearTimeout(this.idle);}
+  hideNav(){this.nav.classList.add('is-hidden');}
+  wireChrome(){
+    this.nav.addEventListener('click',e=>{const a=e.target.closest('[data-act]')?.dataset.act;
+      if(a==='prev')this.prev();else if(a==='next')this.next();else if(a==='present')this.togglePresent();});
+    document.getElementById('pdfBtn')?.addEventListener('click',()=>this.exportPDF());
+    document.getElementById('maxBtn')?.addEventListener('click',()=>this.toggleMaxed());
+    document.getElementById('exitBtn')?.addEventListener('click',()=>this.shutdown());
+    this.stage.addEventListener('click',e=>{if(!this.presenting())return;if(e.target.closest('a,button,[contenteditable]'))return;this.next();});
+    window.addEventListener('mousemove',e=>{
+      if(!this.presenting()){ this.showNav(); return; }
+      const inZone = e.clientY>innerHeight*0.82 && e.clientX>innerWidth*0.30 && e.clientX<innerWidth*0.70;
+      if(inZone){ this.showNav(); }
+      else { clearTimeout(this.idle); this.idle=setTimeout(()=>this.hideNav(),350); }
+    },{passive:true});
+  }
+  wireKeyboard(){window.addEventListener('keydown',e=>{
+    const isField=el=>!!el&&(/^(TEXTAREA|INPUT|SELECT)$/.test(el.tagName)||el.isContentEditable);
+    if(isField(e.target)||isField(document.activeElement))return;
+    switch(e.key){case'ArrowRight':case'PageDown':case'ArrowDown':e.preventDefault();this.next();break;
+      case'ArrowLeft':case'PageUp':case'ArrowUp':e.preventDefault();this.prev();break;
+      case'Home':e.preventDefault();this.show(0);break;case'End':e.preventDefault();this.show(this.slides.length-1);break;
+      case'f':case'F':this.togglePresent();break;case'm':case'M':this.toggleMaxed();break;
+      case'Escape':if(this.root.classList.contains('is-present'))this.exitPresent();else if(this.root.classList.contains('is-maxed'))this.exitMaxed();break;
+      case'Enter':if(this.jumpBuf){this.show(parseInt(this.jumpBuf,10)-1);this.jumpBuf='';}break;
+      default:if(/^[0-9]$/.test(e.key))this.jumpBuf+=e.key;} });
+  }
+}
+window.deck = new DeckController();
+
+class ReviewLayer{
+  constructor(deck){
+    this.deck=deck; this.root=document.documentElement; this.stage=deck.stage;
+    this.on=false; this.sel=new Set(); this.regions=[]; this.hoverEl=null; this.dragging=false; this.status={}; this.activity={};
+    this.deckId=(document.title||location.pathname); this.storeKey='deckReview:'+this.deckId;
+    this.comments=this.load();
+    this.assignRefs(); this.buildUI(); this.wire();
+    const origShow=deck.show.bind(deck);
+    deck.show=(i)=>{ origShow(i); this.clearSelection(); this.renderPins(); };
+    this.renderPins(); this.updateBadge(); this.syncSubmitBtn(); this.syncPanelBtn(); this.startHeartbeat(); this.startStatusPoll();
+  }
+  load(){ try{return JSON.parse(localStorage.getItem(this.storeKey))||[];}catch(_){return [];} }
+  save(){ try{localStorage.setItem(this.storeKey,JSON.stringify(this.comments));}catch(_){}}
+  selectable(el){ if(!el||el.nodeType!==1)return false; const t=el.tagName;
+    if(t==='SCRIPT'||t==='STYLE'||t==='TEMPLATE'||t==='BR')return false;
+    if(el.closest('svg'))return false;
+    if(el.closest('.slide-footer'))return false;
+    if(el.classList.contains('rv-badge')||el.classList.contains('rv-region')||el.classList.contains('rv-region-draft'))return false;
+    return true; }
+  assignRefs(){ this.deck.slides.forEach((sl,si)=>{ let n=0;
+    sl.querySelectorAll('*').forEach(el=>{ if(!this.selectable(el))return; if(!el.dataset.ref)el.dataset.ref='s'+(si+1)+'-e'+(++n); else n++; }); }); }
+  curSlide(){ return this.deck.slides[this.deck.index]; }
+  refsInSlide(){ return Array.from(this.curSlide().querySelectorAll('[data-ref]')).filter(el=>this.selectable(el)); }
+  buildUI(){
+    this.chip=document.createElement('div'); this.chip.className='rv-chip';
+    this.chip.innerHTML='<span class="rv-n">0 selected</span><button class="rv-add">Comment</button><button class="rv-clear">Clear</button>';
+    document.body.appendChild(this.chip);
+    this.composer=document.createElement('div'); this.composer.className='rv-composer';
+    this.composer.innerHTML='<h4>Comment on selection</h4><div class="rv-ctx"></div><textarea placeholder="What should change?"></textarea><div class="rv-actions"><button class="rv-cancel">Cancel</button><button class="rv-save">Save comment</button></div>';
+    document.body.appendChild(this.composer);
+    this.marquee=document.createElement('div'); this.marquee.className='rv-marquee'; document.body.appendChild(this.marquee);
+    this.offlineEl=document.createElement('div'); this.offlineEl.className='rv-offline';
+    this.offlineEl.innerHTML='&#9888; Dev server offline'; document.body.appendChild(this.offlineEl);
+    this.panel=document.createElement('aside'); this.panel.className='rv-panel'; this.panel.setAttribute('aria-label','All comments');
+    this.panel.innerHTML='<div class="rv-panel-head"><span class="rv-panel-title">Comments</span><button class="rv-panel-close" aria-label="Close">&times;</button></div><div class="rv-activity" hidden><div class="rv-activity-top"><span class="rv-think"></span><span class="rv-activity-cur"></span></div><div class="rv-activity-meta"><span class="rv-activity-prog"></span><span class="rv-activity-ago"></span></div><div class="rv-activity-lines"></div></div><div class="rv-panel-tools"><button class="rv-clear-resolved" hidden>Clear resolved</button></div><div class="rv-panel-list"></div>';
+    document.body.appendChild(this.panel); this.panelList=this.panel.querySelector('.rv-panel-list');
+    this.activityEl=this.panel.querySelector('.rv-activity'); this.activityCur=this.panel.querySelector('.rv-activity-cur'); this.activityLines=this.panel.querySelector('.rv-activity-lines'); this.clearResolvedBtn=this.panel.querySelector('.rv-clear-resolved');
+    this.activityProg=this.panel.querySelector('.rv-activity-prog'); this.activityAgo=this.panel.querySelector('.rv-activity-ago');
+    this.clearResolvedBtn.addEventListener('click',()=>this.clearResolved());
+    this.toastEl=document.createElement('div'); this.toastEl.className='rv-toast'; document.body.appendChild(this.toastEl);
+    this.ctx=this.composer.querySelector('.rv-ctx'); this.ta=this.composer.querySelector('textarea');
+  }
+  wire(){
+    document.getElementById('commentBtn').addEventListener('click',()=>this.toggleMode());
+    document.getElementById('sendBtn').addEventListener('click',()=>this.send());
+    document.getElementById('panelBtn')?.addEventListener('click',()=>this.togglePanel());
+    this.panel.querySelector('.rv-panel-close').addEventListener('click',()=>this.setPanel(false));
+    this.chip.querySelector('.rv-add').addEventListener('click',()=>this.openComposer());
+    this.chip.querySelector('.rv-clear').addEventListener('click',()=>this.clearSelection());
+    this.composer.querySelector('.rv-cancel').addEventListener('click',()=>this.hideComposer());
+    this.composer.querySelector('.rv-save').addEventListener('click',()=>this.saveComment());
+    this.ta.addEventListener('keydown',e=>{
+      if(e.key==='Enter'&&!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&!e.altKey){ e.preventDefault(); this.saveComment(); }
+    });
+    this.stage.addEventListener('mousemove',e=>{ if(!this.on||this.dragging)return; const el=e.target.closest('[data-ref]');
+      if(this.hoverEl&&this.hoverEl!==el)this.hoverEl.classList.remove('rv-hover');
+      if(el&&this.stage.contains(el)&&this.selectable(el)){el.classList.add('rv-hover');this.hoverEl=el;} });
+    this.stage.addEventListener('mouseleave',()=>{ if(this.hoverEl){this.hoverEl.classList.remove('rv-hover');this.hoverEl=null;} });
+    this.stage.addEventListener('pointerdown',e=>this.onDown(e));
+    window.addEventListener('pointermove',e=>this.onMove(e));
+    window.addEventListener('pointerup',e=>this.onUp(e));
+    this.stage.addEventListener('click',e=>{ if(this.on&&!e.target.closest('.rv-badge')){e.preventDefault();e.stopPropagation();} },true);
+    window.addEventListener('keydown',e=>{
+      const typing=/^(TEXTAREA|INPUT)$/.test(e.target.tagName)||e.target.isContentEditable;
+      if(e.key==='Escape'){ if(this.dragging){this.cancelDrag();return;} if(this.composer.classList.contains('show')){this.hideComposer();return;}
+        if(this.on){ if(this.sel.size||this.regions.length)this.clearSelection(); else this.setMode(false); return; } }
+      if(typing)return;
+      const present=this.root.classList.contains('is-present');
+      if(e.key==='p'||e.key==='P'){ e.preventDefault(); this.deck.exportPDF(); }
+      else if((e.key==='c'||e.key==='C')&&!present){ e.preventDefault(); this.toggleMode(); }
+      else if((e.key==='s'||e.key==='S')&&!present){ e.preventDefault(); this.send(); }
+      else if((e.key==='a'||e.key==='A')&&!present&&this.comments.length){ e.preventDefault(); this.togglePanel(); }
+      else if(e.key==='Enter'&&this.on&&(this.sel.size||this.regions.length)&&!this.deck.jumpBuf){ e.preventDefault(); this.openComposer(); }
+    });
+  }
+  onDown(e){ if(!this.on||e.button!==0)return; if(e.target.closest('.rv-badge'))return;
+    e.preventDefault(); this.dragging=true; this.dragMoved=false; this.additive=e.shiftKey;
+    this.x0=e.clientX; this.y0=e.clientY;
+    if(this.hoverEl){this.hoverEl.classList.remove('rv-hover');this.hoverEl=null;}
+    this.marquee.style.display='block'; this.drawMarquee(e.clientX,e.clientY); }
+  onMove(e){ if(!this.dragging)return; if(Math.abs(e.clientX-this.x0)>4||Math.abs(e.clientY-this.y0)>4)this.dragMoved=true; this.drawMarquee(e.clientX,e.clientY); }
+  onUp(e){ if(!this.dragging)return; this.dragging=false; this.marquee.style.display='none';
+    const additive=this.additive;
+    if(!this.dragMoved){
+      if(!additive)this.clearSelection();
+      const el=e.target.closest('[data-ref]');
+      if(el&&this.stage.contains(el)&&this.selectable(el))this.toggleSelect(el);
+    } else {
+      if(!additive)this.clearSelection();
+      const hits=this.elementsInRect(this._mr);
+      hits.forEach(el=>{ if(!this.sel.has(el)){this.sel.add(el);el.classList.add('rv-selected');} });
+      if(!hits.length)this.addRegion(this._mr);
+    }
+    this.updateChip(); }
+  cancelDrag(){ this.dragging=false; this.marquee.style.display='none'; }
+  drawMarquee(x,y){ const l=Math.min(x,this.x0),t=Math.min(y,this.y0),w=Math.abs(x-this.x0),h=Math.abs(y-this.y0);
+    Object.assign(this.marquee.style,{left:l+'px',top:t+'px',width:w+'px',height:h+'px'}); this._mr={l,t,r:l+w,b:t+h,w,h}; }
+  elementsInRect(m){ const cand=this.refsInSlide().filter(el=>{ const r=el.getBoundingClientRect();
+      if(!r.width||!r.height)return false; return r.left<m.r&&r.right>m.l&&r.top<m.b&&r.bottom>m.t; });
+    return cand.filter(el=>!cand.some(o=>o!==el&&el.contains(o))); }
+  addRegion(m){ const s=this.stage.getBoundingClientRect(); const f=s.width/1920||1;
+    const rect={x:Math.round((m.l-s.left)/f),y:Math.round((m.t-s.top)/f),w:Math.round(m.w/f),h:Math.round(m.h/f)};
+    this.regions.push({slide:this.deck.index+1,rect}); this.drawRegionDrafts(); }
+  drawRegionDrafts(){ this.curSlide().querySelectorAll('.rv-region-draft').forEach(b=>b.remove());
+    this.regions.forEach(r=>{ const d=document.createElement('div'); d.className='rv-region-draft';
+      Object.assign(d.style,{left:r.rect.x+'px',top:r.rect.y+'px',width:r.rect.w+'px',height:r.rect.h+'px'}); this.curSlide().appendChild(d); }); }
+  toggleMode(){ this.setMode(!this.on); }
+  setMode(on){ this.on=on; this.root.classList.toggle('rv-on',on); document.getElementById('commentBtn').classList.toggle('is-active',on);
+    if(!on){ this.clearSelection(); this.hideComposer(); this.cancelDrag(); } this.updateChip(); }
+  toggleSelect(el){ if(this.sel.has(el)){this.sel.delete(el);el.classList.remove('rv-selected');} else {this.sel.add(el);el.classList.add('rv-selected');} this.updateChip(); }
+  clearSelection(){ this.sel.forEach(el=>el.classList.remove('rv-selected')); this.sel.clear();
+    this.regions=[]; this.stage.querySelectorAll('.rv-region-draft').forEach(b=>b.remove()); this.updateChip(); }
+  updateChip(){ const n=this.sel.size+this.regions.length; this.chip.querySelector('.rv-n').textContent=n+' selected'; this.chip.classList.toggle('show', this.on&&n>0); }
+  target(el){ const ref=el.dataset.ref||''; const slide=ref?parseInt(ref.slice(1),10):(this.deck.index+1);
+    return {type:'element', ref, slide, tag:el.tagName.toLowerCase(), classes:(el.className||'').toString(), text:(el.textContent||'').trim().replace(/\s+/g,' ').slice(0,200), html:el.outerHTML.slice(0,400)}; }
+  allTargets(){ return [...[...this.sel].map(el=>this.target(el)), ...this.regions.map(r=>({type:'region',slide:r.slide,rect:r.rect}))]; }
+  openComposer(){ if(!(this.sel.size||this.regions.length))return; const targets=this.allTargets();
+    this.ctx.innerHTML='<b>Slide '+targets[0].slide+'</b> — '+targets.length+' item(s)';
+    this.ta.value=''; this.composer.classList.add('show'); setTimeout(()=>this.ta.focus(),0); this._pending=targets; }
+  hideComposer(){ this.composer.classList.remove('show'); this._pending=null; }
+  saveComment(){ const note=this.ta.value.trim(); if(!note){this.ta.focus();return;} const targets=this._pending||[];
+    this.comments.push({id:Date.now()+'-'+Math.random().toString(36).slice(2,7), slide:targets[0]?.slide||(this.deck.index+1), note, targets, ts:new Date().toISOString(), status:'open'});
+    this.save(); this.hideComposer(); this.clearSelection(); this.renderPins(); this.updateBadge(); this.syncSubmitBtn(); this.syncPanelBtn(); this.refreshPanel(); this.toast('Comment saved'); }
+  renderPins(){ this.stage.querySelectorAll('.rv-badge,.rv-region').forEach(b=>b.remove());
+    this.stage.querySelectorAll('.rv-commented').forEach(el=>el.classList.remove('rv-commented'));
+    const slideNo=this.deck.index+1, slide=this.curSlide(); let k=0;
+    this.comments.filter(c=>c.slide===slideNo && (this.statusOf(c.id)||{}).status!=='resolved').forEach(c=>{ k++; const t=c.targets&&c.targets[0]; if(!t)return;
+      const st=(this.statusOf(c.id)||{}).status||'open'; const badgeCls='rv-badge rv-badge-'+st;
+      if(t.type==='region'&&t.rect){ const box=document.createElement('div'); box.className='rv-region';
+        Object.assign(box.style,{left:t.rect.x+'px',top:t.rect.y+'px',width:t.rect.w+'px',height:t.rect.h+'px'});
+        const b=document.createElement('span'); b.className=badgeCls; b.textContent=k; b.title=c.note;
+        b.addEventListener('click',ev=>{ev.stopPropagation();this.viewComment(c);}); box.appendChild(b); slide.appendChild(box);
+      } else { const ref=t.ref; if(!ref)return; const el=slide.querySelector('[data-ref="'+ref+'"]'); if(!el)return;
+        el.classList.add('rv-commented','rv-anchor'); const b=document.createElement('span'); b.className=badgeCls; b.textContent=k; b.title=c.note;
+        b.addEventListener('click',ev=>{ev.stopPropagation();this.viewComment(c);}); el.appendChild(b); } }); }
+  viewComment(c){ this.setPanel(true); this.gotoComment(c); }
+  deleteComment(id){ this.comments=this.comments.filter(x=>x.id!==id); this.save(); this.renderPins(); this.updateBadge(); this.syncSubmitBtn(); this.syncPanelBtn(); this.refreshPanel(); this.toast('Comment deleted'); }
+  updateBadge(){ const b=document.getElementById('commentCount'); if(!b)return; const n=this.comments.filter(c=>(this.statusOf(c.id)||{}).status!=='resolved').length; b.textContent=n; b.hidden=n===0; }
+  syncSubmitBtn(){ const b=document.getElementById('sendBtn'); if(b)b.hidden=this.comments.length===0; }
+  syncPanelBtn(){ const b=document.getElementById('panelBtn'); if(!b)return; b.hidden=this.comments.length===0; if(!this.comments.length)this.setPanel(false); }
+  togglePanel(){ this.setPanel(!this.root.classList.contains('rv-panel-open')); }
+  setPanel(open){ this.root.classList.toggle('rv-panel-open',open); document.getElementById('panelBtn')?.classList.toggle('is-active',open); if(open)this.renderPanel(); requestAnimationFrame(()=>this.deck.layout&&this.deck.layout()); }
+  refreshPanel(){ if(this.root.classList.contains('rv-panel-open'))this.renderPanel(); }
+  statusMeta(st){ const m={ open:['Open','st-open'], in_progress:['In progress','st-prog'], addressed:['Addressed','st-addr'], resolved:['Resolved','st-done'], reopened:['Needs more','st-reopen'] };
+    return m[st]||m.open; }
+  rankOf(st){ return ({addressed:0, reopened:1, in_progress:2, open:3, resolved:9})[st] ?? 3; }
+  renderPanel(){ const title=this.panel.querySelector('.rv-panel-title');
+    let open=0,addr=0,done=0; this.comments.forEach(c=>{ const s=(this.statusOf(c.id)||{}).status||'open'; if(s==='resolved')done++; else if(s==='addressed')addr++; else open++; });
+    title.textContent='Comments ('+this.comments.length+')';
+    if(this.clearResolvedBtn){ this.clearResolvedBtn.hidden=done===0; }
+    if(!this.comments.length){ this.panelList.innerHTML='<div class="rv-panel-empty">No comments yet.</div>'; return; }
+    this.panelList.innerHTML='';
+    [...this.comments].sort((a,b)=>{ const ra=this.rankOf((this.statusOf(a.id)||{}).status||'open'), rb=this.rankOf((this.statusOf(b.id)||{}).status||'open'); return ra-rb || a.slide-b.slide; }).forEach(c=>{
+      const t=c.targets&&c.targets[0];
+      const kind = !t?'' : t.type==='region' ? 'region' : 'element';
+      const stObj=this.statusOf(c.id)||{}; const st=stObj.status||'open'; const [stLabel,stCls]=this.statusMeta(st);
+      const item=document.createElement('div'); item.className='rv-item is-'+stCls; item.dataset.id=c.id;
+      item.innerHTML='<div class="rv-item-top"><span class="rv-item-slide">Slide '+c.slide+'</span><span class="rv-item-kind"></span><span class="rv-status '+stCls+'"></span><button class="rv-item-del" title="Delete">&times;</button></div><div class="rv-item-note"></div>';
+      item.querySelector('.rv-item-kind').textContent=kind;
+      item.querySelector('.rv-status').textContent=stLabel;
+      item.querySelector('.rv-item-note').textContent=c.note;
+      item.addEventListener('click',e=>{ if(e.target.closest('.rv-item-del'))return; this.gotoComment(c); });
+      item.querySelector('.rv-item-del').addEventListener('click',e=>{ e.stopPropagation(); this.deleteComment(c.id); });
+      this.panelList.appendChild(item);
+    }); }
+  gotoComment(c){ if(this.deck.index!==c.slide-1) this.deck.show(c.slide-1); this.highlightComment(c);
+    this.panelList.querySelectorAll('.rv-item').forEach(el=>el.classList.toggle('is-active',el.dataset.id===c.id)); }
+  highlightComment(c){ const t=c.targets&&c.targets[0]; if(!t)return;
+    if(t.type==='element'&&t.ref){ const el=this.curSlide().querySelector('[data-ref="'+t.ref+'"]'); if(el){ el.classList.add('rv-flash'); setTimeout(()=>el.classList.remove('rv-flash'),1200); } } }
+  async send(){ if(!this.comments.length){this.toast('No comments');return;}
+    const payload={deck:this.deckId, url:location.href, sentAt:new Date().toISOString(), comments:this.comments};
+    try{ const r=await fetch('/__review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok)throw new Error('bad'); this.setOffline(false); this.setPanel(true); this.toast('Submitted'); }
+    catch(_){ this.setOffline(true); this.toast('Dev server offline',3500); } }
+  startHeartbeat(){ this.checkServer(); this._hb=setInterval(()=>this.checkServer(),5000); }
+  async checkServer(){ try{ const r=await fetch('/__ping',{cache:'no-store'}); this.setOffline(!r.ok); }catch(_){ this.setOffline(true); } }
+  startStatusPoll(){ this.checkStatus(); this._sp=setInterval(()=>this.checkStatus(),3000); }
+  async checkStatus(){ try{ const r=await fetch('/__review_status',{cache:'no-store'}); if(!r.ok)return; const s=await r.json();
+      const changed=JSON.stringify(s)!==JSON.stringify(this.status); this.status=s||{};
+      if(changed){ this.refreshPanel(); this.renderPins(); this.updateBadge(); } }catch(_){} }
+  statusOf(id){ return (this.status&&this.status[id])||null; }
+  async clearResolved(){ const before=this.comments.length;
+    this.comments=this.comments.filter(c=>(this.statusOf(c.id)||{}).status!=='resolved'); this.save();
+    fetch('/__review_action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clear_resolved'})}).catch(()=>{});
+    this.renderPins(); this.updateBadge(); this.syncSubmitBtn(); this.syncPanelBtn(); this.refreshPanel();
+    this.toast('Cleared '+(before-this.comments.length)+' resolved'); }
+  setOffline(off){ if(this.offlineEl)this.offlineEl.classList.toggle('show',!!off); }
+  toast(msg,dur){ this.toastEl.textContent=msg; this.toastEl.classList.add('show'); clearTimeout(this._t); this._t=setTimeout(()=>this.toastEl.classList.remove('show'),dur||2200); }
+}
+window.review = new ReviewLayer(window.deck);
+    </script>
+</body>
+</html>
