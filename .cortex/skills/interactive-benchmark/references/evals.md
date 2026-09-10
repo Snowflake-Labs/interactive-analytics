@@ -10,7 +10,9 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 
 **Expected behavior:**
 1. Phase 1 collects all 11 inputs, confirms with user
-2. `system_todo_write` called immediately after confirmation with 14 items
+2. `system_todo_write` called immediately after confirmation with all 14 items (step 1 `in_progress`, rest `pending`)
+   - At every subsequent step boundary, `system_todo_write` is called BEFORE `update-progress.sh`, with the transitioning step's status updated
+   - The CLI step counter increments in real time (never stuck at "0/0 steps")
 3. Phase 2 invokes `snowflake-interactive`, which determines the approach (zero-copy or interactive tables), creates the warehouse, suitability check passes
 4. Phase 3 deploys SPCS, warms cache, runs baseline + load test, collects server-side metrics
 5. P95 goal met — no escalation triggered
