@@ -19,8 +19,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY benchmark/locust/locustfile.py /app/
 
-# Include benchmark queries so locust can read them.
-COPY benchmark/test/ /app/test/
+# Locust fetches query IDs from the API at runtime (GET /api/queries).
 
 COPY benchmark/spcs/locust/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

@@ -27,8 +27,6 @@ echo "=== RUN_EPOCH ${RUN_EPOCH} ==="
 
 : "${LOCUST_HOST:?LOCUST_HOST must be set (e.g. http://benchmark-api:3000)}"
 
-export BENCHMARK_QUERIES_DIR="${BENCHMARK_QUERIES_DIR:-/app/test}"
-
 USERS="${LOCUST_USERS:-10}"
 SPAWN="${LOCUST_SPAWN:-5}"
 WEB_PORT="${LOCUST_WEB_PORT:-8089}"
@@ -41,7 +39,7 @@ BASELINE_MAX_P99_MS="${BASELINE_MAX_P99_MS:-500}"
 
 echo "[entrypoint] target=$LOCUST_HOST users=$USERS spawn=$SPAWN"
 echo "[entrypoint] baseline: run_time=$BASELINE_RUN_TIME max_failure_pct=$BASELINE_MAX_FAILURE_PCT max_p99_ms=$BASELINE_MAX_P99_MS"
-echo "[entrypoint] benchmark: run_time=$RUN_TIME queries=$BENCHMARK_QUERIES_DIR"
+echo "[entrypoint] benchmark: run_time=$RUN_TIME"
 
 # ---------------------------------------------------------------------------
 # Helper: print a results banner from a CSV prefix

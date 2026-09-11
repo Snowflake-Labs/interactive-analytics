@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/_lib.sh"
 
-echo "==> [1/5] Setting up database, schema, compute pools, image repo"
+echo "==> [1/6] Setting up database, schema, compute pools, image repo, queries stage"
 snow_sql_run "prerequisites setup" <<EOF
 USE ROLE $ROLE;
 USE WAREHOUSE $DEPLOY_WAREHOUSE;
@@ -35,9 +35,15 @@ CREATE COMPUTE POOL IF NOT EXISTS $LOCUST_COMPUTE_POOL
 ALTER COMPUTE POOL $LOCUST_COMPUTE_POOL RESUME IF SUSPENDED;
 
 CREATE IMAGE REPOSITORY IF NOT EXISTS $IMAGE_REPO;
+
+CREATE STAGE IF NOT EXISTS $QUERIES_STAGE
+  COMMENT = 'Benchmark SQL query files (mounted into the API container)';
 EOF
 
-echo "==> [2/5] Building and pushing container images"
+echo "==> [2/6] Uploading benchmark queries to stage"
+"$SCRIPT_DIR/upload-queries.sh"
+
+echo "==> [3/6] Building and pushing container images"
 "$SCRIPT_DIR/build-and-push.sh"
 
 deploy_service() {
@@ -75,13 +81,13 @@ $rendered
 EOF
 }
 
-echo "==> [3/5] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
+echo "==> [4/6] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
 deploy_service "$API_SERVICE" "$SPCS_DIR/specs/api.yaml" "$API_COMPUTE_POOL" "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
 
-echo "==> [4/5] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
+echo "==> [5/6] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
 deploy_service "$LOCUST_SERVICE" "$SPCS_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL" 1 1
 
-echo "==> [5/5] Waiting for services to become READY (this can take a few minutes)"
+echo "==> [6/6] Waiting for services to become READY (this can take a few minutes)"
 "$SCRIPT_DIR/status.sh" --wait
 
 echo

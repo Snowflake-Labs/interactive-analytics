@@ -175,19 +175,20 @@ else
   echo "[5/6] No fallback warehouse to restore — skipping."
 fi
 
-# --- Step 6: Resume SPCS services ---
-echo "[6/6] Resuming SPCS services..."
-snow_sql_run "resume services" <<EOF
+# --- Step 6: Resume API service (Locust stays suspended) ---
+echo "[6/6] Resuming API service (Locust stays suspended until cache is warm)..."
+snow_sql_run "resume API service" <<EOF
 USE ROLE $ROLE;
 USE DATABASE $DB;
 USE SCHEMA $SCHEMA;
 ALTER SERVICE IF EXISTS $API_SERVICE RESUME;
-ALTER SERVICE IF EXISTS $LOCUST_SERVICE RESUME;
 EOF
-echo "  ✓ Services resumed."
+echo "  ✓ API service resumed."
+echo "  ⏸ Locust service is still suspended — resume it AFTER running cache warm-up queries."
 
 echo
 echo "=== Done. $FQ_WH reconfigured ($DESC). ==="
-echo "Note: cache is cold after replacement and warms in the background."
-echo "Queries may see higher latency until warm (check remote read % in query profile)."
+echo "Note: cache is cold after replacement — you MUST run warm-up queries before resuming Locust."
+echo "After warm-up, resume Locust with:"
+echo "  ALTER SERVICE $LOCUST_SERVICE RESUME;"
 echo "Run $SCRIPT_DIR/status.sh --wait to confirm services are back to READY."

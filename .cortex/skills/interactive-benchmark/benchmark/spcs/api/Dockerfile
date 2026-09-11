@@ -21,8 +21,7 @@ RUN cd /app/api && uv sync --frozen --no-dev --no-install-project
 # App code.
 COPY benchmark/api/ /app/api/
 
-# Benchmark queries.
-COPY benchmark/test/ /app/test/
+# Benchmark queries are mounted at runtime from a Snowflake stage (see api.yaml).
 
 # Entrypoint writes ~/.snowflake/connections.toml from SPCS-injected env vars.
 COPY benchmark/spcs/api/entrypoint.sh /usr/local/bin/entrypoint.sh

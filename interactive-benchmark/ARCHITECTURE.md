@@ -47,6 +47,7 @@ All paths below are relative to the repo root.
 │   ├── _lib.sh              # shared helpers (sources spcs/config.env)
 │   ├── deploy.sh            # full SPCS deploy (prerequisites, build, push, create services)
 │   ├── build-and-push.sh    # docker build + push both images
+│   ├── upload-queries.sh    # upload .sql files from test/ to the Snowflake stage
 │   ├── status.sh            # service state + ingress URLs
 │   ├── logs.sh              # tail container logs
 │   ├── update.sh            # rebuild + ALTER SERVICE (preserves ingress URLs)
@@ -62,8 +63,10 @@ All paths below are relative to the repo root.
     └── specs/               # SPCS service YAML specs
 ```
 
-All SQL is generated inline by the shell scripts from `spcs/config.env`; there
-are no separate SQL files to keep in sync.
+Benchmark query `.sql` files live in `test/` locally and are uploaded to a
+Snowflake internal stage (`@BENCHMARK_QUERIES`) during deployment. The API
+container mounts this stage at `/app/test/`, so queries can be updated without
+rebuilding Docker images.
 
 ## Prerequisites
 
@@ -83,14 +86,17 @@ are no separate SQL files to keep in sync.
 `deploy.sh` will:
 
 1. Create `DB.SCHEMA`, **two independent compute pools** (one for the
-   API, one for Locust), and the image repository (idempotent).
-2. Build and push both images to the SPCS image repo.
-3. `CREATE SERVICE` for:
-   - `API_SERVICE` on `API_COMPUTE_POOL` — the benchmark API.
+   API, one for Locust), the image repository, and an internal stage
+   for benchmark queries (idempotent).
+2. Upload `.sql` files from `benchmark/test/` to the queries stage.
+3. Build and push both images to the SPCS image repo.
+4. `CREATE SERVICE` for:
+   - `API_SERVICE` on `API_COMPUTE_POOL` — the benchmark API (with the
+     queries stage mounted at `/app/test/`).
    - `LOCUST_SERVICE` on `LOCUST_COMPUTE_POOL` — the Locust load generator.
    Or `ALTER SERVICE` if they already exist.
-4. Poll `SYSTEM$GET_SERVICE_STATUS` until both report `READY`.
-5. Print the public ingress URLs.
+5. Poll `SYSTEM$GET_SERVICE_STATUS` until both report `READY`.
+6. Print the public ingress URLs.
 
 ## Naming convention
 
@@ -106,11 +112,25 @@ With `SOLUTION_NAME=IW_TPCH`, the objects created are:
 | Locust compute pool | `IW_TPCH_BENCH_LOCUST_POOL` |
 | API service | `BENCHMARK_API` |
 | Locust service | `BENCHMARK_LOCUST` |
+| Queries stage | `BENCHMARK_QUERIES` |
 
 Change `SOLUTION_NAME` in `benchmark/.env` to deploy multiple independent
 instances in the same account.
 
 ## Iterating
+
+### Changing queries only (no image rebuild)
+
+Edit or replace `.sql` files in `benchmark/test/`, then:
+
+```bash
+.cortex/skills/interactive-benchmark/benchmark/scripts/update.sh --queries-only
+```
+
+This uploads the new queries to the stage and restarts the API service. No
+Docker build is needed — takes seconds instead of minutes.
+
+### Changing application code
 
 Edit the app code (or `spcs/specs/*.yaml`) and run:
 
@@ -118,8 +138,8 @@ Edit the app code (or `spcs/specs/*.yaml`) and run:
 .cortex/skills/interactive-benchmark/benchmark/scripts/update.sh
 ```
 
-`update.sh` rebuilds, pushes, and `ALTER SERVICE`s in place, so the public
-ingress URLs stay the same.
+`update.sh` uploads queries, rebuilds images, pushes, and `ALTER SERVICE`s in
+place, so the public ingress URLs stay the same.
 
 ## Auth model inside the container
 
@@ -155,14 +175,16 @@ curl -s <LOCUST_URL>/stop
 ```bash
 SCRIPTS=.cortex/skills/interactive-benchmark/benchmark/scripts
 
-$SCRIPTS/deploy.sh              # full SPCS deploy (idempotent)
-$SCRIPTS/list.sh                # list all SPCS resources in the schema
-$SCRIPTS/status.sh              # show state + endpoints for both services
-$SCRIPTS/status.sh --urls-only  # just the ingress URLs
-$SCRIPTS/logs.sh api            # benchmark API logs
-$SCRIPTS/logs.sh locust         # locust load-generator logs
-$SCRIPTS/resize-wh.sh --size M  # resize the interactive warehouse
-$SCRIPTS/teardown.sh            # drop services, compute pools, and image repo
+$SCRIPTS/deploy.sh                  # full SPCS deploy (idempotent)
+$SCRIPTS/upload-queries.sh          # upload .sql files to the queries stage
+$SCRIPTS/update.sh --queries-only   # upload queries + restart API (no image rebuild)
+$SCRIPTS/list.sh                    # list all SPCS resources in the schema
+$SCRIPTS/status.sh                  # show state + endpoints for both services
+$SCRIPTS/status.sh --urls-only      # just the ingress URLs
+$SCRIPTS/logs.sh api                # benchmark API logs
+$SCRIPTS/logs.sh locust             # locust load-generator logs
+$SCRIPTS/resize-wh.sh --size M      # resize the interactive warehouse
+$SCRIPTS/teardown.sh                # drop services, compute pools, and image repo
 ```
 
 ## Granting another role access to the ingress URLs

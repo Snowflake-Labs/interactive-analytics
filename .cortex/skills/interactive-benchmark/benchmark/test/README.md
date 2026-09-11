@@ -3,8 +3,17 @@
 Place `.sql` files in this directory. Each file should contain a single SQL query
 that will be benchmarked against the interactive warehouse under concurrent load.
 
-The benchmark tool reads all `*.sql` files from this folder and executes them
-via the API server's `/api/run/interactive` endpoint.
+During deployment, these files are uploaded to a Snowflake internal stage
+(`@BENCHMARK_QUERIES`) and mounted into the API container at `/app/test/`.
+The API server reads all `*.sql` files from that path and registers them as
+available queries, keyed by filename stem (e.g. `benchmark-query.sql` →
+`query_id: "benchmark-query"`).
+
+To update queries without rebuilding Docker images, edit files here and run:
+
+```bash
+.cortex/skills/interactive-benchmark/benchmark/scripts/update.sh --queries-only
+```
 
 ## Conventions
 
