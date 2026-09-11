@@ -33,7 +33,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 | Ask user questions | `ask_user_question` | For Phase 1 inputs, Phase 1 confirmation, and cleanup choice (Step 3.14). |
 | Open report in browser | `open_browser` | For the final HTML report (Step 3.13). |
 | Load sub-skills | `skill` | `snowflake-interactive` (Step 2.1, 3.10), `html-authoring` (Step 3.13). |
-| Track progress | `system_todo_write` | **Primary** progress display — drives the CLI/IDE step counter. MUST be called at every step boundary BEFORE `update-progress.sh`. See Progress Tracking section. |
+| Track progress | `update-progress.sh` | Updates `progress.json` at every step boundary. See Progress Tracking section. |
 
 ## Paths
 
@@ -58,8 +58,8 @@ All instance and node counts are configurable in `benchmark/spcs/config.env`.
 
 ## Workflow
 
-**⚠️ CRITICAL — MANDATORY STEP TRANSITION PROTOCOL ⚠️**
-**Every step in this skill begins with a PROGRESS UPDATE action. This is NOT optional metadata — it is the first action you execute. The pattern is: (1) call `system_todo_write` to update the IDE task DAG, then (2) run `update-progress.sh` to update `progress.json`. If you skip `system_todo_write`, the user sees a frozen progress tracker for the entire run. Treat every "1. PROGRESS UPDATE" item below exactly like you treat "run this SQL" or "call this tool" — it is a concrete action, not a reminder.**
+**⚠️ CRITICAL — Keep the user informed ⚠️**
+**You MUST give the user clear, human-readable progress updates throughout the entire workflow.** At every step boundary, tell the user what step you are starting and what it does. After completing a step, briefly confirm the outcome before moving on. Bare tool-call blocks with no text are unacceptable — the user should always know what is happening and why.
 
 The workflow has three distinct phases that MUST be followed in order:
 
@@ -67,35 +67,14 @@ The workflow has three distinct phases that MUST be followed in order:
 2. **Phase 2 — Validate suitability** — confirm the query is a good fit for interactive warehouses. If not, STOP and explain why.
 3. **Phase 3 — Run the benchmark** — deploy, load test, analyze, report. This phase runs autonomously within the user-approved limits.
 
-**IMPORTANT — Progress Tracking:** Immediately after the user confirms Phase 1 inputs — before doing ANY Phase 2/3 work — you MUST do ALL of the following: (a) call `system_todo_write` with all 14 steps, (b) create the reports folder, and (c) write an initial `progress.json` file. ALL THREE are NON-NEGOTIABLE; skipping or deferring any of them is a bug. The `progress.json` file is consumed by `update-progress.sh` at every step boundary and by the final HTML report — without it the entire progress pipeline is broken.
+**IMPORTANT — Progress Tracking:** Immediately after the user confirms Phase 1 inputs — before doing ANY Phase 2/3 work — you MUST do BOTH of the following: (a) create the reports folder, and (b) write an initial `progress.json` file. BOTH are NON-NEGOTIABLE; skipping or deferring either of them is a bug. The `progress.json` file is consumed by `update-progress.sh` at every step boundary and by the final HTML report — without it the entire progress pipeline is broken.
 
-**IMPORTANT — Per-Step Updates:** Every step section below starts with a numbered item "1. **PROGRESS UPDATE (mandatory)**". This is the literal first thing you do when entering that step — call `system_todo_write`, then run `update-progress.sh`. Do not skip it. Do not defer it. Do not treat it as a note. Execute it as an action before any other work in that step.
+**IMPORTANT — Per-Step Updates:** Every step section below starts with a numbered item "1. **PROGRESS UPDATE (mandatory)**". This is the literal first thing you do when entering that step — run `update-progress.sh`. Do not skip it. Do not defer it. Do not treat it as a note. Execute it as an action before any other work in that step.
 
 **Initialization (right after Phase 1 confirmation — do this BEFORE anything else):**
 
-1. **FIRST AND MOST IMPORTANT — call `system_todo_write` NOW.** This creates the visible task DAG in the IDE. Without it, the user sees no progress tracker for the entire run. Call it with this exact payload:
-
-```json
-[
-  {"content": "Step 1: Validate query suitability", "status": "in_progress"},
-  {"content": "Step 2: Verify Docker running", "status": "pending"},
-  {"content": "Step 3: Validate interactive setup", "status": "pending"},
-  {"content": "Step 4: Configure concurrency and fallback", "status": "pending"},
-  {"content": "Step 5: Save benchmark query", "status": "pending"},
-  {"content": "Step 6: Configure environment", "status": "pending"},
-  {"content": "Step 7: Warm the cache", "status": "pending"},
-  {"content": "Step 8: Deploy to SPCS", "status": "pending"},
-  {"content": "Step 9: Run baseline test", "status": "pending"},
-  {"content": "Step 10: Run load test", "status": "pending"},
-  {"content": "Step 11: Collect server-side metrics", "status": "pending"},
-  {"content": "Step 12: Goal check and escalation", "status": "pending"},
-  {"content": "Step 13: Generate HTML report", "status": "pending"},
-  {"content": "Step 14: Teardown or keep services", "status": "pending"}
-]
-```
-
-2. Create the reports directory via `bash`: `mkdir -p <SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/`
-3. Use `write` to create `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.json` with ALL 14 steps set to `"pending"`:
+1. Create the reports directory via `bash`: `mkdir -p <SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/`
+2. Use `write` to create `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.json` with ALL 14 steps set to `"pending"`:
 
 ```json
 {
@@ -124,9 +103,9 @@ The workflow has three distinct phases that MUST be followed in order:
 }
 ```
 
-4. Verify the `system_todo_write` call from step 1 succeeded (the task DAG should be visible in the IDE). Then proceed to Phase 2.
+3. Proceed to Phase 2.
 
-**Update protocol — at EVERY step boundary, two calls in this order:**
+**Update protocol — at EVERY step boundary, run `update-progress.sh`:**
 
 The script `<SKILL_DIR>/benchmark/scripts/update-progress.sh` updates `progress.json` atomically. Usage:
 
@@ -136,12 +115,12 @@ The script `<SKILL_DIR>/benchmark/scripts/update-progress.sh` updates `progress.
 
 where `<action>` is one of: `start`, `complete`, `fail`, `skip`.
 
-- **Before starting a step:** First call `system_todo_write` — set the new step to `in_progress`, all completed steps to `completed`, rest `pending`. Then run `update-progress.sh <REPORT_DIR> <step_id> start` via `bash`.
-- **After completing a step:** First call `system_todo_write` — set the step to `completed`. Then run `update-progress.sh <REPORT_DIR> <step_id> complete` via `bash`.
+- **Before starting a step:** Run `update-progress.sh <REPORT_DIR> <step_id> start` via `bash`.
+- **After completing a step:** Run `update-progress.sh <REPORT_DIR> <step_id> complete` via `bash`.
 - **On failure:** Run `update-progress.sh <REPORT_DIR> <step_id> fail`.
 - **On completion:** The script auto-sets top-level status to `"completed"` when step 14 is completed.
 
-Only ONE step should be `"in_progress"` at a time. Each step section below begins with a numbered item **"1. PROGRESS UPDATE (mandatory)"** — this is the first action you execute when entering that step, not a reminder or a note.
+Only ONE step should be `"in_progress"` at a time. Each step section below begins with a numbered item **"1. PROGRESS UPDATE (mandatory)"** — run `update-progress.sh` as the first action when entering that step.
 
 ---
 
@@ -163,7 +142,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | 10 | **Benchmark name** | Short alphanumeric name used as `SOLUTION_NAME` to prefix all created resources. | `IWB_YYYYMMDDHHMM` (e.g. `IWB_202608271430`) |
 | 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.12. | 5 |
 
-**Load** `references/phase1-inputs.md` (via the `read` tool) for warehouse creation options, AUTO_SUSPEND requirements, DDL restrictions, resource transparency rules, and the autonomous execution principle.
+**Load** `references/phase1-inputs.md` (via the `read` tool) for warehouse creation options, AUTO_SUSPEND requirements, DDL restrictions, resource transparency rules, and the autonomous execution principle that governs Phase 2 and Phase 3.
 
 **Do not proceed past Phase 1 until ALL items are confirmed.** Present the collected values back to the user in a summary table and use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed") to get approval before moving on. The summary table MUST include all 11 inputs plus the queries stage. Example:
 
@@ -184,13 +163,11 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 The queries stage path is always `@<SOLUTION_NAME>_SPCS_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
 
-**Load** `references/phase1-inputs.md` for the autonomous execution principle that governs Phase 2 and Phase 3.
-
 ---
 
 ## Phase 2: Validate Query Suitability
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 1 to `in_progress` (rest stay `pending`). Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 start`.
 
 **This phase determines whether the query is a good candidate for interactive warehouses. If it is not, STOP HERE — do not proceed to Phase 3.**
 
@@ -208,7 +185,7 @@ From this point, everything runs autonomously within the user-approved limits fr
 
 ### Step 3.1: Verify Docker is Running
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 1 to `completed`, step 2 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 start`.
 
 2. Use the `bash` tool:
 
@@ -222,7 +199,7 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 ### Step 3.2: Validate Interactive Setup
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 2 to `completed`, step 3 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 start`.
 
 2. Verify the interactive setup is correct before deploying. The validation differs depending on the `INTERACTIVE_MODE` captured in Step 2.1.
 
@@ -232,7 +209,7 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 ### Step 3.3: Configure Concurrency and Fallback
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 3 to `completed`, step 4 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 start`.
 
 **CRITICAL: Interactive warehouses scale concurrency *horizontally* (multi-cluster), not vertically. Configure `MAX_CLUSTER_COUNT` and a fallback warehouse BEFORE the load test.**
 
@@ -244,13 +221,12 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 ### Step 3.4: Save the Benchmark Query
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 4 to `completed`, step 5 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 start`.
 
 2. The user provides the query to benchmark as part of their request to CoCo. Create `benchmark/test/benchmark-query.sql` from the template file `benchmark/test/benchmark-query.sql.template` by replacing the placeholder content with the actual query:
-
-1. Use `read` to load `<SKILL_DIR>/benchmark/test/benchmark-query.sql.template`
-2. Replace the placeholder text with the user's query (or the optimized version if the `snowflake-interactive` skill produced one)
-3. Use `write` to save the result to `<SKILL_DIR>/benchmark/test/benchmark-query.sql`
+   1. Use `read` to load `<SKILL_DIR>/benchmark/test/benchmark-query.sql.template`
+   2. Replace the placeholder text with the user's query (or the optimized version if the `snowflake-interactive` skill produced one)
+   3. Use `write` to save the result to `<SKILL_DIR>/benchmark/test/benchmark-query.sql`
 
 This file is the single query executed against the interactive warehouse during the load test. It will be uploaded to the Snowflake stage automatically during deployment (Step 3.7).
 
@@ -262,7 +238,7 @@ This file is the single query executed against the interactive warehouse during 
 
 ### Step 3.5: Configure Environment
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 5 to `completed`, step 6 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 start`.
 
 2. Both config files MUST be created from their templates — never edit the templates directly.
 
@@ -300,7 +276,7 @@ This file is the single query executed against the interactive warehouse during 
 
 ### Step 3.6: Warm the Cache
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 6 to `completed`, step 7 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 start`.
 
 2. Before the load test measures anything, warm the interactive warehouse cache so the numbers reflect steady-state performance, not cold-start latency.
 
@@ -310,7 +286,7 @@ This file is the single query executed against the interactive warehouse during 
 
 ### Step 3.7: Deploy to SPCS
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 7 to `completed`, step 8 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 start`.
 
 **IMPORTANT — Cache must be warm before deploy:** Locust auto-starts immediately when its container becomes READY, so the load test will begin as soon as SPCS finishes provisioning. Ensure Step 3.6 (cache warming) is complete before running this step — otherwise Locust measures cold-cache latency.
 
@@ -352,8 +328,8 @@ This deploys:
 
 ### Steps 3.8–3.9: Baseline Test + Load Test
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 8 to `completed`, step 9 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 9 start`. Do not proceed until both calls complete.
-2. **Mid-step PROGRESS UPDATE (mandatory):** When the baseline completes successfully, call `system_todo_write` — set step 9 to `completed`, step 10 to `in_progress`. Then run `update-progress.sh <REPORT_DIR> 9 complete && update-progress.sh <REPORT_DIR> 10 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 9 start`.
+2. **Mid-step PROGRESS UPDATE (mandatory):** When the baseline completes successfully, run `update-progress.sh <REPORT_DIR> 9 complete && update-progress.sh <REPORT_DIR> 10 start`.
 
 3. **Load** `references/benchmark-execution.md` (via the `read` tool) for the full baseline and load test procedure.
 
@@ -363,7 +339,7 @@ This deploys:
 
 ### Step 3.10: Analyze Results and Generate Recommendations
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 10 to `completed`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 10 complete`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 10 complete`.
 
 2. After the load test completes, collect **three sets of measurements**:
 
@@ -390,7 +366,7 @@ Capture these recommendations for the report.
 
 ### Step 3.11: Post-Benchmark Server-Side Validation
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 11 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 start`.
 
 2. After collecting the Locust CSV, **you MUST run server-side aggregation queries against Snowflake for the interactive warehouse**. This is not optional — the Locust numbers alone cannot distinguish API/HTTP overhead from Snowflake time.
 
@@ -406,7 +382,7 @@ The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every reques
 
 ### Step 3.12: Goal Check and Iterative Escalation
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 11 to `completed`, step 12 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 start`.
 
 2. After collecting the server-side percentiles from Step 3.11, evaluate them against the P95 latency goal captured in Phase 1.
 
@@ -416,7 +392,7 @@ The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every reques
 
 ### Step 3.13: Generate HTML Report
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 12 to `completed`, step 13 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 start`. Do not proceed until both calls complete.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 start`.
 
 2. **MANDATORY: Load the `html-authoring` skill first** by calling `skill(command="html-authoring")`. This skill provides the sandboxed-HTML rules that must be followed when writing the report file. Load it before any HTML file creation.
 
@@ -447,9 +423,8 @@ Each time the load test runs (Step 3.9), capture the full Locust output (via `ba
 
 ### Step 3.14: Resource Summary and Cleanup
 
-1. **PROGRESS UPDATE (mandatory):** Call `system_todo_write` — set step 13 to `completed`, step 14 to `in_progress`. Then run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 14 start`. Do not proceed until both calls complete.
-2. **End-of-step PROGRESS UPDATE (mandatory):** After cleanup completes, call `system_todo_write` — set step 14 to `completed`. Then run `update-progress.sh <REPORT_DIR> 14 complete` (this auto-sets top-level status to `"completed"`).
-
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 14 start`.
+2. **End-of-step PROGRESS UPDATE (mandatory):** After cleanup completes, run `update-progress.sh <REPORT_DIR> 14 complete` (this auto-sets top-level status to `"completed"`).
 3. **Load** `references/cleanup.md` (via the `read` tool) for the full cleanup procedure.
 
 **Summary:** Present the user with a table of all created resources (interactive warehouse, schema, tables, SPCS database/schema, compute pools, image repo, services). Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything. For full cleanup, run `./teardown.sh` then drop schemas/warehouse/database via SQL. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
