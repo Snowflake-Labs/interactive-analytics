@@ -163,6 +163,27 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 The queries stage path is always `@<SOLUTION_NAME>_SPCS_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
 
+**MANDATORY — Present the action plan before proceeding.** After the user confirms the summary table, and BEFORE moving to Phase 2, you MUST present a numbered list of all steps, actions, and operations that will be performed throughout the benchmark. This gives the user a clear picture of what will happen. Present it as follows:
+
+> Here is what will happen next:
+>
+> 1. **Validate query suitability** — Run your query on both a standard and an interactive warehouse to confirm it benefits from interactive execution. If the query is not a good fit, the benchmark stops here.
+> 2. **Verify Docker is running** — Docker is required to build and push container images for the SPCS deployment.
+> 3. **Validate interactive setup** — Confirm the interactive warehouse and tables (or zero-copy configuration) are correctly set up and ready for benchmarking.
+> 4. **Configure concurrency and fallback** — Set the multi-cluster count on the interactive warehouse and configure a fallback warehouse for queries that exceed the 5-second timeout.
+> 5. **Save the benchmark query** — Write the query to a SQL file that the benchmark API will execute during the load test.
+> 6. **Configure environment** — Generate the `.env` and `config.env` files with all connection, warehouse, and Locust settings.
+> 7. **Warm the cache** — Run the query several times on the interactive warehouse so the load test measures steady-state performance, not cold-start latency.
+> 8. **Deploy to SPCS** — Build and push Docker images, create compute pools, and start the Benchmark API and Locust services on Snowpark Container Services. This creates 2 compute pools (CPU_X64_M) that incur credits while running.
+> 9. **Run baseline test** — Locust runs a quick test against a no-op endpoint to validate that the infrastructure (API layer, network) is healthy.
+> 10. **Run load test** — Locust simulates <CONCURRENT_USERS> concurrent users hitting the interactive warehouse for 3 minutes, collecting latency percentiles and throughput.
+> 11. **Collect server-side metrics** — Query Snowflake's `QUERY_HISTORY` to get server-side P50/P95/P99 latencies and cluster usage, isolating Snowflake time from API overhead.
+> 12. **Goal check and escalation** — Compare the P95 latency against your goal (<P95_GOAL>). If the goal is not met, automatically scale out (add clusters) or scale up (larger warehouse) within your approved limits and re-run the load test. Up to <MAX_ESCALATION> iterations.
+> 13. **Generate HTML report** — Produce a detailed benchmark report with executive summary, latency charts, bottleneck analysis, escalation history, and optimization recommendations.
+> 14. **Cleanup** — Present all created resources and let you choose: full cleanup, SPCS-only cleanup, or keep everything for further testing.
+
+Replace `<CONCURRENT_USERS>`, `<P95_GOAL>`, and `<MAX_ESCALATION>` with the actual values from Phase 1. Then use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed with the benchmark") to get approval before moving to Phase 2.
+
 ---
 
 ## Phase 2: Validate Query Suitability
