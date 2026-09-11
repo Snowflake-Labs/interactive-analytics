@@ -66,7 +66,7 @@ The skill takes over from here. It will:
 1. **Collect inputs** -- ask you to confirm the database, schema, connection name, P95 latency goal, concurrency level, warehouse size limits, and benchmark name.
 2. **Create interactive tables** -- invoke the `snowflake-interactive` sub-skill to set up the interactive warehouse and tables for your query.
 3. **Validate suitability** -- run the query on both standard and interactive warehouses to confirm the interactive warehouse provides a meaningful speedup.
-4. **Deploy SPCS infrastructure** -- build Docker images, push them to the SPCS image registry, create compute pools, and deploy the API and Locust services.
+4. **Deploy SPCS infrastructure** -- upload benchmark queries to a Snowflake stage, build Docker images, push them to the SPCS image registry, create compute pools, and deploy the API and Locust services.
 5. **Run the benchmark** -- Locust auto-starts inside SPCS, runs a baseline test, then the actual load test at your target concurrency.
 6. **Auto-escalate** -- if the P95 goal is not met, the skill scales the warehouse (out or up) and re-runs, repeating until the goal is met or limits are reached.
 7. **Generate a report** -- produce an HTML report with latency percentiles, throughput, and warehouse configuration for each iteration.
@@ -86,6 +86,7 @@ All object names derive from the `SOLUTION_NAME` you choose (default: `IWBENCH`)
 | Image repository | `<SOLUTION_NAME>_BENCH_IMAGES` |
 | API service | `BENCHMARK_API` |
 | Locust service | `BENCHMARK_LOCUST` |
+| Queries stage | `BENCHMARK_QUERIES` |
 
 ## Benchmark reports
 
@@ -122,6 +123,12 @@ $SCRIPTS/logs.sh locust
 
 # Rebuild and redeploy in-place
 $SCRIPTS/update.sh
+
+# Upload new queries without rebuilding images
+$SCRIPTS/update.sh --queries-only
+
+# Upload .sql files to the queries stage
+$SCRIPTS/upload-queries.sh
 
 # List all SPCS resources
 $SCRIPTS/list.sh

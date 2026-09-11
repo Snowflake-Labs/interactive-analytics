@@ -24,7 +24,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 | Action | Tool | Notes |
 |--------|------|-------|
-| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
+| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`, `upload-queries.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
 | Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.7). |
 | Read files | `read` | For templates, configs, reference docs, logs. |
 | Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures, and initial `progress.json`. |
@@ -58,18 +58,42 @@ All instance and node counts are configurable in `benchmark/spcs/config.env`.
 
 ## Workflow
 
+**⚠️ CRITICAL — TASK LIST AND PROGRESS FILE ARE NON-NEGOTIABLE ⚠️**
+**Your VERY FIRST actions after the user confirms Phase 1 inputs — before ANY Phase 2 or Phase 3 work — MUST be: (1) call `system_todo_write` with all 14 steps (creates the visible task DAG in the IDE), and (2) write `progress.json` to disk. BOTH are mandatory. If you skip `system_todo_write`, the user sees NO progress tracker. If you skip `progress.json`, the report and progress scripts break. There is ZERO tolerance for skipping either one. Re-read the "Initialization" section below and execute every step exactly.**
+
 The workflow has three distinct phases that MUST be followed in order:
 
 1. **Phase 1 — Gather all inputs** from the user (or extract from their request)
 2. **Phase 2 — Validate suitability** — confirm the query is a good fit for interactive warehouses. If not, STOP and explain why.
 3. **Phase 3 — Run the benchmark** — deploy, load test, analyze, report. This phase runs autonomously within the user-approved limits.
 
-**IMPORTANT — Progress Tracking:** Immediately after the user confirms Phase 1 inputs — before doing ANY Phase 2/3 work — you MUST create the reports folder and write an initial `progress.json` file. This is NON-NEGOTIABLE; skipping or deferring it is a bug.
+**IMPORTANT — Progress Tracking:** Immediately after the user confirms Phase 1 inputs — before doing ANY Phase 2/3 work — you MUST do ALL of the following: (a) call `system_todo_write` with all 14 steps, (b) create the reports folder, and (c) write an initial `progress.json` file. ALL THREE are NON-NEGOTIABLE; skipping or deferring any of them is a bug. The `progress.json` file is consumed by `update-progress.sh` at every step boundary and by the final HTML report — without it the entire progress pipeline is broken.
 
-**Initialization (right after Phase 1 confirmation):**
+**Initialization (right after Phase 1 confirmation — do this BEFORE anything else):**
 
-1. Create the reports directory via `bash`: `mkdir -p <SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/`
-2. Use `write` to create `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.json` with ALL 14 steps set to `"pending"`:
+1. **FIRST AND MOST IMPORTANT — call `system_todo_write` NOW.** This creates the visible task DAG in the IDE. Without it, the user sees no progress tracker for the entire run. Call it with this exact payload:
+
+```json
+[
+  {"content": "Step 1: Validate query suitability", "status": "in_progress"},
+  {"content": "Step 2: Verify Docker running", "status": "pending"},
+  {"content": "Step 3: Validate interactive setup", "status": "pending"},
+  {"content": "Step 4: Configure concurrency and fallback", "status": "pending"},
+  {"content": "Step 5: Save benchmark query", "status": "pending"},
+  {"content": "Step 6: Configure environment", "status": "pending"},
+  {"content": "Step 7: Warm the cache", "status": "pending"},
+  {"content": "Step 8: Deploy to SPCS", "status": "pending"},
+  {"content": "Step 9: Run baseline test", "status": "pending"},
+  {"content": "Step 10: Run load test", "status": "pending"},
+  {"content": "Step 11: Collect server-side metrics", "status": "pending"},
+  {"content": "Step 12: Goal check and escalation", "status": "pending"},
+  {"content": "Step 13: Generate HTML report", "status": "pending"},
+  {"content": "Step 14: Teardown or keep services", "status": "pending"}
+]
+```
+
+2. Create the reports directory via `bash`: `mkdir -p <SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/`
+3. Use `write` to create `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.json` with ALL 14 steps set to `"pending"`:
 
 ```json
 {
@@ -98,26 +122,7 @@ The workflow has three distinct phases that MUST be followed in order:
 }
 ```
 
-3. **MANDATORY — call `system_todo_write` immediately** with this exact payload (this drives the CLI step counter; skipping it leaves the display stuck at "0/0 steps" for the entire run):
-
-```json
-[
-  {"content": "Step 1: Validate query suitability", "status": "in_progress"},
-  {"content": "Step 2: Verify Docker running", "status": "pending"},
-  {"content": "Step 3: Validate interactive setup", "status": "pending"},
-  {"content": "Step 4: Configure concurrency and fallback", "status": "pending"},
-  {"content": "Step 5: Save benchmark query", "status": "pending"},
-  {"content": "Step 6: Configure environment", "status": "pending"},
-  {"content": "Step 7: Warm the cache", "status": "pending"},
-  {"content": "Step 8: Deploy to SPCS", "status": "pending"},
-  {"content": "Step 9: Run baseline test", "status": "pending"},
-  {"content": "Step 10: Run load test", "status": "pending"},
-  {"content": "Step 11: Collect server-side metrics", "status": "pending"},
-  {"content": "Step 12: Goal check and escalation", "status": "pending"},
-  {"content": "Step 13: Generate HTML report", "status": "pending"},
-  {"content": "Step 14: Teardown or keep services", "status": "pending"}
-]
-```
+4. Verify the `system_todo_write` call from step 1 succeeded (the task DAG should be visible in the IDE). Then proceed to Phase 2.
 
 **Update protocol — at EVERY step boundary, two calls in this order:**
 
@@ -164,7 +169,24 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 **Resource creation transparency:** Whenever the skill creates a warehouse (or any other Snowflake resource), immediately inform the user what was created, including the full name, type, and size. For example: "Created standard warehouse `IWB_202608271430_BENCH_WH_STD` (X-Small) and interactive warehouse `IWB_202608271430_BENCH_WH_INT` (X-Small, multi-cluster, auto-suspend disabled)." Never create resources silently.
 
-**Do not proceed past Phase 1 until ALL items are confirmed.** Present the collected values back to the user in a summary table and use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed") to get approval before moving on.
+**Do not proceed past Phase 1 until ALL items are confirmed.** Present the collected values back to the user in a summary table and use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed") to get approval before moving on. The summary table MUST include all 11 inputs plus the queries stage. Example:
+
+| Input                                 | Value                                        |
+|---------------------------------------|----------------------------------------------|
+| Database                              | DM_TESTTPCH_BENCH_DB                         |
+| Schema                                | TPCH_SF100                                   |
+| Interactive warehouse                 | to be created: IWB_202609101430_BENCH_WH_INT |
+| Standard warehouse                    | to be created: IWB_202609101430_BENCH_WH_STD |
+| Connection                            | PM                                           |
+| P95 latency goal                      | ≤ 1 second                                   |
+| Concurrent users                      | 50                                           |
+| Max warehouse size (scale-up ceiling) | Large                                        |
+| Max cluster count (scale-out ceiling) | 14                                           |
+| Benchmark name                        | IWB_202609101430                             |
+| Max escalation iterations             | 5                                            |
+| Queries stage                         | @IWB_202609101430_SPCS_DB.SPCS.BENCHMARK_QUERIES |
+
+The queries stage path is always `@<SOLUTION_NAME>_SPCS_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
 
 **Autonomous execution principle:** Once the user confirms these inputs — especially the latency goal and the scale-out / scale-up limits — the benchmark runs autonomously without further questions. If the P95 goal is not met, the benchmark automatically scales out or up (within the approved limits) and re-runs. No additional user confirmation is needed until either (a) the limits are reached and the goal is still not met, or (b) the benchmark completes successfully.
 
@@ -326,6 +348,17 @@ Apply the initial cluster count via `bash`:
 cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --mcw <computed_value>
 ```
 
+**IMPORTANT:** `resize-wh.sh` only resumes the API service — Locust stays suspended so it cannot start benchmarking against a cold cache. After the script completes, you MUST run the cache warm-up (Step 3.6) and THEN explicitly resume Locust via `snowflake_sql_execute`:
+
+```sql
+USE ROLE <ROLE>;
+USE DATABASE <DB>;
+USE SCHEMA <SCHEMA>;
+ALTER SERVICE <LOCUST_SERVICE> RESUME;
+```
+
+This guarantees warmup queries always execute before any benchmark traffic. **If this is the initial deploy (Step 3.7 has not run yet), skip the Locust resume — Locust will be started by `deploy.sh` after cache warming in Step 3.6.**
+
 Then configure `MIN_CLUSTER_COUNT` and `SCALING_POLICY` via `snowflake_sql_execute` (these do not require service suspension):
 
 ```sql
@@ -359,7 +392,9 @@ The user provides the query to benchmark as part of their request to CoCo. Creat
 2. Replace the placeholder text with the user's query (or the optimized version if the `snowflake-interactive` skill produced one)
 3. Use `write` to save the result to `<SKILL_DIR>/benchmark/test/benchmark-query.sql`
 
-This file is the single query executed against the interactive warehouse during the load test.
+This file is the single query executed against the interactive warehouse during the load test. It will be uploaded to the Snowflake stage automatically during deployment (Step 3.7).
+
+**Updating queries without redeploying:** If you need to change the query after the initial deployment (e.g. during escalation), save the new `.sql` file locally, then run `<SKILL_DIR>/benchmark/scripts/update.sh --queries-only` to upload the new query and restart the API service — no Docker image rebuild is required.
 
 **If the template file does not exist** or the query is empty after substitution: inform the user of the error, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed without a valid query file.
 
@@ -560,7 +595,19 @@ cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --mcw <NEW_MCW>
 cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --size <NEW_SIZE> --mcw <NEW_MCW>
 ```
 
-After `resize-wh.sh` completes (services are already resumed), **the data cache is cold** because `CREATE OR REPLACE` resets it. You MUST re-warm the cache (Step 3.6) before measuring anything — never run a load test against a cold warehouse. Then re-run the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11). **Do NOT re-deploy SPCS** — `resize-wh.sh` only suspends/resumes the services, it does not recreate them. To re-trigger the load test, suspend/resume the Locust service via `snowflake_sql_execute` as described in Step 3.9 ("Subsequent runs"). Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
+After `resize-wh.sh` completes, **the data cache is cold** because `CREATE OR REPLACE` resets it, and **Locust is still suspended** (the script only resumes the API service). Follow this exact sequence:
+
+1. **Re-warm the cache** (Step 3.6) — run warmup queries via `snowflake_sql_execute` against the interactive warehouse.
+2. **Resume Locust** — only after warmup is complete, resume the Locust service via `snowflake_sql_execute`:
+   ```sql
+   USE ROLE <ROLE>;
+   USE DATABASE <DB>;
+   USE SCHEMA <SCHEMA>;
+   ALTER SERVICE <LOCUST_SERVICE> RESUME;
+   ```
+3. **Monitor** the load test (Step 3.9) and re-collect the server-side numbers (Step 3.11).
+
+**Do NOT re-deploy SPCS** — `resize-wh.sh` only suspends/resumes services, it does not recreate them. **Do NOT resume Locust before cache warming is complete** — this is the whole point of keeping Locust suspended after resize. Re-evaluate this step after each iteration. **Cap the iteration count at the user's "Max escalation iterations" value from Phase 1 (default: 5)** to avoid runaway loops.
 
 **Limits already reached — the goal is not achievable within the user's ceilings.** If both `MAX_CLUSTER_COUNT` and warehouse size are already at the user-supplied ceilings and the goal is still missed, do NOT propose further scaling. **Only at this point should you stop and ask the user.** Tell them clearly, for example:
 

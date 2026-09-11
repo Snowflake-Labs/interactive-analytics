@@ -22,9 +22,15 @@ spec:
         limits:
           memory: "${API_MEMORY_LIMIT}"
           cpu: "${API_CPU_LIMIT}"
+      volumeMounts:
+        - name: queries
+          mountPath: /app/test
       readinessProbe:
         port: ${API_PORT}
         path: /api/ready
+  volumes:
+    - name: queries
+      source: "@${DB}.${SCHEMA}.${QUERIES_STAGE}"
   endpoints:
     - name: web
       port: ${API_PORT}

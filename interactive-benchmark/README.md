@@ -70,8 +70,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of the SPCS to
 ```
 
 - **`api/`** — FastAPI server that connects to Snowflake and exposes a POST endpoint. The endpoint executes the provided query against the interactive warehouse and returns timing metrics.
-- **`test/`** — Place `.sql` files here — each containing a single query. The locust load test reads all files from this directory and benchmarks them against the interactive warehouse.
-- **`locust/`** — Locust workload that reads queries from `test/`, then POSTs them to `/api/run/interactive`.
+- **`test/`** — Place `.sql` files here — each containing a single query. During deployment, these files are uploaded to a Snowflake internal stage and mounted into the API container. Queries can be updated without rebuilding Docker images.
+- **`locust/`** — Locust workload that fetches available query IDs from the API server (`GET /api/queries`) and POSTs them to `/api/run/interactive`.
 - **`reports/`** — Generated benchmark reports. Each run creates a subfolder (e.g. `reports/IWB_202608271430/`) containing the final HTML report and Locust execution logs.
 - **`spcs/`** — Everything needed to deploy the benchmark API and load test to Snowpark Container Services: Dockerfiles, service specs, and shell scripts for build, deploy, update, status, logs, and teardown.
 
@@ -99,7 +99,7 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
 .cortex/skills/interactive-benchmark/benchmark/scripts/deploy.sh
 ```
 
-This will create the database/schema, two compute pools (one for the API, one for Locust), build and push both Docker images, create the services, and print the public ingress URLs once ready.
+This will create the database/schema, two compute pools (one for the API, one for Locust), upload benchmark queries to a Snowflake stage, build and push both Docker images, create the services, and print the public ingress URLs once ready.
 
 ### Common operations
 
@@ -111,6 +111,8 @@ $SCRIPTS/status.sh --urls-only  # just the ingress URLs
 $SCRIPTS/logs.sh api            # benchmark API logs
 $SCRIPTS/logs.sh locust         # locust load-generator logs
 $SCRIPTS/update.sh              # rebuild + ALTER SERVICE (preserves ingress URLs)
+$SCRIPTS/update.sh --queries-only  # upload new queries + restart API (no image rebuild)
+$SCRIPTS/upload-queries.sh      # upload .sql files to the queries stage
 $SCRIPTS/resize-wh.sh --size M  # resize the interactive warehouse
 $SCRIPTS/teardown.sh            # drop services, compute pools, and image repo
 ```

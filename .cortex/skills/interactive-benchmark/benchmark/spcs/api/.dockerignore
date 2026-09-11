@@ -8,6 +8,7 @@
 **/snowflake.log
 **/node_modules
 templates/
+benchmark/test/
 benchmark/locust/
 benchmark/spcs/locust/
 benchmark/spcs/specs/
