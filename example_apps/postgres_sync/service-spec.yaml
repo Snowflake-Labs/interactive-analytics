@@ -1,0 +1,50 @@
+spec:
+  containers:
+  - name: postgres-sync-check
+    image: ${IMAGE_REPO}/postgres-sync-check:latest
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+# Deploy (from example_apps/postgres_sync/):
+#
+#   docker build --platform linux/amd64 -t postgres-sync-check:latest .
+#   snow spcs image-registry login --connection <snow_connection>
+#   docker tag postgres-sync-check:latest ${IMAGE_REGISTRY}${IMAGE_REPO}/postgres-sync-check:latest
+#   docker push ${IMAGE_REGISTRY}${IMAGE_REPO}/postgres-sync-check:latest
+#
+# One-time setup (network egress + compute pool), run once per account:
+#
+# NOTE: <db>.<schema>.<pg_ingress_rule> is a *separate*
+# TYPE=IPV4 MODE=POSTGRES_INGRESS rule used by <pg_network_policy> to
+# control INBOUND access to the pg_sync_demo Postgres instance (by SPCS
+# pool egress IP). It cannot be reused for the EAI below, which requires a
+# TYPE=HOST_PORT MODE=EGRESS rule to control OUTBOUND access from the
+# container. Its type/mode can't be changed via ALTER, so a separate rule
+# is created here in the same schema instead of touching that object.
+#
+#   CREATE OR REPLACE NETWORK RULE <db>.<schema>.<pg_egress_rule>
+#     MODE = EGRESS TYPE = HOST_PORT
+#     VALUE_LIST = (
+#       'pm.snowflakecomputing.com:443',
+#       '<postgres_host>:5432'
+#     );
+#   CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION <external_access_integration>
+#     ALLOWED_NETWORK_RULES = (<db>.<schema>.<pg_egress_rule>)
+#     ENABLED = TRUE;
+#   GRANT USAGE ON INTEGRATION <external_access_integration> TO ROLE SYSADMIN;
+#
+# Run the connectivity check as a one-off job in the <compute_pool> compute pool
+# (the pool the Postgres instance's network policy is scoped to allow):
+#
+#   EXECUTE JOB SERVICE
+#     IN COMPUTE POOL <compute_pool>
+#     NAME = POSTGRES_SYNC_CHECK_JOB
+#     EXTERNAL_ACCESS_INTEGRATIONS = (<external_access_integration>)
+#     FROM SPECIFICATION_FILE = 'service-spec.yaml';
+#
+#   SELECT SYSTEM$GET_SERVICE_LOGS('<image_repo_db>.<image_repo_schema>.POSTGRES_SYNC_CHECK_JOB', 0, 'postgres-sync-check');

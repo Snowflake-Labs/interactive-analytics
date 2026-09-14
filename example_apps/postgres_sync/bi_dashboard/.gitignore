@@ -1,0 +1,16 @@
+# Generated, and contains credentials
+.env.cube
+.spcs-spec.rendered.yaml
+.k8s.rendered.yaml
+
+# Generated from cube/cubes.template.js by gen_env.py; contains your database and
+# schema names, so it is deliberately not committed.
+cube/model/
+
+# Copied in for the parity job's build context
+parity/.env
+parity/config.py
+parity/*.token
+
+node_modules
+.next

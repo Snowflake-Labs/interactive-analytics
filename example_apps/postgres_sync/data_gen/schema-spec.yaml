@@ -1,0 +1,14 @@
+spec:
+  containers:
+  - name: postgres-data-gen
+    image: ${IMAGE_REPO}/postgres-data-gen:latest
+    args:
+      - "schema.py"
+      - "--reset"
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 1
+      limits:
+        memory: 2Gi
+        cpu: 2

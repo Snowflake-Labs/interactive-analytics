@@ -1,0 +1,26 @@
+{
+  "name": "bi-dashboard-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "recharts": "2.15.4",
+    "vega": "5.30.0",
+    "vega-lite": "5.21.0",
+    "vega-embed": "6.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "typescript": "5.8.3"
+  }
+}

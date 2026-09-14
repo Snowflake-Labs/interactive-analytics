@@ -1,0 +1,11 @@
+spec:
+  containers:
+    - name: parity
+      image: ${IMAGE_REPO}/bi-parity:latest
+      resources:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+          cpu: 1

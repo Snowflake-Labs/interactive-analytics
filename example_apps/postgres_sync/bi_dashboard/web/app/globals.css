@@ -1,0 +1,375 @@
+:root {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --ink: #1c2330;
+  --muted: #6b7688;
+  --line: #e3e8ef;
+  --accent: #29b5e8;
+  --accent-dk: #11567f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+}
+
+main {
+  padding: 20px 24px 56px;
+  max-width: 1680px;
+  margin: 0 auto;
+}
+
+.boot {
+  padding: 48px;
+  color: var(--muted);
+}
+
+/* --- header + filters --- */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 18px;
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  max-width: 62ch;
+}
+
+.filters {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.segmented button {
+  border: 0;
+  background: transparent;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  border-right: 1px solid var(--line);
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button:hover {
+  background: #eef4f8;
+}
+
+.segmented button.on {
+  background: var(--accent-dk);
+  color: #fff;
+}
+
+.filter-range {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- grid --- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.kpi-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1400px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .grid,
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tile {
+    grid-column: span 1 !important;
+  }
+}
+
+/* --- tile --- */
+
+.tile {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 11px 13px 13px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.tile-head h3 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.tile-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #eef4f8;
+  color: var(--accent-dk);
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+
+.tile-body {
+  /* Must NOT be flex:1. Recharts' ResponsiveContainer measures its parent, and
+     flex:1 resolves flex-basis to 0, collapsing the inline height to ~0px and
+     rendering every chart blank. The inline height is the definite height the
+     charts size against, so this box must not grow or shrink. */
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+/* --- latency badge --- */
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2.5px 6px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.badge-fast {
+  background: #e6f7ee;
+  color: #1c7a4a;
+}
+
+.badge-ok {
+  background: #fff5e0;
+  color: #9a6b00;
+}
+
+.badge-slow {
+  background: #fdeaea;
+  color: #b02a2a;
+}
+
+.badge-err {
+  background: #fdeaea;
+  color: #b02a2a;
+}
+
+.badge-wait {
+  background: #eef1f5;
+  color: var(--muted);
+}
+
+/* --- states --- */
+
+.tile-loading,
+.tile-empty,
+.tile-error,
+.center {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tile-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tile-error {
+  color: #b02a2a;
+  font-size: 11px;
+  text-align: center;
+  padding: 0 8px;
+  /* The Postgres timeout message explains *why* the tile failed, which is the
+     most useful text on the page. Scroll it rather than clipping it. */
+  overflow-y: auto;
+  justify-content: flex-start;
+  padding-top: 10px;
+}
+
+.tile-error p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- kpi --- */
+
+.kpi-value {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-dk);
+}
+
+.kpi-sub {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* --- table --- */
+
+.table-scroll {
+  height: 100%;
+  overflow: auto;
+}
+
+.dt {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dt th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  padding: 5px 7px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.dt td {
+  padding: 4.5px 7px;
+  border-bottom: 1px solid #f1f4f8;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt tbody tr:hover {
+  background: #f8fbfd;
+}
+
+/* --- chart tooltip --- */
+
+.chart-tip {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 11px;
+  box-shadow: 0 3px 10px rgb(16 24 40 / 9%);
+}
+
+.chart-tip strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.recharts-wrapper {
+  font-size: 11px;
+}
