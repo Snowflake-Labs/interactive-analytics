@@ -30,7 +30,8 @@ export CONNECTION DB SCHEMA IMAGE_REPO ROLE DEPLOY_WAREHOUSE \
        DASHBOARD_MEMORY_REQUEST DASHBOARD_MEMORY_LIMIT \
        DASHBOARD_MIN_INSTANCES DASHBOARD_MAX_INSTANCES \
        LOCUST_HOST LOCUST_WEB_PORT LOCUST_USERS LOCUST_SPAWN \
-       LOCUST_HEADLESS LOCUST_RUN_TIME LOCUST_WAREHOUSE LOCUST_SCALE
+       LOCUST_HEADLESS LOCUST_RUN_TIME LOCUST_WAREHOUSE LOCUST_SCALE \
+       BUILD_METHOD BUILD_COMPUTE_POOL BUILD_EAI_NAME
 
 # Defaults for tuning knobs that may be missing on older config.env files.
 : "${DASHBOARD_WORKERS:=4}"
@@ -43,6 +44,16 @@ export CONNECTION DB SCHEMA IMAGE_REPO ROLE DEPLOY_WAREHOUSE \
 : "${DASHBOARD_MEMORY_LIMIT:=4Gi}"
 : "${DASHBOARD_MIN_INSTANCES:=1}"
 : "${DASHBOARD_MAX_INSTANCES:=4}"
+# BUILD_METHOD=spcs (default) builds images server-side via
+# `snow spcs service build-image`, no local Docker daemon required.
+# BUILD_METHOD=docker uses local `docker build`/`docker push` instead.
+: "${BUILD_METHOD:=spcs}"
+: "${BUILD_COMPUTE_POOL:=$DASHBOARD_COMPUTE_POOL}"
+# Space-separated external access integration names the build-image job
+# needs for network egress (uv/pip install, apt-get, curl). Required in
+# practice for BUILD_METHOD=spcs — the build job has no internet access
+# without one. Leave empty only if your account allows unrestricted egress.
+: "${BUILD_EAI_NAME:=}"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -52,8 +63,15 @@ require_cmd() {
 }
 
 require_cmd snow
-require_cmd docker
 require_cmd envsubst
+if [[ "$BUILD_METHOD" == "docker" ]]; then
+  require_cmd docker
+fi
+
+# snow spcs service build-image is experimental and hidden unless the feature
+# flag is enabled. Enable it for the duration of this process rather than
+# requiring every user to edit config.toml.
+export SNOWFLAKE_CLI_FEATURES_ENABLE_SPCS_BUILD_IMAGE=true
 
 # Run a SQL statement against $CONNECTION and print JSON output.
 snow_sql() {
@@ -101,4 +119,100 @@ image_ref() {
 render_spec() {
   local spec="$1"
   envsubst < "$spec"
+}
+
+# Render a spec yaml to a temp file (snow spcs service create/upgrade take
+# --spec-path, not stdin) and print the temp file path.
+render_spec_to_tempfile() {
+  local spec="$1"
+  local tmp
+  tmp="$(mktemp)"
+  render_spec "$spec" > "$tmp"
+  echo "$tmp"
+}
+
+# Thin wrapper around `snow spcs ...` with connection/role/database/schema
+# pre-filled so every call is unambiguous about which schema it targets.
+spcs() {
+  snow spcs "$@" --connection "$CONNECTION" --role "$ROLE" \
+    --database "$DB" --schema "$SCHEMA"
+}
+
+# Create a compute pool if it doesn't exist (idempotent).
+spcs_compute_pool_create() {
+  local pool="$1" family="$2" min_nodes="$3" max_nodes="$4"
+  spcs compute-pool create "$pool" \
+    --family "$family" \
+    --min-nodes "$min_nodes" \
+    --max-nodes "$max_nodes" \
+    --auto-resume \
+    --if-not-exists
+  spcs compute-pool resume "$pool" 2>/dev/null || true
+}
+
+# Create an image repository if it doesn't exist (idempotent).
+spcs_image_repo_create() {
+  local repo="$1"
+  spcs image-repository create "$repo" --if-not-exists
+}
+
+# Create-or-upgrade a service in place: create if missing, otherwise upgrade
+# the running service's spec, then reconcile min/max instances.
+spcs_service_upsert() {
+  local svc="$1" pool="$2" spec_file="$3" min_inst="${4:-1}" max_inst="${5:-1}"
+  local rendered_path
+  rendered_path="$(render_spec_to_tempfile "$spec_file")"
+  trap 'rm -f "$rendered_path"' RETURN
+
+  spcs service create "$svc" \
+    --compute-pool "$pool" \
+    --spec-path "$rendered_path" \
+    --min-instances "$min_inst" \
+    --max-instances "$max_inst" \
+    --comment 'Managed by dashboard/spcs/' \
+    --if-not-exists
+
+  spcs service upgrade "$svc" --spec-path "$rendered_path"
+  spcs service set "$svc" --min-instances "$min_inst" --max-instances "$max_inst"
+}
+
+# Build one image server-side with `snow spcs service build-image` and push it
+# to $IMAGE_REPO. `--build-context-dir` requires a file literally named
+# `Dockerfile` at its root, so stage a scoped temp context: the image's
+# Dockerfile plus only the repo-root-relative paths it COPYs.
+#
+# extra_paths: repo-root-relative files/dirs the Dockerfile COPYs besides its
+# own spcs/<image_name>/ directory (e.g. "api" "public").
+spcs_build_image() {
+  local image_name="$1" dockerfile_dir="$2"
+  shift 2
+  local extra_paths=("$@")
+
+  local ctx
+  ctx="$(mktemp -d)"
+  trap 'rm -rf "$ctx"' RETURN
+
+  cp "$REPO_DIR/$dockerfile_dir/Dockerfile" "$ctx/Dockerfile"
+  mkdir -p "$ctx/$dockerfile_dir"
+  cp "$REPO_DIR/$dockerfile_dir/entrypoint.sh" "$ctx/$dockerfile_dir/"
+  local p
+  for p in "${extra_paths[@]}"; do
+    mkdir -p "$(dirname "$ctx/$p")"
+    cp -r "$REPO_DIR/$p" "$ctx/$p"
+  done
+
+  local eai_args=()
+  local eai
+  for eai in $BUILD_EAI_NAME; do
+    eai_args+=(--eai-name "$eai")
+  done
+
+  echo "==> Building $image_name server-side via snow spcs service build-image"
+  spcs service build-image \
+    --compute-pool "$BUILD_COMPUTE_POOL" \
+    --image-repository "${DB}.${SCHEMA}.${IMAGE_REPO}" \
+    --image-name "$image_name" \
+    --image-tag "$IMAGE_TAG" \
+    --build-context-dir "$ctx" \
+    "${eai_args[@]+"${eai_args[@]}"}"
 }
