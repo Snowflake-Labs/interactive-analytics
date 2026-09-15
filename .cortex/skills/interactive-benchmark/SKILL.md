@@ -16,7 +16,9 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 - A Snowflake connection configured in `~/.snowflake/connections.toml`
 - Role with privileges to create databases, warehouses, compute pools, and services
 - Ability to use Snowpark Container Services (SPCS)
-- Docker installed (for SPCS deployment)
+- Docker installed — only if `BUILD_METHOD=docker` is set in `config.env`. The
+  default, `BUILD_METHOD=spcs`, builds container images server-side via
+  `snow spcs service build-image` and needs no local Docker daemon.
 
 ## Tool Usage
 
@@ -24,7 +26,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 | Action | Tool | Notes |
 |--------|------|-------|
-| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`, `upload-queries.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
+| Run shell commands | `bash` | For `docker info` (BUILD_METHOD=docker only), `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`, `upload-queries.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
 | Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.7). |
 | Read files | `read` | For templates, configs, reference docs, logs. |
 | Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures, and initial `progress.json`. |
@@ -86,7 +88,7 @@ The workflow has three distinct phases that MUST be followed in order:
   "status": "running",
   "steps": [
     { "id": 1,  "name": "Validate query suitability", "status": "pending" },
-    { "id": 2,  "name": "Verify Docker running", "status": "pending" },
+    { "id": 2,  "name": "Verify build prerequisites", "status": "pending" },
     { "id": 3,  "name": "Validate interactive setup", "status": "pending" },
     { "id": 4,  "name": "Configure concurrency and fallback", "status": "pending" },
     { "id": 5,  "name": "Save benchmark query", "status": "pending" },
@@ -204,17 +206,25 @@ Replace `<CONCURRENT_USERS>`, `<P95_GOAL>`, and `<MAX_ESCALATION>` with the actu
 
 From this point, everything runs autonomously within the user-approved limits from Phase 1. No further questions are asked unless the limits are exhausted.
 
-### Step 3.1: Verify Docker is Running
+### Step 3.1: Verify Build Prerequisites
 
 1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 start`.
 
-2. Use the `bash` tool:
+2. Container images are built by `build-and-push.sh` according to `BUILD_METHOD`
+   in `config.env`:
 
-```bash
-docker info > /dev/null 2>&1
-```
-
-If Docker is not running, warn the user: **"Docker is required to build and push container images for the SPCS benchmark deployment. Please start Docker Desktop (or the Docker daemon) and try again."**
+   - **`BUILD_METHOD=spcs` (default):** images build server-side via
+     `snow spcs service build-image`. Nothing to verify here — no local Docker
+     daemon is used.
+   - **`BUILD_METHOD=docker`:** verify the local Docker daemon is running with
+     the `bash` tool:
+     ```bash
+     docker info > /dev/null 2>&1
+     ```
+     If Docker is not running, warn the user: **"Docker is required to build and
+     push container images for the SPCS benchmark deployment when
+     BUILD_METHOD=docker. Please start Docker Desktop (or the Docker daemon) and
+     try again, or switch BUILD_METHOD to spcs."**
 
 ---
 
@@ -284,6 +294,9 @@ This file is the single query executed against the interactive warehouse during 
    | `API_DATABASE` | **Phase 1 answer** | `DM_TESTTPCH_BENCH_DB` |
    | `LOCUST_USERS` | **Phase 1 answer** — the concurrent-users number | `50` |
    | `LOCUST_RUN_TIME` | Default `3m`, or user-supplied | `3m` |
+   | `BUILD_EAI_NAME` | An external access integration the user's role can use, if `BUILD_METHOD=spcs` (default) | `ALLOW_ALL_EAI` |
+
+   If `BUILD_METHOD=spcs` and the user hasn't already told you which external access integration to use, ask them (`ask_user_question`) or run `SHOW EXTERNAL ACCESS INTEGRATIONS` to find one — the build job needs it for `apt-get`/`curl`/`uv sync` network access. Leaving it empty is only safe if the account allows unrestricted compute-pool egress.
 
    After writing, use the `grep` tool on the file to sanity-check that no template placeholder or stale value remains. The `INTERACTIVE_WAREHOUSE` and `LOCUST_USERS` values are the two most common sources of "the benchmark ran with the wrong settings" bugs.
 
@@ -469,7 +482,7 @@ Request body: `{"query_id": "<id>"}`. Response includes `elapsed_ms`, `row_count
 
 - ⚠️ **Phase 1** — Do not proceed until all inputs are confirmed by the user
 - ⚠️ **Phase 2 (Suitability Check)** — STOP if query exceeds 10s on standard, 5s on interactive, or shows no speedup. Do not enter Phase 3.
-- ⚠️ **Step 3.1** — STOP if Docker is not running. Cannot deploy SPCS without it.
+- ⚠️ **Step 3.1** — STOP if `BUILD_METHOD=docker` and the local Docker daemon is not running. Cannot build images without it.
 - ⚠️ **Step 3.7** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
 - ⚠️ **Step 3.8** — STOP if baseline test fails (high failure rate or p99). Infrastructure is not healthy.
 - ⚠️ **Step 3.12** — STOP and ask the user only when both scale-out and scale-up limits are exhausted and the P95 goal is still not met.

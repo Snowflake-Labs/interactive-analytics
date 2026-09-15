@@ -7,87 +7,42 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/_lib.sh"
 
-echo "==> [1/6] Setting up database, schema, compute pools, image repo, queries stage"
+echo "==> [1/7] Setting up database, schema, and queries stage"
 snow_sql_run "prerequisites setup" <<EOF
 USE ROLE $ROLE;
 USE WAREHOUSE $DEPLOY_WAREHOUSE;
 
 CREATE DATABASE IF NOT EXISTS $DB;
+CREATE SCHEMA IF NOT EXISTS $DB.$SCHEMA;
+
 USE DATABASE $DB;
-
-CREATE SCHEMA IF NOT EXISTS $SCHEMA;
 USE SCHEMA $SCHEMA;
-
-CREATE COMPUTE POOL IF NOT EXISTS $API_COMPUTE_POOL
-  MIN_NODES = $API_MIN_NODES
-  MAX_NODES = $API_MAX_NODES
-  INSTANCE_FAMILY = $API_INSTANCE_FAMILY
-  AUTO_RESUME = TRUE;
-
-ALTER COMPUTE POOL $API_COMPUTE_POOL RESUME IF SUSPENDED;
-
-CREATE COMPUTE POOL IF NOT EXISTS $LOCUST_COMPUTE_POOL
-  MIN_NODES = $LOCUST_MIN_NODES
-  MAX_NODES = $LOCUST_MAX_NODES
-  INSTANCE_FAMILY = $LOCUST_INSTANCE_FAMILY
-  AUTO_RESUME = TRUE;
-
-ALTER COMPUTE POOL $LOCUST_COMPUTE_POOL RESUME IF SUSPENDED;
-
-CREATE IMAGE REPOSITORY IF NOT EXISTS $IMAGE_REPO;
 
 CREATE STAGE IF NOT EXISTS $QUERIES_STAGE
   COMMENT = 'Benchmark SQL query files (mounted into the API container)';
 EOF
 
-echo "==> [2/6] Uploading benchmark queries to stage"
+echo "==> [2/7] Creating compute pools and image repository"
+spcs_compute_pool_create "$API_COMPUTE_POOL" "$API_INSTANCE_FAMILY" \
+  "$API_MIN_NODES" "$API_MAX_NODES"
+spcs_compute_pool_create "$LOCUST_COMPUTE_POOL" "$LOCUST_INSTANCE_FAMILY" \
+  "$LOCUST_MIN_NODES" "$LOCUST_MAX_NODES"
+spcs_image_repo_create "$IMAGE_REPO"
+
+echo "==> [3/7] Uploading benchmark queries to stage"
 "$SCRIPT_DIR/upload-queries.sh"
 
-echo "==> [3/6] Building and pushing container images"
+echo "==> [4/7] Building and pushing container images"
 "$SCRIPT_DIR/build-and-push.sh"
 
-deploy_service() {
-  local svc="$1"
-  local spec_file="$2"
-  local pool="$3"
-  local min_instances="${4:-1}"
-  local max_instances="${5:-1}"
+echo "==> [5/7] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
+spcs_service_upsert "$API_SERVICE" "$API_COMPUTE_POOL" "$SPCS_DIR/specs/api.yaml" \
+  "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
 
-  local rendered
-  rendered="$(render_spec "$spec_file")"
+echo "==> [6/7] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
+spcs_service_upsert "$LOCUST_SERVICE" "$LOCUST_COMPUTE_POOL" "$SPCS_DIR/specs/locust.yaml" 1 1
 
-  echo "==> Rendered spec for $svc (pool=$pool):"
-  echo "----"
-  echo "$rendered" | sed 's/^/    /'
-  echo "----"
-
-  snow_sql_run "deploy service $svc" <<EOF
-USE ROLE $ROLE;
-USE DATABASE $DB;
-USE SCHEMA $SCHEMA;
-
-CREATE SERVICE IF NOT EXISTS $svc
-  IN COMPUTE POOL $pool
-  FROM SPECIFICATION \$\$
-$rendered
-\$\$
-  MIN_INSTANCES = ${min_instances}
-  MAX_INSTANCES = ${max_instances}
-  COMMENT = 'Managed by benchmark/scripts/';
-
-ALTER SERVICE $svc FROM SPECIFICATION \$\$
-$rendered
-\$\$;
-EOF
-}
-
-echo "==> [4/6] Deploying benchmark API service ($API_SERVICE) on pool $API_COMPUTE_POOL"
-deploy_service "$API_SERVICE" "$SPCS_DIR/specs/api.yaml" "$API_COMPUTE_POOL" "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
-
-echo "==> [5/6] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
-deploy_service "$LOCUST_SERVICE" "$SPCS_DIR/specs/locust.yaml" "$LOCUST_COMPUTE_POOL" 1 1
-
-echo "==> [6/6] Waiting for services to become READY (this can take a few minutes)"
+echo "==> [7/7] Waiting for services to become READY (this can take a few minutes)"
 "$SCRIPT_DIR/status.sh" --wait
 
 echo
