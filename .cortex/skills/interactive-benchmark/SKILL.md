@@ -19,6 +19,8 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 - Docker installed — only if `BUILD_METHOD=docker` is set in `config.env`. The
   default, `BUILD_METHOD=spcs`, builds container images server-side via
   `snow spcs service build-image` and needs no local Docker daemon.
+- `zsh` — used for `=()` process substitution when applying service specs, so
+  they never touch disk as a lingering tempfile. macOS ships zsh by default.
 
 ## Tool Usage
 

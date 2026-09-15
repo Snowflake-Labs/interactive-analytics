@@ -67,6 +67,9 @@ the database/schema and resizing the demo warehouses.
   `BUILD_METHOD=docker` in `config.env`. The default, `BUILD_METHOD=spcs`,
   builds images server-side with `snow spcs service build-image` and needs no
   local Docker daemon.
+- `zsh` — used for `=()` process substitution so rendered service specs never
+  touch disk as a lingering tempfile. macOS ships zsh by default; Linux users
+  may need to install it.
 
 ## First-time deploy
 

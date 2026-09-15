@@ -62,6 +62,9 @@ require_cmd() {
 
 require_cmd snow
 require_cmd envsubst
+# spcs_service_upsert uses zsh's =() process substitution so rendered specs
+# never touch disk as a tempfile we have to create and remember to clean up.
+require_cmd zsh
 if [[ "$BUILD_METHOD" == "docker" ]]; then
   require_cmd docker
 fi
@@ -135,16 +138,6 @@ render_spec() {
   envsubst < "$spec"
 }
 
-# Render a spec yaml to a temp file (snow spcs service create/upgrade take
-# --spec-path, not stdin) and print the temp file path.
-render_spec_to_tempfile() {
-  local spec="$1"
-  local tmp
-  tmp="$(mktemp)"
-  render_spec "$spec" > "$tmp"
-  echo "$tmp"
-}
-
 # Thin wrapper around `snow spcs ...` with connection/role/database/schema
 # pre-filled so every call is unambiguous about which schema it targets.
 spcs() {
@@ -170,23 +163,39 @@ spcs_image_repo_create() {
   spcs image-repository create "$repo" --if-not-exists
 }
 
+# Run `snow spcs service <create|upgrade>` with --spec-path pointed at a
+# zsh =() process substitution instead of a self-managed mktemp file: the
+# rendered spec (env-substituted YAML with role/database/warehouse names)
+# never lands on disk as a tempfile we have to remember to delete — zsh
+# creates and removes it around the single command invocation.
+spcs_apply_spec() {
+  local action="$1" svc="$2" spec_content="$3"
+  shift 3
+  zsh -f -c '
+    setopt ERR_EXIT
+    action=$1; svc=$2; spec=$3
+    shift 3
+    snow spcs service "$action" "$svc" --spec-path =(print -r -- "$spec") \
+      --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@"
+  ' zsh "$action" "$svc" "$spec_content" "$@"
+}
+
 # Create-or-upgrade a service in place: create if missing, otherwise upgrade
 # the running service's spec, then reconcile min/max instances.
 spcs_service_upsert() {
   local svc="$1" pool="$2" spec_file="$3" min_inst="${4:-1}" max_inst="${5:-1}"
-  local rendered_path
-  rendered_path="$(render_spec_to_tempfile "$spec_file")"
-  trap 'rm -f "$rendered_path"' RETURN
+  local rendered
+  rendered="$(render_spec "$spec_file")"
 
-  spcs service create "$svc" \
+  spcs_apply_spec create "$svc" "$rendered" \
     --compute-pool "$pool" \
-    --spec-path "$rendered_path" \
     --min-instances "$min_inst" \
     --max-instances "$max_inst" \
     --comment 'Managed by benchmark/scripts/' \
     --if-not-exists
 
-  spcs service upgrade "$svc" --spec-path "$rendered_path"
+  spcs_apply_spec upgrade "$svc" "$rendered"
+
   spcs service set "$svc" --min-instances "$min_inst" --max-instances "$max_inst"
 }
 
