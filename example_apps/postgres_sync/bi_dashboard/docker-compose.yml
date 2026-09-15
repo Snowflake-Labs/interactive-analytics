@@ -1,0 +1,37 @@
+# Local development.
+#
+#   uv run gen_env.py
+#   docker compose --env-file .env.cube up --build
+#
+# The --env-file flag is required: compose's ${...} substitution (used for the
+# build args below) reads only that file, whereas `env_file:` merely populates the
+# container's runtime environment. Without it the NEXT_PUBLIC_* build args come
+# through empty and the dashboard falls back to its default date range.
+#
+# Cube is reachable on :4000, the dashboard on :3000.
+services:
+  cube:
+    build: ./cube
+    env_file: .env.cube
+    ports:
+      - '4000:4000'
+    volumes:
+      # Live-reload the model during development.
+      - ./cube/model:/cube/conf/model
+      - ./cube/cube.js:/cube/conf/cube.js
+
+  web:
+    build:
+      context: ./web
+      # NEXT_PUBLIC_* must be present at build time, not just at runtime.
+      args:
+        NEXT_PUBLIC_DATA_START: ${NEXT_PUBLIC_DATA_START}
+        NEXT_PUBLIC_DATA_END: ${NEXT_PUBLIC_DATA_END}
+        NEXT_PUBLIC_DATA_END_TS: ${NEXT_PUBLIC_DATA_END_TS}
+    depends_on:
+      - cube
+    environment:
+      CUBE_API_URL: http://cube:4000/cubejs-api/v1
+    env_file: .env.cube
+    ports:
+      - '3000:3000'

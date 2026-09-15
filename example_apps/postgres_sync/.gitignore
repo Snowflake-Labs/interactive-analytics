@@ -1,0 +1,9 @@
+# Secrets and local config
+.env
+*.token
+
+# Build artifacts
+**.next**
+*node_modules/*
+*.tsbuildinfo
+__pycache__/

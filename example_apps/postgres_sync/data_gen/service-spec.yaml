@@ -1,0 +1,64 @@
+spec:
+  containers:
+  - name: postgres-data-gen
+    image: ${IMAGE_REPO}/postgres-data-gen:latest
+    args:
+      - "generate.py"
+      - "--table"
+      - "all"
+      - "--target-gb"
+      - "50"
+    resources:
+      requests:
+        memory: 16Gi
+        cpu: 8
+      limits:
+        memory: 32Gi
+        cpu: 16
+
+# Deploy (from example_apps/postgres_sync/, root as build context so the
+# image can bake in .env/pm.token alongside data_gen/*.py):
+#
+#   docker build --platform linux/amd64 -f data_gen/Dockerfile -t postgres-data-gen:latest .
+#   snow spcs image-registry login --connection <snow_connection>
+#   docker tag postgres-data-gen:latest ${IMAGE_REGISTRY}${IMAGE_REPO}/postgres-data-gen:latest
+#   docker push ${IMAGE_REGISTRY}${IMAGE_REPO}/postgres-data-gen:latest
+#
+# Reuses the existing <external_access_integration> external access integration and the
+# <compute_pool> compute pool (CPU_X64_L: 28 vCPU / 116 GiB per node) already
+# wired for Postgres egress — no new network rule needed. The resource
+# request/limit above (8-16 vCPU, 16-32Gi) fits comfortably within a single
+# CPU_X64_L node.
+#
+# The container's ENTRYPOINT is fixed at `uv run` (see Dockerfile); each job
+# below overrides just the `args` field in its own spec file to pick which
+# script/flags run (schema.py for step 1, generate.py for step 2), from the
+# same image.
+#
+# Step 1: create the schema (run once; uses schema-spec.yaml, which passes
+# `--reset` so re-running it drops and recreates the schema):
+#
+#   EXECUTE JOB SERVICE
+#     IN COMPUTE POOL <compute_pool>
+#     NAME = PG_SCHEMA_SETUP_JOB
+#     EXTERNAL_ACCESS_INTEGRATIONS = (<external_access_integration>)
+#     FROM SPECIFICATION_FILE = 'schema-spec.yaml';
+#
+#   SELECT SYSTEM$GET_SERVICE_LOGS('<image_repo_db>.<image_repo_schema>.PG_SCHEMA_SETUP_JOB', 0, 'postgres-data-gen');
+#
+# Step 2: load data (large, parallel, calibration-driven; expect a long run;
+# uses this file, service-spec.yaml):
+#
+#   EXECUTE JOB SERVICE
+#     IN COMPUTE POOL <compute_pool>
+#     NAME = PG_DATA_GEN_JOB
+#     EXTERNAL_ACCESS_INTEGRATIONS = (<external_access_integration>)
+#     FROM SPECIFICATION_FILE = 'service-spec.yaml';
+#
+#   SELECT SYSTEM$GET_SERVICE_LOGS('<image_repo_db>.<image_repo_schema>.PG_DATA_GEN_JOB', 0, 'postgres-data-gen');
+#
+# Clean up jobs after confirming (a job with the same name from a previous
+# run must be dropped before re-running):
+#
+#   DROP SERVICE IF EXISTS <image_repo_db>.<image_repo_schema>.PG_SCHEMA_SETUP_JOB;
+#   DROP SERVICE IF EXISTS <image_repo_db>.<image_repo_schema>.PG_DATA_GEN_JOB;

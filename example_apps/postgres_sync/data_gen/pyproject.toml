@@ -1,0 +1,10 @@
+[project]
+name = "postgres-data-gen"
+version = "0.1.0"
+description = "Synthetic data generator for pg_sync_demo"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg2-binary>=2.9.13",
+    "faker>=30.0.0",
+    "numpy>=2.0.0",
+]
