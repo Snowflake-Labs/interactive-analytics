@@ -58,6 +58,9 @@ the database/schema and resizing the demo warehouses.
 ## Prerequisites
 
 - `snow` CLI configured with the connection listed in `config.env` (`PM` by default).
+  `BUILD_METHOD=spcs` (default) requires `snow` CLI >= 3.16.0 (`snow spcs
+  service build-image` doesn't exist before that); 3.18.0+ is recommended —
+  the scripts warn if you're below it. `_lib.sh` checks this automatically.
 - The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
   REPOSITORY`, and `CREATE SERVICE`. `ACCOUNTADMIN` works.
 - The dashboard's runtime role (`DASHBOARD_ROLE`) needs `USAGE` on the TPC-H

@@ -60,7 +60,48 @@ require_cmd() {
   }
 }
 
+# Compares two X.Y.Z version strings. Returns 0 (true) if $1 >= $2.
+version_ge() {
+  local v1="$1" v2="$2"
+  [[ "$v1" == "$v2" ]] && return 0
+  local IFS=.
+  local -a a=($v1) b=($v2)
+  local i
+  for i in 0 1 2; do
+    local ai="${a[$i]:-0}" bi="${b[$i]:-0}"
+    if (( 10#$ai > 10#$bi )); then return 0; fi
+    if (( 10#$ai < 10#$bi )); then return 1; fi
+  done
+  return 0
+}
+
+# `snow spcs service build-image` was added (experimental) in 3.16.0; below
+# that the subcommand doesn't exist at all, so hard-require it for
+# BUILD_METHOD=spcs. 3.18.0 additionally fixed a SQL-injection bug in
+# `service create/execute-job/upgrade` when a spec YAML contains a `$$`
+# sequence (we call create/upgrade on every deploy regardless of
+# BUILD_METHOD) and a build-image bug on Azure accounts using
+# SNOWFLAKE_FULL stage encryption — recommend it unconditionally.
+check_snow_cli_version() {
+  local min="3.16.0" recommended="3.18.0"
+  local version
+  version="$(snow --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  if [[ -z "$version" ]]; then
+    echo "Warning: could not parse snow CLI version from 'snow --version'; skipping version check." >&2
+    return
+  fi
+  if [[ "$BUILD_METHOD" == "spcs" ]] && ! version_ge "$version" "$min"; then
+    echo "Error: snow CLI $version is too old. 'snow spcs service build-image' (BUILD_METHOD=spcs) requires >= $min." >&2
+    echo "Upgrade: https://docs.snowflake.com/en/developer-guide/snowflake-cli/installation/installation" >&2
+    exit 1
+  fi
+  if ! version_ge "$version" "$recommended"; then
+    echo "Warning: snow CLI $version works, but $recommended+ is recommended (fixes a spec-YAML SQL-injection edge case in service create/upgrade, and a build-image bug on Azure accounts)." >&2
+  fi
+}
+
 require_cmd snow
+check_snow_cli_version
 require_cmd envsubst
 # spcs_service_upsert uses zsh's =() process substitution so rendered specs
 # never touch disk as a tempfile we have to create and remember to clean up.

@@ -13,6 +13,9 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 ## Prerequisites
 
 - `uv` installed (Python package runner)
+- `snow` CLI >= 3.16.0 (required for `BUILD_METHOD=spcs`, the default — `snow
+  spcs service build-image` doesn't exist before that); >= 3.18.0
+  recommended. `benchmark/scripts/_lib.sh` checks this on every run.
 - A Snowflake connection configured in `~/.snowflake/connections.toml`
 - Role with privileges to create databases, warehouses, compute pools, and services
 - Ability to use Snowpark Container Services (SPCS)
