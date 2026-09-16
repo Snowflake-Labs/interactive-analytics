@@ -70,7 +70,7 @@ rebuilding Docker images.
 
 ## Prerequisites
 
-- Docker Desktop (or any local buildx-capable daemon).
+- Docker Desktop.
 - `snow` CLI configured with the connection listed in `spcs/config.env` (`PM` by default).
 - The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
   REPOSITORY`, and `CREATE SERVICE`. `ACCOUNTADMIN` works.

@@ -83,7 +83,7 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
 
 ### Prerequisites
 
-- Docker Desktop (or any local buildx-capable daemon).
+- Docker Desktop.
 - `snow` CLI configured with a connection that has privileges to `CREATE COMPUTE POOL`, `CREATE IMAGE REPOSITORY`, and `CREATE SERVICE`.
 - The API's runtime role needs `USAGE` on the interactive warehouse and `SELECT` on the interactive schema.
 
