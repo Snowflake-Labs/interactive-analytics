@@ -21,7 +21,7 @@ TPC-H interactive dashboard demo. A FastAPI + Chart.js single-page app that visu
 
 ### [`interactive-benchmark/`](interactive-benchmark/)
 
-A [Cortex Code](https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code) skill that benchmarks Snowflake **Interactive Warehouse** performance under concurrent load using any user-provided SQL query. The skill automates the entire workflow — from creating interactive tables to deploying the benchmark infrastructure and generating reports. See [`interactive-benchmark/README.md`](interactive-benchmark/README.md) for sample prompts, repository structure, and SPCS deployment details.
+A [Cortex Code](https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code) skill that benchmarks Snowflake **Interactive Warehouse** performance under concurrent load using any user-provided SQL query. The skill automates the entire workflow — from verifying that your tables and queries are suitable for interactive warehouses to deploying the benchmark infrastructure and generating reports. See [`interactive-benchmark/README.md`](interactive-benchmark/README.md) for sample prompts, repository structure, and SPCS deployment details.
 
 ## Cortex Code (CoCo) Skills
 
@@ -31,7 +31,7 @@ This repository includes three **project-level CoCo skills** that automate commo
 
 Benchmark **any SQL query** on interactive warehouses under concurrent load.
 
-- Chains the `snowflake-interactive` skill to create interactive tables and optimize the query
+- Chains the `snowflake-interactive` skill to verify tables and queries are suitable for interactive warehouses
 - Deploys the benchmark API and Locust load test to Snowpark Container Services
 - Reports whether the query meets its P95 latency goal under load
 

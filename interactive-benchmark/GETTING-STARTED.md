@@ -16,7 +16,7 @@ cd interactive-analytics
 | Tool | Purpose | Install |
 |------|---------|---------|
 | **Cortex Code** (Desktop or CLI) | Runs the skill | [Docs](https://docs.snowflake.com/en/user-guide/ui-snowsight/cortex-code) |
-| **Docker** | Builds and pushes SPCS container images | [docker.com](https://www.docker.com/get-started) |
+| **Docker Desktop** | Builds and pushes SPCS container images | [docker.com](https://www.docker.com/get-started) |
 | **`snow` CLI** | Snowflake CLI for SPCS operations | `pip install snowflake-cli` or `brew install snowflake-cli` |
 | **`uv`** | Python package runner (used by the API and Locust) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | **`envsubst`** | Renders YAML specs from templates | Comes with `gettext` (`brew install gettext` on macOS) |
@@ -76,7 +76,7 @@ The skill takes over from here. It will:
 
 ## What gets created in Snowflake
 
-All object names derive from the `SOLUTION_NAME` you choose (default: `IWBENCH`):
+All object names derive from the `SOLUTION_NAME` you choose (default: `IWB_<YYYYMMDDHH24MI>`, e.g. `IWB_202609091200`):
 
 | Object | Name Pattern |
 |--------|-------------|
