@@ -161,6 +161,23 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | Max escalation iterations             | 5                                            |
 | Queries stage                         | @IWB_202609101430_SPCS_DB.SPCS.BENCHMARK_QUERIES |
 
+Then present the SPCS resources that will be created and the shared images that will be used:
+
+| SPCS Resource                         | Name                                         |
+|---------------------------------------|----------------------------------------------|
+| SPCS database                         | IWB_202609101430_SPCS_DB                     |
+| SPCS schema                           | IWB_202609101430_SPCS_DB.SPCS                |
+| API compute pool                      | IWB_202609101430_API_POOL                    |
+| Locust compute pool                   | IWB_202609101430_LOCUST_POOL                 |
+| API service                           | BENCHMARK_API                                |
+| Locust service                        | BENCHMARK_LOCUST                             |
+| Queries stage                         | @IWB_202609101430_SPCS_DB.SPCS.BENCHMARK_QUERIES |
+| Image repository                      | IWB_202609101430_BENCH_IMAGES                |
+| API image                             | benchmark-api:latest                         |
+| Locust image                          | benchmark-locust:latest                      |
+
+The SPCS resource names, including the image repository, are derived from the benchmark name (`config.env` sets `IMAGE_REPO=${SOLUTION_NAME}_BENCH_IMAGES`). Each benchmark run builds and pushes its own images to its own dedicated repository — there is no shared repository across runs.
+
 The queries stage path is always `@<SOLUTION_NAME>_SPCS_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
 
 **MANDATORY — Present the action plan before proceeding.** After the user confirms the summary table, and BEFORE moving to Phase 2, you MUST present a numbered list of all steps, actions, and operations that will be performed throughout the benchmark. This gives the user a clear picture of what will happen. Present it as follows:
