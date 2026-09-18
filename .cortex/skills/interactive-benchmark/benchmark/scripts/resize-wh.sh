@@ -82,46 +82,44 @@ CURRENT_MCW="$(echo "$CURRENT_PROPS" | python3 -c "
 ${_PY_UNWRAP}
 print(data[-1].get('max_cluster_count',1) if data else 1)
 ")"
+CURRENT_MINCW="$(echo "$CURRENT_PROPS" | python3 -c "
+${_PY_UNWRAP}
+print(data[-1].get('min_cluster_count',1) if data else 1)
+")"
 CURRENT_FALLBACK="$(echo "$CURRENT_PROPS" | python3 -c "
 ${_PY_UNWRAP}
 fb = data[-1].get('fallback_warehouse', '') if data else ''
 print(fb if fb else '')
-" 2>/dev/null || true)"
+")"
 
 # Apply overrides: keep current value for anything not specified.
 SIZE="${NEW_SIZE:-$CURRENT_SIZE}"
 MCW="${NEW_MCW:-$CURRENT_MCW}"
+MINCW="$CURRENT_MINCW"
 
 # Build description for logging.
 DESC=""
 [[ -n "$NEW_SIZE" ]] && DESC="size=$NEW_SIZE"
 [[ -n "$NEW_MCW" ]]  && DESC="${DESC:+$DESC, }max_cluster_count=$NEW_MCW"
 
-echo "  Current: size=$CURRENT_SIZE, max_cluster_count=$CURRENT_MCW"
+echo "  Current: size=$CURRENT_SIZE, min_cluster_count=$CURRENT_MINCW, max_cluster_count=$CURRENT_MCW"
 [[ -n "$CURRENT_FALLBACK" ]] && echo "  Fallback warehouse: $CURRENT_FALLBACK"
-echo "  Target:  size=$SIZE, max_cluster_count=$MCW"
+echo "  Target:  size=$SIZE, min_cluster_count=$MINCW, max_cluster_count=$MCW"
 
-# --- Step 2: Discover attached interactive tables ---
-echo "[2/6] Discovering attached interactive tables..."
-ATTACHED_TABLES="$(snow_sql_quiet <<EOF
-USE ROLE $ROLE;
-SHOW INTERACTIVE TABLES IN SCHEMA ${API_DATABASE}.${INTERACTIVE_SCHEMA};
-EOF
-)"
-TABLE_LIST="$(echo "$ATTACHED_TABLES" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-# Unwrap multi-statement [[{status}],[{rows},...]] to flat list of dicts
-if data and isinstance(data[0], list):
-    flat = []
-    for sub in data:
-        if isinstance(sub, list):
-            flat.extend(sub)
-    data = flat
-names = [r['name'] for r in data if isinstance(r, dict) and r.get('warehouse_name','').upper() == '${FQ_WH}'.upper()]
-if names:
-    print(',\n        '.join(f'${API_DATABASE}.${INTERACTIVE_SCHEMA}.{n}' for n in names))
-" 2>/dev/null || true)"
+# --- Step 2: Discover attached tables ---
+# Read the 'tables' column from SHOW WAREHOUSES which lists all attached tables
+# (interactive, standard, Iceberg) — more reliable than SHOW INTERACTIVE TABLES
+# which only finds interactive tables.
+echo "[2/6] Discovering attached tables..."
+TABLE_LIST="$(echo "$CURRENT_PROPS" | python3 -c "
+${_PY_UNWRAP}
+tables_str = (data[-1].get('tables', '') or '') if data else ''
+if tables_str:
+    # 'tables' is a comma-separated string of fully qualified names
+    tables = [t.strip() for t in tables_str.split(',') if t.strip()]
+    if tables:
+        print(',\n        '.join(tables))
+")"
 
 if [[ -n "$TABLE_LIST" ]]; then
   echo "  Attached tables: $(echo "$TABLE_LIST" | tr '\n' ' ')"
@@ -155,7 +153,7 @@ USE ROLE $ROLE;
 CREATE OR REPLACE INTERACTIVE WAREHOUSE $FQ_WH
   ${TABLES_CLAUSE}
   WAREHOUSE_SIZE = '$SIZE'
-  MIN_CLUSTER_COUNT = 1
+  MIN_CLUSTER_COUNT = $MINCW
   MAX_CLUSTER_COUNT = $MCW
   SCALING_POLICY = 'STANDARD'
   AUTO_SUSPEND = 86400
