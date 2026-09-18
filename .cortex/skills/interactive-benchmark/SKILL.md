@@ -172,11 +172,11 @@ Then present the SPCS resources that will be created and the shared images that 
 | API service                           | BENCHMARK_API                                |
 | Locust service                        | BENCHMARK_LOCUST                             |
 | Queries stage                         | @IWB_202609101430_SPCS_DB.SPCS.BENCHMARK_QUERIES |
-| Image repository (shared)             | IWB_SHARED.SPCS.BENCHMARK_IMAGES             |
+| Image repository                      | IWB_202609101430_BENCH_IMAGES                |
 | API image                             | benchmark-api:latest                         |
 | Locust image                          | benchmark-locust:latest                      |
 
-The SPCS resource names are derived from the benchmark name. The image repository and images are shared from the common repository.
+The SPCS resource names, including the image repository, are derived from the benchmark name (`config.env` sets `IMAGE_REPO=${SOLUTION_NAME}_BENCH_IMAGES`). Each benchmark run builds and pushes its own images to its own dedicated repository — there is no shared repository across runs.
 
 The queries stage path is always `@<SOLUTION_NAME>_SPCS_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
 
