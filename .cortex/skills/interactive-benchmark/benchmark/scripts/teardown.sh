@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Drop the benchmark API + Locust services, compute pools, and image repository.
+# Drop the benchmark API + Locust services and compute pools.
+# Does NOT drop the shared image repository (lives in $IMAGE_DB).
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,11 +23,4 @@ DROP COMPUTE POOL IF EXISTS $API_COMPUTE_POOL;
 DROP COMPUTE POOL IF EXISTS $LOCUST_COMPUTE_POOL;
 EOF
 
-cat <<EOF | snow_sql_run "teardown image repo"
-USE ROLE $ROLE;
-USE DATABASE $DB;
-USE SCHEMA $SCHEMA;
-DROP IMAGE REPOSITORY IF EXISTS $IMAGE_REPO;
-EOF
-
-echo "Dropped services, compute pools ('$API_COMPUTE_POOL', '$LOCUST_COMPUTE_POOL'), and image repo '$IMAGE_REPO'."
+echo "Dropped services and compute pools ('$API_COMPUTE_POOL', '$LOCUST_COMPUTE_POOL')."

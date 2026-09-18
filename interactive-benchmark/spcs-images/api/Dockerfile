@@ -15,16 +15,16 @@ RUN apt-get update \
 WORKDIR /app
 
 # Install deps first for good layer caching.
-COPY benchmark/api/pyproject.toml benchmark/api/uv.lock /app/api/
+COPY api/pyproject.toml api/uv.lock /app/api/
 RUN cd /app/api && uv sync --frozen --no-dev --no-install-project
 
 # App code.
-COPY benchmark/api/ /app/api/
+COPY api/server.py /app/api/
 
 # Benchmark queries are mounted at runtime from a Snowflake stage (see api.yaml).
 
 # Entrypoint writes ~/.snowflake/connections.toml from SPCS-injected env vars.
-COPY benchmark/spcs/api/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY api/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 3000

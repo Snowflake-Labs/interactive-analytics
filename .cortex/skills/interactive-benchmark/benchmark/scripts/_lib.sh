@@ -15,8 +15,9 @@ source "$SPCS_DIR/config.env"
 : "${DB:?DB must be set}"
 : "${SCHEMA:?SCHEMA must be set}"
 
-export CONNECTION DB SCHEMA IMAGE_REPO QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
+export CONNECTION DB SCHEMA QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
        SOLUTION_NAME \
+       IMAGE_DB IMAGE_SCHEMA IMAGE_REPO \
        API_COMPUTE_POOL API_INSTANCE_FAMILY \
        API_MIN_NODES API_MAX_NODES \
        API_MIN_INSTANCES API_MAX_INSTANCES \
@@ -51,7 +52,6 @@ require_cmd() {
 }
 
 require_cmd snow
-require_cmd docker
 require_cmd envsubst
 
 # Run a SQL statement against $CONNECTION and print JSON output.
@@ -100,14 +100,14 @@ registry_url() {
   snow spcs image-registry url --connection "$CONNECTION" --role "$ROLE" 2>/dev/null | tr -d '"'
 }
 
-# Full image reference including registry.
+# Full image reference including registry (uses the shared image database).
 image_ref() {
   local image_name="$1"
   local reg
   reg="$(registry_url)"
   local db_lower schema_lower repo_lower
-  db_lower="$(echo "$DB" | tr '[:upper:]' '[:lower:]')"
-  schema_lower="$(echo "$SCHEMA" | tr '[:upper:]' '[:lower:]')"
+  db_lower="$(echo "$IMAGE_DB" | tr '[:upper:]' '[:lower:]')"
+  schema_lower="$(echo "$IMAGE_SCHEMA" | tr '[:upper:]' '[:lower:]')"
   repo_lower="$(echo "$IMAGE_REPO" | tr '[:upper:]' '[:lower:]')"
   echo "${reg}/${db_lower}/${schema_lower}/${repo_lower}/${image_name}:${IMAGE_TAG}"
 }

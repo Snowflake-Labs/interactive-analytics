@@ -1,7 +1,7 @@
 spec:
   containers:
     - name: locust
-      image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${LOCUST_IMAGE}:${IMAGE_TAG}
+      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${LOCUST_IMAGE}:${IMAGE_TAG}
       env:
         LOCUST_HOST: "${LOCUST_HOST}"
         LOCUST_WEB_PORT: "${LOCUST_WEB_PORT}"

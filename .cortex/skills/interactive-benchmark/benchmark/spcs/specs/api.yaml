@@ -1,7 +1,7 @@
 spec:
   containers:
     - name: api
-      image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${API_IMAGE}:${IMAGE_TAG}
+      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${API_IMAGE}:${IMAGE_TAG}
       env:
         PORT: "${API_PORT}"
         SOLUTION_NAME: "${SOLUTION_NAME}"

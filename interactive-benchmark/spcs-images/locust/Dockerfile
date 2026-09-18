@@ -14,14 +14,14 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY benchmark/locust/pyproject.toml benchmark/locust/uv.lock /app/
+COPY locust/pyproject.toml locust/uv.lock /app/
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY benchmark/locust/locustfile.py /app/
+COPY locust/locustfile.py /app/
 
 # Locust fetches query IDs from the API at runtime (GET /api/queries).
 
-COPY benchmark/spcs/locust/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY locust/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8089

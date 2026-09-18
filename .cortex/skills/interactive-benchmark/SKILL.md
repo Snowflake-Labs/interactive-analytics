@@ -1,6 +1,6 @@
 ---
 name: interactive-benchmark
-version: 0.6.3
+version: 0.7.1
 description: "Benchmark any SQL query on Snowflake Interactive Warehouses. Chains the snowflake-interactive skill first to create interactive tables and optimize queries, then deploys a benchmark API + Locust load test to Snowpark Container Services (SPCS). Use when: benchmarking queries, testing interactive warehouse performance under load, load testing, deploying benchmark infrastructure. Triggers: benchmark, interactive warehouse benchmark, load test, locust, benchmark my query, performance test, stress test, how fast under load, concurrent query performance, can my query handle N users, latency under concurrency, query throughput test."
 ---
 
@@ -16,7 +16,6 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 - A Snowflake connection configured in `~/.snowflake/connections.toml`
 - Role with privileges to create databases, warehouses, compute pools, and services
 - Ability to use Snowpark Container Services (SPCS)
-- Docker installed (for SPCS deployment)
 
 ## Tool Usage
 
@@ -24,20 +23,20 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 | Action | Tool | Notes |
 |--------|------|-------|
-| Run shell commands | `bash` | For `docker info`, `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`, `upload-queries.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
+| Run shell commands | `bash` | For `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`, `upload-queries.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
 | Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.7). |
 | Read files | `read` | For templates, configs, reference docs, logs. |
 | Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures, and initial `progress.json`. |
 | Edit existing files | `edit` | For updating specific values in an existing config file without rewriting the whole file. |
 | Search file contents | `grep` | For placeholder verification (`{{`) and config sanity checks. |
-| Ask user questions | `ask_user_question` | For Phase 1 inputs, Phase 1 confirmation, and cleanup choice (Step 3.14). |
-| Open report in browser | `open_browser` | For the final HTML report (Step 3.13). |
-| Load sub-skills | `skill` | `snowflake-interactive` (Step 2.1, 3.10), `html-authoring` (Step 3.13). |
+| Ask user questions | `ask_user_question` | For Phase 1 inputs, Phase 1 confirmation, and cleanup choice (Step 3.13). |
+| Open report in browser | `open_browser` | For the final HTML report (Step 3.12). |
+| Load sub-skills | `skill` | `snowflake-interactive` (Step 2.1, 3.9), `html-authoring` (Step 3.12). |
 | Track progress | `update-progress.sh` | Updates `progress.json` at every step boundary. See Progress Tracking section. |
 
 ## Paths
 
-`<SKILL_DIR>` refers to the directory containing this SKILL.md file (`.cortex/skills/interactive-benchmark/`). The benchmark source code lives at `<SKILL_DIR>/benchmark/`. Shell scripts (deploy, teardown, status, logs, resize, etc.) live in `<SKILL_DIR>/benchmark/scripts/`. SPCS artifacts (config, specs, Dockerfiles) live in `<SKILL_DIR>/benchmark/spcs/`.
+`<SKILL_DIR>` refers to the directory containing this SKILL.md file (`.cortex/skills/interactive-benchmark/`). Shell scripts (deploy, teardown, status, logs, resize, etc.) live in `<SKILL_DIR>/benchmark/scripts/`. SPCS deployment config and service specs live in `<SKILL_DIR>/benchmark/spcs/`. Container images (Dockerfiles, app source) live separately in `interactive-benchmark/spcs-images/` at the repo root — the skill does not build images; they must be pre-built via `interactive-benchmark/spcs-images/build-and-push.sh`.
 
 ## SPCS Deployment Topology
 
@@ -48,7 +47,7 @@ The benchmark deploys two services to Snowpark Container Services. After deploym
 | **Benchmark API** (FastAPI) | 3 (configurable: `API_MIN_INSTANCES` / `API_MAX_INSTANCES`) | 1-4 (configurable: `API_MIN_NODES` / `API_MAX_NODES`) | CPU_X64_M |
 | **Locust** (load generator) | 1 (fixed) | 1-2 (configurable: `LOCUST_MIN_NODES` / `LOCUST_MAX_NODES`) | CPU_X64_M |
 
-**Why 3 API instances?** A single FastAPI/Uvicorn process handles requests sequentially per worker. With 3 instances (each running WORKERS uvicorn workers), the API layer can serve high concurrency without becoming the bottleneck. The baseline test (Step 3.8 Phase 1) validates this.
+**Why 3 API instances?** A single FastAPI/Uvicorn process handles requests sequentially per worker. With 3 instances (each running WORKERS uvicorn workers), the API layer can serve high concurrency without becoming the bottleneck. The baseline test (Step 3.7 Phase 1) validates this.
 
 **Why 1 Locust instance?** Locust is the load *generator*, not the system under test. A single instance can simulate hundreds of concurrent users.
 
@@ -74,31 +73,30 @@ The workflow has three distinct phases that MUST be followed in order:
 **Initialization (right after Phase 1 confirmation — do this BEFORE anything else):**
 
 1. Create the reports directory via `bash`: `mkdir -p <SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/`
-2. Use `write` to create `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.json` with ALL 14 steps set to `"pending"`:
+2. Use `write` to create `<SKILL_DIR>/benchmark/reports/<SOLUTION_NAME>/progress.json` with ALL 13 steps set to `"pending"`:
 
 ```json
 {
   "benchmark_name": "<SOLUTION_NAME>",
-  "total_steps": 14,
+  "total_steps": 13,
   "current_step": 0,
   "started_at": "<ISO 8601 now>",
   "updated_at": "<ISO 8601 now>",
   "status": "running",
   "steps": [
     { "id": 1,  "name": "Validate query suitability", "status": "pending" },
-    { "id": 2,  "name": "Verify Docker running", "status": "pending" },
-    { "id": 3,  "name": "Validate interactive setup", "status": "pending" },
-    { "id": 4,  "name": "Configure concurrency and fallback", "status": "pending" },
-    { "id": 5,  "name": "Save benchmark query", "status": "pending" },
-    { "id": 6,  "name": "Configure environment", "status": "pending" },
-    { "id": 7,  "name": "Warm the cache", "status": "pending" },
-    { "id": 8,  "name": "Deploy to SPCS", "status": "pending" },
-    { "id": 9,  "name": "Run baseline test", "status": "pending" },
-    { "id": 10, "name": "Run load test", "status": "pending" },
-    { "id": 11, "name": "Collect server-side metrics", "status": "pending" },
-    { "id": 12, "name": "Goal check and escalation", "status": "pending" },
-    { "id": 13, "name": "Generate HTML report", "status": "pending" },
-    { "id": 14, "name": "Teardown or keep services", "status": "pending" }
+    { "id": 2,  "name": "Validate interactive setup", "status": "pending" },
+    { "id": 3,  "name": "Configure concurrency and fallback", "status": "pending" },
+    { "id": 4,  "name": "Save benchmark query", "status": "pending" },
+    { "id": 5,  "name": "Configure environment", "status": "pending" },
+    { "id": 6,  "name": "Warm the cache", "status": "pending" },
+    { "id": 7,  "name": "Deploy to SPCS", "status": "pending" },
+    { "id": 8,  "name": "Run baseline test", "status": "pending" },
+    { "id": 9,  "name": "Run load test", "status": "pending" },
+    { "id": 10, "name": "Collect server-side metrics", "status": "pending" },
+    { "id": 11, "name": "Goal check and escalation", "status": "pending" },
+    { "id": 12, "name": "Generate HTML report", "status": "pending" },
+    { "id": 13, "name": "Teardown or keep services", "status": "pending" }
   ]
 }
 ```
@@ -118,7 +116,7 @@ where `<action>` is one of: `start`, `complete`, `fail`, `skip`.
 - **Before starting a step:** Run `update-progress.sh <REPORT_DIR> <step_id> start` via `bash`.
 - **After completing a step:** Run `update-progress.sh <REPORT_DIR> <step_id> complete` via `bash`.
 - **On failure:** Run `update-progress.sh <REPORT_DIR> <step_id> fail`.
-- **On completion:** The script auto-sets top-level status to `"completed"` when step 14 is completed.
+- **On completion:** The script auto-sets top-level status to `"completed"` when step 13 is completed.
 
 Only ONE step should be `"in_progress"` at a time. Each step section below begins with a numbered item **"1. PROGRESS UPDATE (mandatory)"** — run `update-progress.sh` as the first action when entering that step.
 
@@ -148,10 +146,10 @@ Collect ALL of the following from the user before proceeding. If the user's init
 
 | Input                                 | Value                                        |
 |---------------------------------------|----------------------------------------------|
-| Database                              | DM_TESTTPCH_BENCH_DB                         |
+| Database                              | DM_TESTTPCH_DB                               |
 | Schema                                | TPCH_SF100                                   |
-| Interactive warehouse                 | to be created: IWB_202609101430_BENCH_WH_INT |
-| Standard warehouse                    | to be created: IWB_202609101430_BENCH_WH_STD |
+| Interactive warehouse                 | to be created: IWB_202609101430_INT_WH       |
+| Standard warehouse                    | to be created: IWB_202609101430_STD_WH       |
 | Connection                            | PM                                           |
 | P95 latency goal                      | ≤ 1 second                                   |
 | Concurrent users                      | 50                                           |
@@ -159,28 +157,27 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | Max cluster count (scale-out ceiling) | 14                                           |
 | Benchmark name                        | IWB_202609101430                             |
 | Max escalation iterations             | 5                                            |
-| Queries stage                         | @IWB_202609101430_SPCS_DB.SPCS.BENCHMARK_QUERIES |
+| Queries stage                         | @IWB_202609101430_DB.SPCS.BENCHMARK_QUERIES  |
 
-The queries stage path is always `@<SOLUTION_NAME>_SPCS_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
+The queries stage path is always `@<SOLUTION_NAME>_DB.SPCS.BENCHMARK_QUERIES` — it is derived, not user-supplied.
 
 **MANDATORY — Present the action plan before proceeding.** After the user confirms the summary table, and BEFORE moving to Phase 2, you MUST present a numbered list of all steps, actions, and operations that will be performed throughout the benchmark. This gives the user a clear picture of what will happen. Present it as follows:
 
 > Here is what will happen next:
 >
 > 1. **Validate query suitability** — Run your query on both a standard and an interactive warehouse to confirm it benefits from interactive execution. If the query is not a good fit, the benchmark stops here.
-> 2. **Verify Docker is running** — Docker is required to build and push container images for the SPCS deployment.
-> 3. **Validate interactive setup** — Confirm the interactive warehouse and tables (or zero-copy configuration) are correctly set up and ready for benchmarking.
-> 4. **Configure concurrency and fallback** — Set the multi-cluster count on the interactive warehouse and configure a fallback warehouse for queries that exceed the 5-second timeout.
-> 5. **Save the benchmark query** — Write the query to a SQL file that the benchmark API will execute during the load test.
-> 6. **Configure environment** — Generate the `.env` and `config.env` files with all connection, warehouse, and Locust settings.
-> 7. **Warm the cache** — Run the query several times on the interactive warehouse so the load test measures steady-state performance, not cold-start latency.
-> 8. **Deploy to SPCS** — Build and push Docker images, create compute pools, and start the Benchmark API and Locust services on Snowpark Container Services. This creates 2 compute pools (CPU_X64_M) that incur credits while running.
-> 9. **Run baseline test** — Locust runs a quick test against a no-op endpoint to validate that the infrastructure (API layer, network) is healthy.
-> 10. **Run load test** — Locust simulates <CONCURRENT_USERS> concurrent users hitting the interactive warehouse for 3 minutes, collecting latency percentiles and throughput.
-> 11. **Collect server-side metrics** — Query Snowflake's `QUERY_HISTORY` to get server-side P50/P95/P99 latencies and cluster usage, isolating Snowflake time from API overhead.
-> 12. **Goal check and escalation** — Compare the P95 latency against your goal (<P95_GOAL>). If the goal is not met, automatically scale out (add clusters) or scale up (larger warehouse) within your approved limits and re-run the load test. Up to <MAX_ESCALATION> iterations.
-> 13. **Generate HTML report** — Produce a detailed benchmark report with executive summary, latency charts, bottleneck analysis, escalation history, and optimization recommendations.
-> 14. **Cleanup** — Present all created resources and let you choose: full cleanup, SPCS-only cleanup, or keep everything for further testing.
+> 2. **Validate interactive setup** — Confirm the interactive warehouse and tables (or zero-copy configuration) are correctly set up and ready for benchmarking.
+> 3. **Configure concurrency and fallback** — Set the multi-cluster count on the interactive warehouse and configure a fallback warehouse for queries that exceed the 5-second timeout.
+> 4. **Save the benchmark query** — Write the query to a SQL file that the benchmark API will execute during the load test.
+> 5. **Configure environment** — Generate the `.env` and `config.env` files with all connection, warehouse, and Locust settings.
+> 6. **Warm the cache** — Run the query several times on the interactive warehouse so the load test measures steady-state performance, not cold-start latency.
+> 7. **Deploy to SPCS** — Create compute pools and start the Benchmark API and Locust services on Snowpark Container Services (using pre-built container images). This creates 2 compute pools (CPU_X64_M) that incur credits while running.
+> 8. **Run baseline test** — Locust runs a quick test against a no-op endpoint to validate that the infrastructure (API layer, network) is healthy.
+> 9. **Run load test** — Locust simulates <CONCURRENT_USERS> concurrent users hitting the interactive warehouse for 3 minutes, collecting latency percentiles and throughput.
+> 10. **Collect server-side metrics** — Query Snowflake's `QUERY_HISTORY` to get server-side P50/P95/P99 latencies and cluster usage, isolating Snowflake time from API overhead.
+> 11. **Goal check and escalation** — Compare the P95 latency against your goal (<P95_GOAL>). If the goal is not met, automatically scale out (add clusters) or scale up (larger warehouse) within your approved limits and re-run the load test. Up to <MAX_ESCALATION> iterations.
+> 12. **Generate HTML report** — Produce a detailed benchmark report with executive summary, latency charts, bottleneck analysis, escalation history, and optimization recommendations.
+> 13. **Cleanup** — Present all created resources and let you choose: full cleanup, SPCS-only cleanup, or keep everything for further testing.
 
 Replace `<CONCURRENT_USERS>`, `<P95_GOAL>`, and `<MAX_ESCALATION>` with the actual values from Phase 1. Then use `ask_user_question` with a single confirmation option (e.g. "Confirmed — proceed with the benchmark") to get approval before moving to Phase 2.
 
@@ -204,23 +201,9 @@ Replace `<CONCURRENT_USERS>`, `<P95_GOAL>`, and `<MAX_ESCALATION>` with the actu
 
 From this point, everything runs autonomously within the user-approved limits from Phase 1. No further questions are asked unless the limits are exhausted.
 
-### Step 3.1: Verify Docker is Running
+### Step 3.1: Validate Interactive Setup
 
 1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 1 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 start`.
-
-2. Use the `bash` tool:
-
-```bash
-docker info > /dev/null 2>&1
-```
-
-If Docker is not running, warn the user: **"Docker is required to build and push container images for the SPCS benchmark deployment. Please start Docker Desktop (or the Docker daemon) and try again."**
-
----
-
-### Step 3.2: Validate Interactive Setup
-
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 start`.
 
 2. Verify the interactive setup is correct before deploying. The validation differs depending on the `INTERACTIVE_MODE` captured in Step 2.1.
 
@@ -228,21 +211,21 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 ---
 
-### Step 3.3: Configure Concurrency and Fallback
+### Step 3.2: Configure Concurrency and Fallback
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 2 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 start`.
 
 **CRITICAL: Interactive warehouses scale concurrency *horizontally* (multi-cluster), not vertically. Configure `MAX_CLUSTER_COUNT` and a fallback warehouse BEFORE the load test.**
 
-**MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.12), you MUST run the cache warm-up procedure (Step 3.6) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
+**MANDATORY — Warm-up after any warehouse change:** Every time a warehouse is created, resized, resumed from suspension, or has its cluster count changed (including this initial configuration and every escalation in Step 3.11), you MUST run the cache warm-up procedure (Step 3.5) before measuring performance. Never run a load test against a cold or freshly-reconfigured warehouse.
 
 **Load** `references/mcw-sizing.md` (via the `read` tool) for the MCW sizing formula. Then **Load** `references/concurrency-config.md` for the full configuration procedure: formula application, `resize-wh.sh` usage, Locust resume sequencing, ALTER WAREHOUSE commands, and fallback warehouse setup.
 
 ---
 
-### Step 3.4: Save the Benchmark Query
+### Step 3.3: Save the Benchmark Query
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 3 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 start`.
 
 2. The user provides the query to benchmark as part of their request to CoCo. Create `benchmark/test/benchmark-query.sql` from the template file `benchmark/test/benchmark-query.sql.template` by replacing the placeholder content with the actual query:
    1. Use `read` to load `<SKILL_DIR>/benchmark/test/benchmark-query.sql.template`
@@ -251,15 +234,15 @@ If Docker is not running, warn the user: **"Docker is required to build and push
 
 This file is the single query executed against the interactive warehouse during the load test. It will be uploaded to the Snowflake stage automatically during deployment (Step 3.7).
 
-**Updating queries without redeploying:** If you need to change the query after the initial deployment (e.g. during escalation), save the new `.sql` file locally, then run `<SKILL_DIR>/benchmark/scripts/update.sh --queries-only` to upload the new query and restart the API service — no Docker image rebuild is required.
+**Updating queries without redeploying:** If you need to change the query after the initial deployment (e.g. during escalation), save the new `.sql` file locally, then run `<SKILL_DIR>/benchmark/scripts/update.sh` to upload the new query and restart the API service.
 
-**If the template file does not exist** or the query is empty after substitution: inform the user of the error, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed without a valid query file.
+**If the template file does not exist** or the query is empty after substitution: inform the user of the error, then jump to Step 3.13 (cleanup) — the benchmark cannot proceed without a valid query file.
 
 ---
 
-### Step 3.5: Configure Environment
+### Step 3.4: Configure Environment
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 4 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 start`.
 
 2. Both config files MUST be created from their templates — never edit the templates directly.
 
@@ -279,9 +262,9 @@ This file is the single query executed against the interactive warehouse during 
    |---|---|---|
    | `CONNECTION` | Phase 1 answer | `PM` |
    | `ROLE` | Phase 1 or `ACCOUNTADMIN` | `ACCOUNTADMIN` |
-   | `INTERACTIVE_WAREHOUSE` | **Step 2.1 output** — the exact name `snowflake-interactive` created | `DM_TESTTPCH_BENCH_WH_INT` |
+   | `INTERACTIVE_WAREHOUSE` | **Step 2.1 output** — the exact name `snowflake-interactive` created | `DM_TESTTPCH_INT_WH` |
    | `INTERACTIVE_SCHEMA` | **Step 2.1 output** | `TPCH_SF100_INT` |
-   | `API_DATABASE` | **Phase 1 answer** | `DM_TESTTPCH_BENCH_DB` |
+   | `API_DATABASE` | **Phase 1 answer** | `DM_TESTTPCH_DB` |
    | `LOCUST_USERS` | **Phase 1 answer** — the concurrent-users number | `50` |
    | `LOCUST_RUN_TIME` | Default `3m`, or user-supplied | `3m` |
 
@@ -289,15 +272,15 @@ This file is the single query executed against the interactive warehouse during 
 
 3. If `benchmark/.env` or `benchmark/spcs/config.env` already exist from a previous run, do NOT reuse them blindly. Use `read` to inspect the existing values, then use `edit` to overwrite anything that changed compared to the current Phase 1/Step 2.1 answers.
 
-**If any config file creation fails** (template not found, write error, or `grep` finds leftover placeholders after writing): inform the user which config is invalid and why, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed with misconfigured environment files.
+**If any config file creation fails** (template not found, write error, or `grep` finds leftover placeholders after writing): inform the user which config is invalid and why, then jump to Step 3.13 (cleanup) — the benchmark cannot proceed with misconfigured environment files.
 
 **Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Step 3.8 and Step 3.9 for the execution flow.
 
 ---
 
-### Step 3.6: Warm the Cache
+### Step 3.5: Warm the Cache
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 5 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 start`.
 
 2. Before the load test measures anything, warm the interactive warehouse cache so the numbers reflect steady-state performance, not cold-start latency.
 
@@ -305,11 +288,13 @@ This file is the single query executed against the interactive warehouse during 
 
 ---
 
-### Step 3.7: Deploy to SPCS
+### Step 3.6: Deploy to SPCS
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 6 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 start`.
 
-**IMPORTANT — Cache must be warm before deploy:** Locust auto-starts immediately when its container becomes READY, so the load test will begin as soon as SPCS finishes provisioning. Ensure Step 3.6 (cache warming) is complete before running this step — otherwise Locust measures cold-cache latency.
+**IMPORTANT — Cache must be warm before deploy:** Locust auto-starts immediately when its container becomes READY, so the load test will begin as soon as SPCS finishes provisioning. Ensure Step 3.5 (cache warming) is complete before running this step — otherwise Locust measures cold-cache latency.
+
+**IMPORTANT — Images must already exist:** Container images must be pre-built and pushed to the SPCS image repository before running `deploy.sh`. Build them via `interactive-benchmark/spcs-images/build-and-push.sh` (one-time, outside the skill). If images are missing, `deploy.sh` will fail when creating services.
 
 Use the `bash` tool with `run_in_background=true`:
 
@@ -339,7 +324,7 @@ This deploys:
 4. If a service stays in PENDING for more than 5 minutes, run `./logs.sh` and report any errors to the user. Common causes:
    - Compute pool still provisioning (normal — wait)
    - Image pull in progress (normal — wait)
-   - Image not found (check `build-and-push.sh` succeeded)
+   - Image not found (ensure images were built via `interactive-benchmark/spcs-images/build-and-push.sh`)
    - Insufficient privileges (check ROLE)
 5. If a service enters FAILED state, immediately run `./logs.sh`, show the user the output, and stop.
 6. Only proceed to the next step once both services report READY.
@@ -347,10 +332,10 @@ This deploys:
 
 ---
 
-### Steps 3.8–3.9: Baseline Test + Load Test
+### Steps 3.7–3.8: Baseline Test + Load Test
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 9 start`.
-2. **Mid-step PROGRESS UPDATE (mandatory):** When the baseline completes successfully, run `update-progress.sh <REPORT_DIR> 9 complete && update-progress.sh <REPORT_DIR> 10 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 7 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 8 start`.
+2. **Mid-step PROGRESS UPDATE (mandatory):** When the baseline completes successfully, run `update-progress.sh <REPORT_DIR> 8 complete && update-progress.sh <REPORT_DIR> 9 start`.
 
 3. **Load** `references/benchmark-execution.md` (via the `read` tool) for the full baseline and load test procedure.
 
@@ -358,9 +343,9 @@ This deploys:
 
 ---
 
-### Step 3.10: Analyze Results and Generate Recommendations
+### Step 3.9: Analyze Results and Generate Recommendations
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 10 complete`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 9 complete`.
 
 2. After the load test completes, collect **three sets of measurements**:
 
@@ -385,9 +370,9 @@ Capture these recommendations for the report.
 
 ---
 
-### Step 3.11: Post-Benchmark Server-Side Validation
+### Step 3.10: Post-Benchmark Server-Side Validation
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 10 start`.
 
 2. After collecting the Locust CSV, **you MUST run server-side aggregation queries against Snowflake for the interactive warehouse**. This is not optional — the Locust numbers alone cannot distinguish API/HTTP overhead from Snowflake time.
 
@@ -401,19 +386,19 @@ The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every reques
 
 ---
 
-### Step 3.12: Goal Check and Iterative Escalation
+### Step 3.11: Goal Check and Iterative Escalation
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 10 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 start`.
 
-2. After collecting the server-side percentiles from Step 3.11, evaluate them against the P95 latency goal captured in Phase 1.
+2. After collecting the server-side percentiles from Step 3.10, evaluate them against the P95 latency goal captured in Phase 1.
 
 **Load** `references/escalation.md` (via the `read` tool) for the full escalation procedure: Case 1/2/3 decision logic, scale-out vs scale-up selection, `resize-wh.sh` commands, post-resize warm/resume/monitor sequence, limits-reached messaging, and iteration history recording.
 
 ---
 
-### Step 3.13: Generate HTML Report
+### Step 3.12: Generate HTML Report
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 start`.
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 11 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 start`.
 
 2. **MANDATORY: Load the `html-authoring` skill first** by calling `skill(command="html-authoring")`. This skill provides the sandboxed-HTML rules that must be followed when writing the report file. Load it before any HTML file creation.
 
@@ -429,7 +414,7 @@ Create a subfolder named after the benchmark (e.g. `reports/IWB_202608271430/`).
 - `locust-run-2.txt` — Locust log from the second iteration (if escalation triggered a re-run)
 - `locust-run-3.txt` — Locust log from the third iteration (if needed)
 
-Each time the load test runs (Step 3.9), capture the full Locust output (via `bash` running `./logs.sh locust`) and save it to the next numbered file using `write`. This ensures every iteration's results are preserved — even runs that did not meet the goal. The final HTML report references the last successful run's data, but earlier runs provide the escalation history.
+Each time the load test runs (Step 3.8), capture the full Locust output (via `bash` running `./logs.sh locust`) and save it to the next numbered file using `write`. This ensures every iteration's results are preserved — even runs that did not meet the goal. The final HTML report references the last successful run's data, but earlier runs provide the escalation history.
 
 **Load** `references/report-generation.md` (via the `read` tool) for the full procedure, coverage requirements, and verification steps.
 
@@ -442,10 +427,10 @@ Each time the load test runs (Step 3.9), capture the full Locust output (via `ba
 
 ---
 
-### Step 3.14: Resource Summary and Cleanup
+### Step 3.13: Resource Summary and Cleanup
 
-1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 14 start`.
-2. **End-of-step PROGRESS UPDATE (mandatory):** After cleanup completes, run `update-progress.sh <REPORT_DIR> 14 complete` (this auto-sets top-level status to `"completed"`).
+1. **PROGRESS UPDATE (mandatory):** Run `bash <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 12 complete && <SKILL_DIR>/benchmark/scripts/update-progress.sh <REPORT_DIR> 13 start`.
+2. **End-of-step PROGRESS UPDATE (mandatory):** After cleanup completes, run `update-progress.sh <REPORT_DIR> 13 complete` (this auto-sets top-level status to `"completed"`).
 3. **Load** `references/cleanup.md` (via the `read` tool) for the full cleanup procedure.
 
 **Summary:** Present the user with a table of all created resources (interactive warehouse, schema, tables, SPCS database/schema, compute pools, image repo, services). Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything. For full cleanup, run `./teardown.sh` then drop schemas/warehouse/database via SQL. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
@@ -469,17 +454,16 @@ Request body: `{"query_id": "<id>"}`. Response includes `elapsed_ms`, `row_count
 
 - ⚠️ **Phase 1** — Do not proceed until all inputs are confirmed by the user
 - ⚠️ **Phase 2 (Suitability Check)** — STOP if query exceeds 10s on standard, 5s on interactive, or shows no speedup. Do not enter Phase 3.
-- ⚠️ **Step 3.1** — STOP if Docker is not running. Cannot deploy SPCS without it.
-- ⚠️ **Step 3.7** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
-- ⚠️ **Step 3.8** — STOP if baseline test fails (high failure rate or p99). Infrastructure is not healthy.
-- ⚠️ **Step 3.12** — STOP and ask the user only when both scale-out and scale-up limits are exhausted and the P95 goal is still not met.
-- ⚠️ **Step 3.14** — Confirm cleanup choice before dropping any resources.
+- ⚠️ **Step 3.6** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
+- ⚠️ **Step 3.7** — STOP if baseline test fails (high failure rate or p99). Infrastructure is not healthy.
+- ⚠️ **Step 3.11** — STOP and ask the user only when both scale-out and scale-up limits are exhausted and the P95 goal is still not met.
+- ⚠️ **Step 3.13** — Confirm cleanup choice before dropping any resources.
 
 ## Output
 
 - `benchmark/reports/<SOLUTION_NAME>/benchmark-report.html` — HTML report with executive summary, percentile charts, bottleneck diagnosis, escalation path, and optimization recommendations
 - `benchmark/reports/<SOLUTION_NAME>/locust-run-N.txt` — Raw Locust logs for each load test iteration (one per escalation step)
-- Snowflake resources (interactive warehouse, tables, SPCS services) — listed in Step 3.14 for cleanup or reuse
+- Snowflake resources (interactive warehouse, tables, SPCS services) — listed in Step 3.13 for cleanup or reuse
 
 ## Checklist and Troubleshooting
 

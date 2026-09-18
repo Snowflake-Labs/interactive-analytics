@@ -1,4 +1,4 @@
-# Resource Summary and Cleanup — Step 3.14 Detail
+# Resource Summary and Cleanup — Step 3.13 Detail
 
 After the report is generated, present the user with a **complete list of all Snowflake resources created during this benchmark session**. The resource list depends on the `INTERACTIVE_MODE` captured in Step 2.1.
 
@@ -9,11 +9,10 @@ After the report is generated, present the user with a **complete list of all Sn
 | Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level |
 | Interactive schema | `<DATABASE>.<INTERACTIVE_SCHEMA>` | Contains interactive tables |
 | Interactive tables | `<TABLE_1>`, `<TABLE_2>`, ... | In `<INTERACTIVE_SCHEMA>` |
-| SPCS database | `<SOLUTION_NAME>_BENCH_DB` | Account-level |
-| SPCS schema | `<SOLUTION_NAME>_BENCH_DB.SPCS` | Contains services + image repo |
-| Compute pool (API) | `<SOLUTION_NAME>_BENCH_API_POOL` | Account-level |
-| Compute pool (Locust) | `<SOLUTION_NAME>_BENCH_LOCUST_POOL` | Account-level |
-| Image repository | `<SOLUTION_NAME>_BENCH_IMAGES` | In SPCS schema |
+| SPCS database | `<SOLUTION_NAME>_DB` | Account-level |
+| SPCS schema | `<SOLUTION_NAME>_DB.SPCS` | Contains services |
+| Compute pool (API) | `<SOLUTION_NAME>_API_POOL` | Account-level |
+| Compute pool (Locust) | `<SOLUTION_NAME>_LOCUST_POOL` | Account-level |
 | Service (API) | `BENCHMARK_API` | In SPCS schema |
 | Service (Locust) | `BENCHMARK_LOCUST` | In SPCS schema |
 
@@ -22,11 +21,10 @@ After the report is generated, present the user with a **complete list of all Sn
 | Resource Type | Name | Location |
 |---|---|---|
 | Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level |
-| SPCS database | `<SOLUTION_NAME>_BENCH_DB` | Account-level |
-| SPCS schema | `<SOLUTION_NAME>_BENCH_DB.SPCS` | Contains services + image repo |
-| Compute pool (API) | `<SOLUTION_NAME>_BENCH_API_POOL` | Account-level |
-| Compute pool (Locust) | `<SOLUTION_NAME>_BENCH_LOCUST_POOL` | Account-level |
-| Image repository | `<SOLUTION_NAME>_BENCH_IMAGES` | In SPCS schema |
+| SPCS database | `<SOLUTION_NAME>_DB` | Account-level |
+| SPCS schema | `<SOLUTION_NAME>_DB.SPCS` | Contains services |
+| Compute pool (API) | `<SOLUTION_NAME>_API_POOL` | Account-level |
+| Compute pool (Locust) | `<SOLUTION_NAME>_LOCUST_POOL` | Account-level |
 | Service (API) | `BENCHMARK_API` | In SPCS schema |
 | Service (Locust) | `BENCHMARK_LOCUST` | In SPCS schema |
 
@@ -49,7 +47,7 @@ Then drop the schemas and warehouse via `snowflake_sql_execute`.
 ```sql
 USE ROLE <ROLE>;
 DROP SCHEMA IF EXISTS <DATABASE>.<INTERACTIVE_SCHEMA>;
-DROP SCHEMA IF EXISTS <SOLUTION_NAME>_BENCH_DB.SPCS;
+DROP SCHEMA IF EXISTS <SOLUTION_NAME>_DB.SPCS;
 DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
 ```
 
@@ -57,14 +55,14 @@ DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
 
 ```sql
 USE ROLE <ROLE>;
-DROP SCHEMA IF EXISTS <SOLUTION_NAME>_BENCH_DB.SPCS;
+DROP SCHEMA IF EXISTS <SOLUTION_NAME>_DB.SPCS;
 DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
 ```
 
 If the SPCS database was created entirely by this benchmark and is now empty, also drop it via `snowflake_sql_execute`:
 
 ```sql
-DROP DATABASE IF EXISTS <SOLUTION_NAME>_BENCH_DB;
+DROP DATABASE IF EXISTS <SOLUTION_NAME>_DB;
 ```
 
 If the user chooses **SPCS only**, use the `bash` tool:
