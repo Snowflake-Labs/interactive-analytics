@@ -14,7 +14,7 @@
 #   3. Suspends both SPCS services (Locust + API)
 #   4. Replaces the warehouse with new settings + re-attached tables
 #   5. Restores fallback warehouse (if any)
-#   6. Resumes both SPCS services
+#   6. Resumes the API service (Locust stays suspended until cache warm-up)
 #
 # Note: after replacement the data cache is cold and warms in the background.
 # An XS warehouse warms at ~300-400 MB/s; larger sizes are faster.
@@ -137,13 +137,8 @@ echo
 
 # --- Step 3: Suspend SPCS services ---
 echo "[3/6] Suspending SPCS services..."
-snow_sql_run "suspend services" <<EOF
-USE ROLE $ROLE;
-USE DATABASE $DB;
-USE SCHEMA $SCHEMA;
-ALTER SERVICE IF EXISTS $LOCUST_SERVICE SUSPEND;
-ALTER SERVICE IF EXISTS $API_SERVICE SUSPEND;
-EOF
+spcs service suspend "$LOCUST_SERVICE" 2>/dev/null || true
+spcs service suspend "$API_SERVICE" 2>/dev/null || true
 echo "  ✓ Services suspended."
 
 # --- Step 4: Replace the warehouse ---
@@ -175,12 +170,7 @@ fi
 
 # --- Step 6: Resume API service (Locust stays suspended) ---
 echo "[6/6] Resuming API service (Locust stays suspended until cache is warm)..."
-snow_sql_run "resume API service" <<EOF
-USE ROLE $ROLE;
-USE DATABASE $DB;
-USE SCHEMA $SCHEMA;
-ALTER SERVICE IF EXISTS $API_SERVICE RESUME;
-EOF
+spcs service resume "$API_SERVICE" 2>/dev/null || true
 echo "  ✓ API service resumed."
 echo "  ⏸ Locust service is still suspended — resume it AFTER running cache warm-up queries."
 
@@ -188,5 +178,5 @@ echo
 echo "=== Done. $FQ_WH reconfigured ($DESC). ==="
 echo "Note: cache is cold after replacement — you MUST run warm-up queries before resuming Locust."
 echo "After warm-up, resume Locust with:"
-echo "  ALTER SERVICE $LOCUST_SERVICE RESUME;"
+echo "  snow spcs service resume $LOCUST_SERVICE --connection $CONNECTION --role $ROLE --database $DB --schema $SCHEMA"
 echo "Run $SCRIPT_DIR/status.sh --wait to confirm services are back to READY."
