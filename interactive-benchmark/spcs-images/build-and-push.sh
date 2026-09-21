@@ -4,49 +4,34 @@
 # Usage:
 #   build-and-push.sh                          # uses .env in this directory
 #   build-and-push.sh --config /path/to/.env   # uses a custom config
-#
-# Required config variables: CONNECTION, ROLE, DB, SCHEMA, IMAGE_REPO,
-#   API_IMAGE, LOCUST_IMAGE, IMAGE_TAG.
+#   build-and-push.sh --create-db              # create DB if it doesn't exist
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Load configuration -----------------------------------------------------
-CONFIG_FILE=""
-while (( $# )); do
-  case "$1" in
-    --config) CONFIG_FILE="$2"; shift 2 ;;
-    *) echo "Unknown option: $1" >&2; exit 1 ;;
-  esac
+# --- Parse script-specific flags, then hand off to common.sh ----------------
+SCRIPT_ARGS=("$@")
+CREATE_DB=false
+_FILTERED=()
+for arg in "${SCRIPT_ARGS[@]}"; do
+  if [[ "$arg" == "--create-db" ]]; then
+    CREATE_DB=true
+  else
+    _FILTERED+=("$arg")
+  fi
 done
+SCRIPT_ARGS=("${_FILTERED[@]+"${_FILTERED[@]}"}")
+unset _FILTERED
 
-if [[ -z "$CONFIG_FILE" ]]; then
-  CONFIG_FILE="$SCRIPT_DIR/.env"
-fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/common.sh"
 
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "Config file not found: $CONFIG_FILE" >&2
-  echo "Create .env or pass --config /path/to/.env" >&2
-  exit 1
-fi
-
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
-
-: "${CONNECTION:?CONNECTION must be set in config}"
-: "${ROLE:?ROLE must be set in config}"
-: "${DB:?DB must be set in config}"
-: "${SCHEMA:?SCHEMA must be set in config}"
-: "${IMAGE_REPO:?IMAGE_REPO must be set in config}"
+# --- Image defaults ---------------------------------------------------------
 : "${API_IMAGE:=benchmark-api}"
 : "${LOCUST_IMAGE:=benchmark-locust}"
 : "${IMAGE_TAG:=latest}"
 
 # --- Helpers ----------------------------------------------------------------
-snow_sql() {
-  snow sql --connection "$CONNECTION" --role "$ROLE" "$@"
-}
-
 registry_url() {
   snow spcs image-registry url --connection "$CONNECTION" --role "$ROLE" 2>/dev/null | tr -d '"'
 }
@@ -62,15 +47,16 @@ image_ref() {
   echo "${reg}/${db_lower}/${schema_lower}/${repo_lower}/${image_name}:${IMAGE_TAG}"
 }
 
-# --- Check prerequisites ----------------------------------------------------
-for cmd in snow docker; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "Required command not found: $cmd" >&2; exit 1; }
-done
+# --- Check Docker -----------------------------------------------------------
+command -v docker >/dev/null 2>&1 || { echo "Required command not found: docker" >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo "Docker is not running. Please start Docker Desktop and try again." >&2; exit 1; }
 
-# --- Create database, schema, and image repository --------------------------
-echo "==> Ensuring database, schema, and image repository exist"
-snow_sql -q "CREATE DATABASE IF NOT EXISTS $DB"
+# --- Create database (only with --create-db), schema, and image repository ---
+if $CREATE_DB; then
+  echo "==> Creating database $DB (if not exists)"
+  snow_sql -q "CREATE DATABASE IF NOT EXISTS $DB"
+fi
+echo "==> Ensuring schema and image repository exist"
 snow_sql -q "CREATE SCHEMA IF NOT EXISTS $DB.$SCHEMA"
 snow_sql -q "CREATE IMAGE REPOSITORY IF NOT EXISTS $DB.$SCHEMA.$IMAGE_REPO"
 

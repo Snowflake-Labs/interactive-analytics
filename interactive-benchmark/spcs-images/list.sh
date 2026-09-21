@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # List the shared image repository and its images.
+#
+# Usage:
+#   list.sh                          # uses .env in this directory
+#   list.sh --config /path/to/.env   # uses a custom config
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# shellcheck disable=SC1090
-source "$SCRIPT_DIR/.env"
-
-: "${CONNECTION:?CONNECTION must be set in .env}"
-: "${ROLE:?ROLE must be set in .env}"
-: "${DB:?DB must be set in .env}"
-: "${SCHEMA:?SCHEMA must be set in .env}"
-: "${IMAGE_REPO:?IMAGE_REPO must be set in .env}"
+# --- Load common config and print connection info ---------------------------
+SCRIPT_ARGS=("$@")
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/common.sh"
 
 echo "=== Shared Image Resources: ${DB}.${SCHEMA} ==="
 echo
@@ -21,7 +21,7 @@ snow spcs image-registry url --connection "$CONNECTION" --role "$ROLE" 2>/dev/nu
 echo
 
 echo "--- Image Repository ---"
-snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
+snow_sql --format json -q \
   "SHOW IMAGE REPOSITORIES LIKE '${IMAGE_REPO}' IN SCHEMA ${DB}.${SCHEMA}" 2>/dev/null \
   | python3 -c '
 import json, sys
@@ -41,7 +41,7 @@ else:
 echo
 
 echo "--- Images ---"
-snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
+snow_sql --format json -q \
   "SHOW IMAGES IN IMAGE REPOSITORY ${DB}.${SCHEMA}.${IMAGE_REPO}" 2>/dev/null \
   | python3 -c '
 import json, sys
