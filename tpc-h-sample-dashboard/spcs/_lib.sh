@@ -55,6 +55,13 @@ export CONNECTION DB SCHEMA IMAGE_REPO ROLE DEPLOY_WAREHOUSE \
 # without one. Leave empty only if your account allows unrestricted egress.
 : "${BUILD_EAI_NAME:=}"
 
+if [[ "$BUILD_METHOD" == "spcs" && -z "$BUILD_EAI_NAME" ]]; then
+  echo "Warning: BUILD_EAI_NAME is empty while BUILD_METHOD=spcs." >&2
+  echo "The SPCS build job will have no network access and will likely fail" >&2
+  echo "if the Dockerfile needs to fetch packages (apt-get, pip, uv, curl)." >&2
+  echo "Set BUILD_EAI_NAME in config.env or switch to BUILD_METHOD=docker." >&2
+fi
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "Required command not found: $1" >&2

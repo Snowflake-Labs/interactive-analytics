@@ -91,7 +91,7 @@ EOF
 # Action: services
 # ---------------------------------------------------------------------------
 deploy_services() {
-  echo "==> [1/6] Setting up database and schema"
+  echo "==> [1/7] Setting up database and schema"
   snow_sql_run "prerequisites setup" <<EOF
 USE ROLE $ROLE;
 USE WAREHOUSE $DEPLOY_WAREHOUSE;
@@ -100,27 +100,27 @@ CREATE DATABASE IF NOT EXISTS $DB;
 CREATE SCHEMA IF NOT EXISTS $DB.$SCHEMA;
 EOF
 
-  echo "==> [2/6] Creating compute pools and image repository"
+  echo "==> [2/7] Creating compute pools and image repository"
   spcs_compute_pool_create "$DASHBOARD_COMPUTE_POOL" "$DASHBOARD_INSTANCE_FAMILY" \
     "$DASHBOARD_MIN_NODES" "$DASHBOARD_MAX_NODES"
   spcs_compute_pool_create "$LOCUST_COMPUTE_POOL" "$LOCUST_INSTANCE_FAMILY" \
     "$LOCUST_MIN_NODES" "$LOCUST_MAX_NODES"
   spcs_image_repo_create "$IMAGE_REPO"
 
-  echo "==> [3/6] Building and pushing container images"
+  echo "==> [3/7] Building and pushing container images"
   "$SCRIPT_DIR/build-and-push.sh"
 
-  echo "==> [4/6] Deploying dashboard API service ($DASHBOARD_SERVICE) on pool $DASHBOARD_COMPUTE_POOL"
+  echo "==> [4/7] Deploying dashboard API service ($DASHBOARD_SERVICE) on pool $DASHBOARD_COMPUTE_POOL"
   spcs_service_upsert "$DASHBOARD_SERVICE" "$DASHBOARD_COMPUTE_POOL" "$SCRIPT_DIR/specs/dashboard.yaml" \
     "$DASHBOARD_MIN_INSTANCES" "$DASHBOARD_MAX_INSTANCES"
 
-  echo "==> [5/6] Deploying isolated API server for locust ($LOCUST_API_SERVICE) on pool $LOCUST_COMPUTE_POOL"
+  echo "==> [5/7] Deploying isolated API server for locust ($LOCUST_API_SERVICE) on pool $LOCUST_COMPUTE_POOL"
   spcs_service_upsert "$LOCUST_API_SERVICE" "$LOCUST_COMPUTE_POOL" "$SCRIPT_DIR/specs/dashboard.yaml" 1 1
 
-  echo "==> Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
+  echo "==> [6/7] Deploying locust service ($LOCUST_SERVICE) on pool $LOCUST_COMPUTE_POOL"
   spcs_service_upsert "$LOCUST_SERVICE" "$LOCUST_COMPUTE_POOL" "$SCRIPT_DIR/specs/locust.yaml" 1 1
 
-  echo "==> [6/6] Waiting for services to become READY (this can take a few minutes)"
+  echo "==> [7/7] Waiting for services to become READY (this can take a few minutes)"
   "$SCRIPT_DIR/status.sh" --wait
 
   echo
