@@ -17,7 +17,6 @@ snowflake.log
 .env
 config.env
 .temp.env
-.env.Local
 .env.local
 
 # Plans
