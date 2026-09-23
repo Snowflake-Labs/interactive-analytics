@@ -36,7 +36,8 @@ POOL_SIZE = int(os.environ.get("POOL_SIZE", "40"))
 POOL_WARMUP = int(os.environ.get("POOL_WARMUP", "0"))
 POOL_ACQUIRE_TIMEOUT = float(os.environ.get("POOL_ACQUIRE_TIMEOUT", "30"))
 WORKERS = int(os.environ.get("WORKERS", "1"))
-LOOKBACK_DAYS = 15
+LOOKBACK_DAYS_OPTIONS = [15, 30, 90, 180]
+DEFAULT_LOOKBACK_DAYS = 90
 TARGETS = ["standard", "interactive"]
 DEFAULT_TARGET = "interactive"
 
@@ -118,12 +119,24 @@ def resolve_scale(raw: str | None) -> str:
     return scale
 
 
-def boundaries_cte() -> str:
+def resolve_lookback(raw: str | int | None) -> int:
+    if raw is None:
+        return DEFAULT_LOOKBACK_DAYS
+    try:
+        val = int(raw)
+    except (ValueError, TypeError):
+        return DEFAULT_LOOKBACK_DAYS
+    if val not in LOOKBACK_DAYS_OPTIONS:
+        return DEFAULT_LOOKBACK_DAYS
+    return val
+
+
+def boundaries_cte(lookback_days: int = DEFAULT_LOOKBACK_DAYS) -> str:
     return f"""
 WITH boundaries AS (
   SELECT
     MAX(L_SHIPDATE) AS end_date,
-    DATEADD(day, -{LOOKBACK_DAYS}, MAX(L_SHIPDATE)) AS start_date
+    DATEADD(day, -{lookback_days}, MAX(L_SHIPDATE)) AS start_date
   FROM LINEITEM_DASHBOARD
 )"""
 
@@ -140,6 +153,7 @@ def build_dashboard_query(
     *,
     select: str,
     segment: str | None,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     extra_where: list[str] | None = None,
     group_by: str = "",
     order_by: str = "",
@@ -154,7 +168,7 @@ def build_dashboard_query(
         where.extend(extra_where)
 
     parts = [
-        boundaries_cte().strip(),
+        boundaries_cte(lookback_days).strip(),
         select.strip(),
         "FROM LINEITEM_DASHBOARD l",
         "CROSS JOIN boundaries",
@@ -325,9 +339,10 @@ def run_dashboard_query(
     target: str,
     scale: str,
     segment: str | None,
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     **options: Any,
 ) -> tuple[list[dict[str, Any]], int]:
-    sql, binds = build_dashboard_query(segment=segment, **options)
+    sql, binds = build_dashboard_query(segment=segment, lookback_days=lookback_days, **options)
     return execute_query(sql, target, scale, binds)
 
 
@@ -346,7 +361,8 @@ def request_params(
     warehouse: str | None,
     scale: str | None,
     segment: str | None,
-) -> tuple[str, str, str | None]:
+    lookback: str | None = None,
+) -> tuple[str, str, str | None, int]:
     try:
         target = resolve_target(warehouse)
         resolved_scale = resolve_scale(scale)
@@ -359,7 +375,9 @@ def request_params(
         trimmed = segment.strip()
         resolved_segment = trimmed if trimmed else None
 
-    return target, resolved_scale, resolved_segment
+    resolved_lookback = resolve_lookback(lookback)
+
+    return target, resolved_scale, resolved_segment, resolved_lookback
 
 
 @asynccontextmanager
@@ -506,7 +524,8 @@ def api_config(
             "scale": resolved_scale,
             "defaultScale": DEFAULT_SCALE,
             "scales": SCALES,
-            "lookbackDays": LOOKBACK_DAYS,
+            "lookbackDays": DEFAULT_LOOKBACK_DAYS,
+            "lookbackDaysOptions": LOOKBACK_DAYS_OPTIONS,
             "standard": {
                 "schema": schema_for_target("standard", resolved_scale),
                 "warehouse": warehouse_for_target("standard", resolved_scale),
@@ -522,16 +541,18 @@ def api_config(
 
 @app.get("/api/segments")
 async def api_segments(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select="SELECT DISTINCT l.L_MKTSEGMENT AS market_segment",
         extra_where=["l.L_MKTSEGMENT IS NOT NULL"],
         order_by="ORDER BY market_segment ASC",
@@ -545,16 +566,18 @@ async def api_segments(request: Request):
 
 @app.get("/api/kpis")
 async def api_kpis(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select=f"""SELECT
           COUNT(DISTINCT l.L_ORDERKEY) AS total_orders,
           ROUND(SUM({lineitem_revenue("l")}), 2) AS total_revenue,
@@ -567,16 +590,18 @@ async def api_kpis(request: Request):
 
 @app.get("/api/orders-over-time")
 async def api_orders_over_time(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select=f"""SELECT
           DATE_TRUNC('day', l.L_SHIPDATE) AS order_day,
           COUNT(DISTINCT l.L_ORDERKEY) AS total_orders,
@@ -589,16 +614,18 @@ async def api_orders_over_time(request: Request):
 
 @app.get("/api/by-segment")
 async def api_by_segment(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select=f"""SELECT l.L_MKTSEGMENT AS market_segment,
                COUNT(DISTINCT l.L_ORDERKEY) AS order_count,
                SUM({lineitem_revenue("l")}) AS revenue""",
@@ -610,16 +637,18 @@ async def api_by_segment(request: Request):
 
 @app.get("/api/by-region")
 async def api_by_region(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select=f"""SELECT l.L_REGIONNAME AS region,
                COUNT(DISTINCT l.L_ORDERKEY) AS order_count,
                SUM({lineitem_revenue("l")}) AS revenue""",
@@ -631,16 +660,18 @@ async def api_by_region(request: Request):
 
 @app.get("/api/latest-orders")
 async def api_latest_orders(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select=f"""SELECT l.L_ORDERKEY AS order_id,
              MAX(l.L_SHIPDATE) AS order_date,
              l.L_ORDERSTATUS AS status,
@@ -656,16 +687,18 @@ async def api_latest_orders(request: Request):
 
 @app.get("/api/table-stats")
 async def api_table_stats(request: Request):
-    target, scale, segment = request_params(
+    target, scale, segment, lookback = request_params(
         warehouse=request.query_params.get("warehouse"),
         scale=request.query_params.get("scale"),
         segment=request.query_params.get("segment"),
+        lookback=request.query_params.get("lookback"),
     )
     rows, query_ms = await asyncio.to_thread(
         run_dashboard_query,
         target,
         scale,
         segment,
+        lookback,
         select="""SELECT
         COUNT(*) AS lineitem_rows,
         COUNT(DISTINCT l.L_ORDERKEY) AS order_rows""",
