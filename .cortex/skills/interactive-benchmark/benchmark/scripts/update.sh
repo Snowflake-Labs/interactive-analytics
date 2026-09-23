@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild + push images and ALTER SERVICE both services in-place (URLs preserved).
+# Rebuild + push images and upgrade both services in-place (URLs preserved).
 #
 # Flags:
 #   --queries-only   Upload new .sql files to the stage and restart the API
@@ -31,26 +31,12 @@ fi
 "$SCRIPT_DIR/upload-queries.sh"
 "$SCRIPT_DIR/build-and-push.sh"
 
-alter_service() {
-  local svc="$1"
-  local spec_file="$2"
-  local rendered
-  rendered="$(render_spec "$spec_file")"
-
-  snow_sql_run "alter service $svc" <<EOF
-USE ROLE $ROLE;
-USE DATABASE $DB;
-USE SCHEMA $SCHEMA;
-ALTER SERVICE $svc FROM SPECIFICATION \$\$
-$rendered
-\$\$;
-EOF
-}
-
 echo "==> Updating API service"
-alter_service "$API_SERVICE" "$SPCS_DIR/specs/api.yaml"
+spcs_service_upsert "$API_SERVICE" "$API_COMPUTE_POOL" "$SPCS_DIR/specs/api.yaml" \
+  "$API_MIN_INSTANCES" "$API_MAX_INSTANCES"
 
 echo "==> Updating locust service"
-alter_service "$LOCUST_SERVICE" "$SPCS_DIR/specs/locust.yaml"
+spcs_service_upsert "$LOCUST_SERVICE" "$LOCUST_COMPUTE_POOL" "$SPCS_DIR/specs/locust.yaml" 1 1
 
 "$SCRIPT_DIR/status.sh" --urls-only
+
