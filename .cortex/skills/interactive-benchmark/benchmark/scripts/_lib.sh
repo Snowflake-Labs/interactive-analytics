@@ -110,9 +110,7 @@ check_snow_cli_version() {
 require_cmd snow
 check_snow_cli_version
 require_cmd envsubst
-# spcs_service_upsert uses zsh's =() process substitution so rendered specs
-# never touch disk as a tempfile we have to create and remember to clean up.
-require_cmd zsh
+
 if [[ "$BUILD_METHOD" == "docker" ]]; then
   require_cmd docker
 fi
@@ -212,20 +210,16 @@ spcs_image_repo_create() {
 }
 
 # Run `snow spcs service <create|upgrade>` with --spec-path pointed at a
-# zsh =() process substitution instead of a self-managed mktemp file: the
-# rendered spec (env-substituted YAML with role/database/warehouse names)
-# never lands on disk as a tempfile we have to remember to delete — zsh
-# creates and removes it around the single command invocation.
+# temporary file that is cleaned up automatically on exit.
 spcs_apply_spec() {
   local action="$1" svc="$2" spec_content="$3"
   shift 3
-  zsh -f -c '
-    setopt ERR_EXIT
-    action=$1; svc=$2; spec=$3
-    shift 3
-    snow spcs service "$action" "$svc" --spec-path =(print -r -- "$spec") \
-      --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@"
-  ' zsh "$action" "$svc" "$spec_content" "$@"
+  local tmpspec
+  tmpspec="$(mktemp)"
+  trap 'rm -f "$tmpspec"' RETURN
+  printf '%s\n' "$spec_content" > "$tmpspec"
+  snow spcs service "$action" "$svc" --spec-path "$tmpspec" \
+    --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@"
 }
 
 # Create-or-upgrade a service in place: create if missing, otherwise upgrade
