@@ -157,6 +157,13 @@
         <select id="segment-filter" title="Filter orders by customer market segment — exercises selective scans on clustered keys.">
             <option value="">All segments</option>
         </select>
+        <label for="lookback-select">Lookback</label>
+        <select id="lookback-select" title="Number of days to look back from the most recent ship date">
+            <option value="15">15 days</option>
+            <option value="30">30 days</option>
+            <option value="90" selected>90 days</option>
+            <option value="180">180 days</option>
+        </select>
         <span class="hint">Toggle warehouses to compare live query latency on the same TPC-H tables and schema.</span>
     </div>
 
@@ -208,6 +215,7 @@
         let currentWarehouse = 'interactive';
         let currentScale = '10';
         let currentSegment = '';
+        let currentLookback = '90';
         let fetchGeneration = 0;
         let segmentsGeneration = 0;
 
@@ -285,6 +293,7 @@
             const p = new URLSearchParams();
             p.set('warehouse', currentWarehouse);
             p.set('scale', currentScale);
+            p.set('lookback', currentLookback);
             if (currentSegment) p.set('segment', currentSegment);
             return p;
         }
@@ -425,7 +434,7 @@
                 if (gen !== fetchGeneration) return;
 
                 const suffix = currentSegment ? ` — ${currentSegment}` : '';
-                document.getElementById('h-orders-time').textContent = `Orders & Revenue Over Time — last 7 days (SF${currentScale})` + suffix;
+                document.getElementById('h-orders-time').textContent = `Orders & Revenue Over Time — last ${currentLookback} days (SF${currentScale})` + suffix;
                 document.getElementById('h-by-region').textContent = `Orders by Region (SF${currentScale})` + suffix;
                 document.getElementById('h-latest').textContent = `Latest Orders (SF${currentScale})` + suffix;
 
@@ -477,6 +486,10 @@
                     currentScale = cfg.defaultScale;
                     document.getElementById('scale-select').value = cfg.defaultScale;
                 }
+                if (cfg.lookbackDays && document.getElementById('lookback-select').querySelector(`option[value="${cfg.lookbackDays}"]`)) {
+                    currentLookback = String(cfg.lookbackDays);
+                    document.getElementById('lookback-select').value = currentLookback;
+                }
             } catch (err) {
                 console.warn('Could not load config:', err);
             }
@@ -486,6 +499,10 @@
 
         initCharts();
         document.getElementById('scale-select').addEventListener('change', (e) => setScale(e.target.value));
+        document.getElementById('lookback-select').addEventListener('change', (e) => {
+            currentLookback = e.target.value;
+            void refreshDashboard(true, false);
+        });
         document.getElementById('segment-filter').addEventListener('change', (e) => {
             currentSegment = e.target.value;
             latencies.length = 0;
