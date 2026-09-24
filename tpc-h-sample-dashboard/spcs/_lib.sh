@@ -200,12 +200,14 @@ spcs_image_repo_create() {
 spcs_apply_spec() {
   local action="$1" svc="$2" spec_content="$3"
   shift 3
-  local tmpspec
+  local tmpspec rc
   tmpspec="$(mktemp)"
-  trap 'rm -f "$tmpspec"' RETURN
   printf '%s\n' "$spec_content" > "$tmpspec"
+  rc=0
   snow spcs service "$action" "$svc" --spec-path "$tmpspec" \
-    --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@"
+    --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@" || rc=$?
+  rm -f -- "$tmpspec"
+  return "$rc"
 }
 
 # Create-or-upgrade a service in place: create if missing, otherwise upgrade
