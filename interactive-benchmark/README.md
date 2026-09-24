@@ -26,8 +26,7 @@ used in Dashboard along with other queries. The query must answer in less than a
 second. The database with the table used by the query is DM_TESTTPCH_BENCH_DB and
 the schema is TPCH_SF100. The filter on order date will be different and also it
 might happen that users filter data for specific nation or region or even market.
-How can I make sure that I can obtain the performance I need? Use the "PM"
-connection to connect to Snowflake.
+How can I make sure that I can obtain the performance I need?
 
 Please also run a benchmark so that I can see how it performs when there are 50
 concurrent users
@@ -83,7 +82,7 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
 
 ### Prerequisites
 
-- Docker Desktop.
+- Docker Desktop (recommended). If Docker is not available, images can be built server-side with `snow spcs service build-image` — see [Building without Docker](#building-without-docker) below.
 - `snow` CLI configured with a connection that has privileges to `CREATE COMPUTE POOL`, `CREATE IMAGE REPOSITORY`, and `CREATE SERVICE`.
 - The API's runtime role needs `USAGE` on the interactive warehouse and `SELECT` on the interactive schema.
 
@@ -115,6 +114,21 @@ $SCRIPTS/update.sh --queries-only  # upload new queries + restart API (no image 
 $SCRIPTS/upload-queries.sh      # upload .sql files to the queries stage
 $SCRIPTS/resize-wh.sh --size M  # resize the interactive warehouse
 $SCRIPTS/teardown.sh            # drop services, compute pools, and image repo
+```
+
+### Building without Docker
+
+If you don't have Docker Desktop installed, you can build images directly on SPCS by setting `BUILD_METHOD=spcs` in `spcs/config.env`. Server-side builds require an External Access Integration (EAI) so the build job can reach package registries (PyPI, Docker Hub, Ubuntu apt). A helper script is provided to create the necessary network rule and EAI:
+
+```bash
+$SCRIPTS/create-eai.sh
+```
+
+The script prints the integration name to add to `config.env`:
+
+```
+BUILD_EAI_NAME=<integration_name>
+BUILD_METHOD=spcs
 ```
 
 ## Running Locally (manual)

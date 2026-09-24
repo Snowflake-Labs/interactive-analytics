@@ -44,10 +44,10 @@ export CONNECTION DB SCHEMA IMAGE_REPO ROLE DEPLOY_WAREHOUSE \
 : "${DASHBOARD_MEMORY_LIMIT:=4Gi}"
 : "${DASHBOARD_MIN_INSTANCES:=1}"
 : "${DASHBOARD_MAX_INSTANCES:=4}"
-# BUILD_METHOD=spcs (default) builds images server-side via
-# `snow spcs service build-image`, no local Docker daemon required.
-# BUILD_METHOD=docker uses local `docker build`/`docker push` instead.
-: "${BUILD_METHOD:=spcs}"
+# BUILD_METHOD=docker (default) uses local `docker build`/`docker push`.
+# BUILD_METHOD=spcs builds images server-side via `snow spcs service
+# build-image`, no local Docker daemon required.
+: "${BUILD_METHOD:=docker}"
 : "${BUILD_COMPUTE_POOL:=$DASHBOARD_COMPUTE_POOL}"
 # Space-separated external access integration names the build-image job
 # needs for network egress (uv/pip install, apt-get, curl). Required in
@@ -112,9 +112,7 @@ check_snow_cli_version() {
 require_cmd snow
 check_snow_cli_version
 require_cmd envsubst
-# spcs_service_upsert uses zsh's =() process substitution so rendered specs
-# never touch disk as a tempfile we have to create and remember to clean up.
-require_cmd zsh
+
 if [[ "$BUILD_METHOD" == "docker" ]]; then
   require_cmd docker
 fi
@@ -198,20 +196,16 @@ spcs_image_repo_create() {
 }
 
 # Run `snow spcs service <create|upgrade>` with --spec-path pointed at a
-# zsh =() process substitution instead of a self-managed mktemp file: the
-# rendered spec (env-substituted YAML with role/database/warehouse names)
-# never lands on disk as a tempfile we have to remember to delete — zsh
-# creates and removes it around the single command invocation.
+# temporary file that is cleaned up automatically on exit.
 spcs_apply_spec() {
   local action="$1" svc="$2" spec_content="$3"
   shift 3
-  zsh -f -c '
-    setopt ERR_EXIT
-    action=$1; svc=$2; spec=$3
-    shift 3
-    snow spcs service "$action" "$svc" --spec-path =(print -r -- "$spec") \
-      --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@"
-  ' zsh "$action" "$svc" "$spec_content" "$@"
+  local tmpspec
+  tmpspec="$(mktemp)"
+  trap 'rm -f "$tmpspec"' RETURN
+  printf '%s\n' "$spec_content" > "$tmpspec"
+  snow spcs service "$action" "$svc" --spec-path "$tmpspec" \
+    --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@"
 }
 
 # Create-or-upgrade a service in place: create if missing, otherwise upgrade

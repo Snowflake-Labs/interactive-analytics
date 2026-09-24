@@ -45,7 +45,7 @@ export API_WORKERS API_POOL_WARMUP API_POOL_ACQUIRE_TIMEOUT \
 # BUILD_METHOD=spcs (default) builds images server-side via
 # `snow spcs service build-image`, no local Docker daemon required.
 # BUILD_METHOD=docker uses local `docker build`/`docker push` instead.
-: "${BUILD_METHOD:=spcs}"
+: "${BUILD_METHOD:=docker}"
 : "${BUILD_COMPUTE_POOL:=$API_COMPUTE_POOL}"
 # Space-separated external access integration names the build-image job
 # needs for network egress (uv/pip install, apt-get, curl). Required in

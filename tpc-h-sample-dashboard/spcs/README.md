@@ -58,7 +58,7 @@ the database/schema and resizing the demo warehouses.
 ## Prerequisites
 
 - `snow` CLI configured with the connection listed in `config.env` (`PM` by default).
-  `BUILD_METHOD=spcs` (default) requires `snow` CLI >= 3.16.0 (`snow spcs
+  `BUILD_METHOD=spcs` requires `snow` CLI >= 3.16.0 (`snow spcs
   service build-image` doesn't exist before that); 3.18.0+ is recommended —
   the scripts warn if you're below it. `_lib.sh` checks this automatically.
 - The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
@@ -66,13 +66,12 @@ the database/schema and resizing the demo warehouses.
 - The dashboard's runtime role (`DASHBOARD_ROLE`) needs `USAGE` on the TPC-H
   warehouses (`${SOLUTION_NAME}_BENCH_WH_*`) and `SELECT` on the
   `${SOLUTION_NAME}_BENCH_DB.TPCH_SF*_*` schemas.
-- Docker Desktop (or any local buildx-capable daemon) — **only** if you set
-  `BUILD_METHOD=docker` in `config.env`. The default, `BUILD_METHOD=spcs`,
-  builds images server-side with `snow spcs service build-image` and needs no
-  local Docker daemon.
-- `zsh` — used for `=()` process substitution so rendered service specs never
-  touch disk as a lingering tempfile. macOS ships zsh by default; Linux users
-  may need to install it.
+- Docker Desktop (or any local buildx-capable daemon) — the default build
+  method (`BUILD_METHOD=docker`) uses `docker build` / `docker push`.
+  If Docker is not available, set `BUILD_METHOD=spcs` in `config.env` to build
+  images server-side with `snow spcs service build-image` — see
+  [Build methods](#build-methods) below. A helper script (`create-eai.sh`) is
+  provided to create the External Access Integration the SPCS build job needs.
 
 ## First-time deploy
 
@@ -239,7 +238,7 @@ GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_LOCUST!ALL_ENDPOINTS_
 `BUILD_METHOD` in `config.env` controls how `build-and-push.sh` (and
 `update.sh`, `deploy.sh services`) produce the two container images:
 
-- `spcs` (default) — `snow spcs service build-image` uploads the build
+- `spcs` — `snow spcs service build-image` uploads the build
   context to a temp stage and runs the build as a job service on
   `BUILD_COMPUTE_POOL`, pushing straight to the image repo. No local Docker
   daemon, no `image-registry login`. This is an experimental `snow` CLI
@@ -247,8 +246,10 @@ GRANT SERVICE ROLE <SOLUTION_NAME>_BENCH_DB.SPCS.DASHBOARD_LOCUST!ALL_ENDPOINTS_
   duration of the run. The build job needs internet egress (apt-get, curl,
   `uv sync` from PyPI) — set `BUILD_EAI_NAME` in `config.env` to one or more
   space-separated external access integrations the build compute pool's role
-  can use, or the build will fail trying to reach the network.
-- `docker` — the original local `docker build --platform linux/amd64` +
+  can use, or the build will fail trying to reach the network. Run
+  `./create-eai.sh` to create the necessary network rule and EAI, then set
+  `BUILD_EAI_NAME` in `config.env` to the integration name it prints.
+- `docker` (default) — the local `docker build --platform linux/amd64` +
   `docker push` path, useful when you want to build on your own machine (e.g.
   to compare a local build against the SPCS one) or don't have permission to
   run `build-image` jobs.
