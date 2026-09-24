@@ -67,7 +67,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of the SPCS to
     └── spcs/             # SPCS deployment config and service specs
 
 interactive-benchmark/spcs-images/
-├── build-and-push.sh     # Build and push both container images
+├── Dockerfile            # Unified production image for both roles
+├── role-entrypoint.sh    # Dispatches BENCHMARK_ROLE=api|locust
+├── build-and-push.sh     # Local development image helper
 ├── api/                  # Benchmark API image (Dockerfile, server.py, entrypoint)
 └── locust/               # Locust image (Dockerfile, locustfile.py, entrypoint)
 ```
@@ -97,6 +99,8 @@ interactive-benchmark/spcs-images/build-and-push.sh
 ```
 
 The script reads image names and registry info from the skill's `config.env`. You only need to rebuild if you modify the API or Locust source code.
+Production image publishing is maintained in the internal
+`snowflake-eng/interactive-analytics-images` repository.
 
 ### Configuration
 

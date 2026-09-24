@@ -31,6 +31,19 @@ USERS="${LOCUST_USERS:-10}"
 SPAWN="${LOCUST_SPAWN:-5}"
 WEB_PORT="${LOCUST_WEB_PORT:-8089}"
 RUN_TIME="${LOCUST_RUN_TIME:-3m}"
+API_READY_TIMEOUT_SECONDS="${API_READY_TIMEOUT_SECONDS:-300}"
+API_READY_POLL_SECONDS="${API_READY_POLL_SECONDS:-2}"
+
+LOCUST_BIN="${BENCHMARK_LOCUST_BIN:-/opt/venvs/locust/bin/locust}"
+LOCUST_FILE="${BENCHMARK_LOCUST_FILE:-/app/locust/locustfile.py}"
+HTTP_PYTHON="${BENCHMARK_HTTP_PYTHON:-/opt/venvs/locust/bin/python}"
+if [[ ! -x "$LOCUST_BIN" && -x /opt/venv/bin/locust ]]; then
+  LOCUST_BIN=/opt/venv/bin/locust
+  HTTP_PYTHON="${BENCHMARK_HTTP_PYTHON:-/opt/venv/bin/python}"
+fi
+if [[ ! -f "$LOCUST_FILE" && -f /app/locustfile.py ]]; then
+  LOCUST_FILE=/app/locustfile.py
+fi
 
 # Baseline thresholds
 BASELINE_RUN_TIME="${BASELINE_RUN_TIME:-1m}"
@@ -40,6 +53,31 @@ BASELINE_MAX_P99_MS="${BASELINE_MAX_P99_MS:-500}"
 echo "[entrypoint] target=$LOCUST_HOST users=$USERS spawn=$SPAWN"
 echo "[entrypoint] baseline: run_time=$BASELINE_RUN_TIME max_failure_pct=$BASELINE_MAX_FAILURE_PCT max_p99_ms=$BASELINE_MAX_P99_MS"
 echo "[entrypoint] benchmark: run_time=$RUN_TIME"
+
+wait_for_api() {
+  local ready_url="${LOCUST_HOST%/}/api/ready"
+  local deadline=$((SECONDS + API_READY_TIMEOUT_SECONDS))
+
+  echo "[entrypoint] Waiting up to ${API_READY_TIMEOUT_SECONDS}s for ${ready_url}"
+  while (( SECONDS < deadline )); do
+    if "$HTTP_PYTHON" - "$ready_url" >/dev/null 2>&1 <<'PY'
+import sys
+import urllib.request
+
+with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
+    if response.status != 200:
+        raise SystemExit(1)
+PY
+    then
+      echo "[entrypoint] API is ready."
+      return 0
+    fi
+    sleep "$API_READY_POLL_SECONDS"
+  done
+
+  echo "[entrypoint] ERROR: API did not become ready within ${API_READY_TIMEOUT_SECONDS}s." >&2
+  return 1
+}
 
 # ---------------------------------------------------------------------------
 # Helper: print a results banner from a CSV prefix
@@ -129,7 +167,11 @@ echo ""
 echo "===== PHASE 1: BASELINE TEST ====="
 echo "[baseline] Running BaselineUser for $BASELINE_RUN_TIME with $USERS users..."
 
-uv run --no-sync locust -f /app/locustfile.py BaselineUser \
+if ! wait_for_api; then
+  exit 1
+fi
+
+"$LOCUST_BIN" -f "$LOCUST_FILE" BaselineUser \
   --host "$LOCUST_HOST" \
   --web-host 0.0.0.0 \
   --web-port "$WEB_PORT" \
@@ -164,7 +206,7 @@ echo ""
 echo "===== PHASE 2: SNOWFLAKE BENCHMARK ====="
 echo "[benchmark] Running BenchmarkUser for $RUN_TIME with $USERS users..."
 
-uv run --no-sync locust -f /app/locustfile.py BenchmarkUser \
+"$LOCUST_BIN" -f "$LOCUST_FILE" BenchmarkUser \
   --host "$LOCUST_HOST" \
   --web-host 0.0.0.0 \
   --web-port "$WEB_PORT" \
