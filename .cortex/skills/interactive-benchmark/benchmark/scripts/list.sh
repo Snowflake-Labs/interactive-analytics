@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# List all SPCS resources: per-benchmark services and compute pools,
-# plus the shared image repository.
+# List the selected approved image and per-benchmark SPCS resources.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,13 +9,9 @@ source "$SCRIPT_DIR/_lib.sh"
 echo "=== SPCS Resources for ${DB}.${SCHEMA} ==="
 echo
 
-echo "--- Image Registry URL ---"
-registry_url
-echo
-
-echo "--- Shared Image Repository (${IMAGE_DB}.${IMAGE_SCHEMA}.${IMAGE_REPO}) ---"
-snow sql --connection "$CONNECTION" --format json -q \
-  "SHOW IMAGE REPOSITORIES LIKE '${IMAGE_REPO}' IN SCHEMA ${IMAGE_DB}.${IMAGE_SCHEMA}" 2>/dev/null \
+echo "--- Selected Image (${IMAGE_DB}.${IMAGE_SCHEMA}.${IMAGE_REPO}) ---"
+snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
+  "SHOW IMAGES LIKE '${BENCHMARK_IMAGE}' IN IMAGE REPOSITORY ${IMAGE_DB}.${IMAGE_SCHEMA}.${IMAGE_REPO}" 2>/dev/null \
   | python3 -c '
 import json, sys
 data = sys.stdin.read().strip()
@@ -28,14 +23,15 @@ else:
         print("  (none)")
     else:
         for r in rows:
-            name = r.get("name") or r.get("NAME")
-            url = r.get("repository_url") or r.get("REPOSITORY_URL") or ""
-            print(f"  {name:30s} {url}")
+            name = r.get("image_name") or r.get("IMAGE_NAME")
+            tags = r.get("tags") or r.get("TAGS") or ""
+            digest = r.get("digest") or r.get("DIGEST") or ""
+            print(f"  {name}:{tags}  digest={digest}")
 '
 echo
 
 echo "--- Services ---"
-snow sql --connection "$CONNECTION" --format json -q \
+snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
   "SHOW SERVICES IN SCHEMA ${DB}.${SCHEMA}" 2>/dev/null \
   | python3 -c '
 import json, sys
@@ -56,7 +52,7 @@ else:
 echo
 
 echo "--- Compute Pools ---"
-snow sql --connection "$CONNECTION" --format json -q \
+snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
   "SHOW COMPUTE POOLS LIKE '${SOLUTION_NAME}_BENCH%'" 2>/dev/null \
   | python3 -c '
 import json, sys

@@ -19,18 +19,17 @@ cd interactive-analytics
 |------|---------|---------|
 | **Cortex Code** (Desktop or CLI) | Runs the skill | [Docs](https://docs.snowflake.com/en/user-guide/ui-snowsight/cortex-code) |
 | **`snow` CLI** | Snowflake CLI for SPCS operations | `pip install snowflake-cli` or `brew install snowflake-cli` |
-| **`uv`** | Python package runner (used by the API and Locust) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| **Python 3** | Validates image metadata returned by Snowflake | [python.org](https://www.python.org/downloads/) |
 | **`envsubst`** | Renders YAML specs from templates | Comes with `gettext` (`brew install gettext` on macOS) |
-
-### For building container images (one-time)
-
-| Tool | Purpose | Install |
-|------|---------|---------|
-| **Docker Desktop** | Builds and pushes SPCS container images | [docker.com](https://www.docker.com/get-started) |
 
 ## 3. Configure a Snowflake connection
 
-Make sure you have a connection in `~/.snowflake/connections.toml` with a role that can create databases, warehouses, compute pools, image repositories, and services. `ACCOUNTADMIN` or `SYSADMIN` with appropriate grants will work.
+Make sure you have a connection in `~/.snowflake/connections.toml` with a role
+that can create the benchmark database/schema/stage, warehouses, compute pools,
+services, and public service endpoints; use `DEPLOY_WAREHOUSE`; and read the
+approved System Registry image. `ACCOUNTADMIN` or `SYSADMIN` with appropriate
+grants will work. `deploy.sh` verifies image access before creating resources.
+Benchmark users do not need Docker or `CREATE IMAGE REPOSITORY`.
 
 ```toml
 # ~/.snowflake/connections.toml
@@ -48,15 +47,12 @@ Verify the connection:
 snow connection test -c myconn
 ```
 
-## 4. Build and push container images
+## 4. Verify the approved image
 
-Before the first benchmark run, build and push the container images to the SPCS image repository. This requires Docker Desktop and only needs to be done once (or when the API/Locust source code changes).
-
-```bash
-interactive-benchmark/spcs-images/build-and-push.sh
-```
-
-The script reads the image registry and naming info from the skill's `config.env`.
+The benchmark uses one immutable approved image from
+`SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES` for both API and Locust roles.
+`deploy.sh` checks the exact configured image and tag before creating compute
+pools, so no Docker setup is required.
 
 ## 5. Open the project in Cortex Code
 
@@ -140,9 +136,6 @@ $SCRIPTS/resize-wh.sh --size MEDIUM --mcw 5
 $SCRIPTS/logs.sh api
 $SCRIPTS/logs.sh locust
 
-# Rebuild and push container images (if source code changed)
-interactive-benchmark/spcs-images/build-and-push.sh
-
 # Upload new queries and restart the API
 $SCRIPTS/update.sh
 
@@ -152,6 +145,6 @@ $SCRIPTS/upload-queries.sh
 # List all SPCS resources
 $SCRIPTS/list.sh
 
-# Tear everything down
+# Drop benchmark services and compute pools
 $SCRIPTS/teardown.sh
 ```

@@ -1,13 +1,16 @@
 spec:
   containers:
     - name: locust
-      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${LOCUST_IMAGE}:${IMAGE_TAG}
+      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${BENCHMARK_IMAGE}:${IMAGE_TAG}
       env:
+        BENCHMARK_ROLE: "locust"
         LOCUST_HOST: "${LOCUST_HOST}"
         LOCUST_WEB_PORT: "${LOCUST_WEB_PORT}"
         LOCUST_USERS: "${LOCUST_USERS}"
         LOCUST_SPAWN: "${LOCUST_SPAWN}"
         LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
+        API_READY_TIMEOUT_SECONDS: "${API_READY_TIMEOUT_SECONDS}"
+        API_READY_POLL_SECONDS: "${API_READY_POLL_SECONDS}"
         BASELINE_MAX_P99_MS: "40000"
       resources:
         requests:
