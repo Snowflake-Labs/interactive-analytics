@@ -54,7 +54,7 @@ graph LR
 
 - **`05-postgres-cleanup.sql`** -- Run on Postgres. Drops the demo tables.
 
-- **`06-snowflake-clenup.sql`** -- Run on Snowflake. Drops the agent, mirror, and optionally the demo database and interactive warehouse.
+- **`06-snowflake-cleanup.sql`** -- Run on Snowflake. Drops the agent, mirror, and optionally the demo database and interactive warehouse.
 
 ## Additional References
 

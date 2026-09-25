@@ -3,7 +3,7 @@
 */
 
 /*
-    Insert 500 additional readings with varied logic
+    Insert  additional readings with varied logic
 */
 INSERT INTO demo.readings (sensor_id, value, ts)
 SELECT
@@ -15,7 +15,7 @@ SELECT
     -- Spreads the data over the last 24 hours
     NOW() - (random() * (24 * 60) * '1 minute'::interval) as ts
 FROM demo.sensors s
-CROSS JOIN generate_series(1, 50) -- 10 sensors * 50 iterations = 500 rows
+CROSS JOIN generate_series(1, 50) 
 ORDER BY random();
 
 /*

@@ -1,5 +1,6 @@
 /*
     Run on Postgres
+    Sample assumes you have an instance named DEMOPG
 */
 
 SELECT * FROM information_schema.tables

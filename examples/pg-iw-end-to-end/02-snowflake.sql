@@ -5,21 +5,18 @@
 USE WAREHOUSE COMPUTE_WH;
 USE ROLE SYSADMIN;
 
-CREATE DATABASE IF NOT EXISTS DEMODB;
-USE DATABASE DEMODB;
-
 /*
     Set permissions for mirroring to work
 */
 GRANT APPLICATION ROLE snowflake.postgres_mirror_admin TO ROLE SYSADMIN;
-GRANT USAGE ON POSTGRES INSTANCE "DM_PG" TO APPLICATION snowflake;
+GRANT USAGE ON POSTGRES INSTANCE "DEMOPG" TO APPLICATION snowflake;
 
 /*
     Create mirror
  */
 CALL snowflake.postgres.create_mirror(
     mirror_name         => 'iot_mirror',
-    postgres_instance   => 'DM_PG',
+    postgres_instance   => 'DEMOPG',
     postgres_database   => 'postgres',
     target_database     => 'DEMODB_PGMIRROR',
     postgres_tables     => ['demo.devices', 'demo.sensors', 'demo.readings'],
