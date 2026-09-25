@@ -45,5 +45,10 @@ export SNOWFLAKE_CLIENT_STORE_TEMPORARY_CREDENTIAL=false
 export SNOWFLAKE_DATABASE="$DB"
 export PORT="${PORT:-3000}"
 
+API_PYTHON="${BENCHMARK_API_PYTHON:-/opt/venvs/api/bin/python}"
+if [[ ! -x "$API_PYTHON" && -x /opt/venv/bin/python ]]; then
+  API_PYTHON=/opt/venv/bin/python
+fi
+
 echo "[entrypoint] Starting benchmark API on port ${PORT} (db=${DB})."
-exec uv run --directory /app/api --no-sync python server.py
+exec "$API_PYTHON" /app/api/server.py
