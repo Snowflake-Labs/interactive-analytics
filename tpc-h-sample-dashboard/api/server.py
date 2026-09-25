@@ -17,6 +17,7 @@ from threading import Lock, Semaphore
 from typing import Any
 
 import snowflake.connector
+import httpx
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -42,6 +43,7 @@ TARGETS = ["standard", "interactive"]
 DEFAULT_TARGET = "interactive"
 
 QUERY_TAG = "IW_DEMO_DASHBOARD"
+LOCUST_URL = os.environ.get("LOCUST_URL", "").rstrip("/")
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("dashboard")
@@ -91,8 +93,8 @@ def credential_cache_description() -> str:
     return CREDENTIAL_CACHE_DIR
 
 
-def schema_for_target(target: str, scale: str) -> str:
-    return f"TPCH_SF{scale}_IT" if target == "interactive" else f"TPCH_SF{scale}"
+def schema_for_scale(scale: str) -> str:
+    return f"TPCH_SF{scale}"
 
 
 def warehouse_for_target(target: str, scale: str) -> str:
@@ -230,7 +232,7 @@ def connection_kwargs_for(target: str, scale: str) -> dict[str, Any]:
         **credential_cache_options(),
         "warehouse": warehouse_for_target(target, scale),
         "database": DATABASE,
-        "schema": schema_for_target(target, scale),
+        "schema": schema_for_scale(scale),
         "session_parameters": {
             "QUERY_TAG": QUERY_TAG,
             "USE_CACHED_RESULT": False,
@@ -302,23 +304,45 @@ class ConnectionPool:
             sem.release()
 
     def warmup(self, target: str, scale: str, count: int | None = None) -> int:
-        """Pre-open up to `count` (default: POOL_SIZE) connections and park them."""
+        """Pre-open up to `count` (default: POOL_SIZE) connections and park them.
+
+        Acquires a semaphore slot for each connection so the pool invariant
+        (at most ``size`` live connections) is preserved.
+        """
         key = f"{target}:{scale}"
-        idle, _sem = self._slots_for(key)
+        idle, sem = self._slots_for(key)
         want = self._size if count is None else min(count, self._size)
         opened = 0
         for _ in range(want):
+            if not sem.acquire(timeout=0):
+                break
             try:
                 conn = self._new_connection(target, scale)
             except Exception as exc:
+                sem.release()
                 log.warning("Pool warmup failed for %s after %d/%d: %s", key, opened, want, exc)
                 break
             idle.put_nowait(conn)
             opened += 1
         return opened
 
+    def close_all(self) -> None:
+        """Close all idle connections in the pool."""
+        with self._init_lock:
+            for key, idle in self._idle.items():
+                while True:
+                    try:
+                        conn = idle.get_nowait()
+                    except Empty:
+                        break
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
 
 pool = ConnectionPool()
+pool_ready = asyncio.Event()
 
 
 def execute_query(
@@ -351,7 +375,7 @@ def snowflake_log_context(warehouse: str | None, scale: str | None) -> str:
         resolved_target = resolve_target(warehouse)
         resolved_scale = resolve_scale(scale)
         wh = warehouse_for_target(resolved_target, resolved_scale)
-        schema = schema_for_target(resolved_target, resolved_scale)
+        schema = schema_for_scale(resolved_scale)
         return f" warehouse={wh} schema={schema}"
     except ValueError:
         return ""
@@ -429,15 +453,16 @@ async def lifespan(_app: FastAPI):
                     )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Warmup failed for %s:%s: %s", target, scale, exc)
+            pool_ready.set()
 
-        # Run warmup in the background so the app can start serving requests
-        # immediately (important for SPCS readiness probes on cold start).
         warmup_task = asyncio.create_task(_warmup_all())
     else:
+        pool_ready.set()
         warmup_task = None
     yield
     if warmup_task is not None and not warmup_task.done():
         warmup_task.cancel()
+    pool.close_all()
 
 
 app = FastAPI(title="TPC-H Benchmark Dashboard", lifespan=lifespan)
@@ -508,6 +533,13 @@ def index():
     return FileResponse(ROOT_DIR / "public" / "index.html")
 
 
+@app.get("/api/ready")
+async def ready() -> dict[str, str]:
+    if not pool_ready.is_set():
+        raise HTTPException(status_code=503, detail="Pool warming up")
+    return {"status": "ready"}
+
+
 @app.get("/api/config")
 def api_config(
     request: Request,
@@ -524,14 +556,15 @@ def api_config(
             "scale": resolved_scale,
             "defaultScale": DEFAULT_SCALE,
             "scales": SCALES,
+            "locustAvailable": _locust_available(),
             "lookbackDays": DEFAULT_LOOKBACK_DAYS,
             "lookbackDaysOptions": LOOKBACK_DAYS_OPTIONS,
             "standard": {
-                "schema": schema_for_target("standard", resolved_scale),
+                "schema": schema_for_scale(resolved_scale),
                 "warehouse": warehouse_for_target("standard", resolved_scale),
             },
             "interactive": {
-                "schema": schema_for_target("interactive", resolved_scale),
+                "schema": schema_for_scale(resolved_scale),
                 "warehouse": warehouse_for_target("interactive", resolved_scale),
             },
         },
@@ -704,6 +737,76 @@ async def api_table_stats(request: Request):
         COUNT(DISTINCT l.L_ORDERKEY) AS order_rows""",
     )
     return json_api(rows[0] if rows else {}, request, query_ms)
+
+
+# ---------------------------------------------------------------------------
+# Locust proxy — forward start/stop/stats to the Locust REST API
+# ---------------------------------------------------------------------------
+
+def _locust_available() -> bool:
+    return bool(LOCUST_URL)
+
+
+@app.get("/api/locust/status")
+async def locust_status():
+    if not _locust_available():
+        return JSONResponse({"available": False})
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"{LOCUST_URL}/stats/requests")
+            data = r.json()
+            return JSONResponse({
+                "available": True,
+                "state": data.get("state", "unknown"),
+                "userCount": data.get("user_count", 0),
+                "totalRps": round(sum(
+                    s.get("current_rps", 0)
+                    for s in data.get("stats", [])
+                    if s.get("name") != "Aggregated"
+                ), 2),
+                "workers": data.get("workers", []),
+            })
+    except Exception:
+        return JSONResponse({"available": True, "state": "unreachable", "userCount": 0, "totalRps": 0})
+
+
+@app.post("/api/locust/start")
+async def locust_start(request: Request):
+    if not _locust_available():
+        raise HTTPException(status_code=404, detail="Locust integration not configured")
+    body = await request.json()
+    user_count = int(body.get("userCount", 10))
+    spawn_rate = int(body.get("spawnRate", 5))
+    warehouse = body.get("warehouse", "interactive")
+    scale = body.get("scale", str(DEFAULT_SCALE))
+    lookback = body.get("lookback", "90")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"{LOCUST_URL}/swarm",
+                data={
+                    "user_count": user_count,
+                    "spawn_rate": spawn_rate,
+                    "warehouse": warehouse,
+                    "scale": scale,
+                    "lookback": lookback,
+                },
+            )
+            return JSONResponse(r.json())
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Locust unreachable: {exc}") from exc
+
+
+@app.post("/api/locust/stop")
+async def locust_stop():
+    if not _locust_available():
+        raise HTTPException(status_code=404, detail="Locust integration not configured")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{LOCUST_URL}/stop")
+            return JSONResponse(r.json())
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Locust unreachable: {exc}") from exc
 
 
 def main() -> None:
