@@ -1,9 +1,0 @@
-# Build context is interactive-benchmark/spcs-images/.
-**/.venv
-**/__pycache__
-**/*.pyc
-**/.DS_Store
-**/.env
-**/snowflake.log
-**/node_modules
-api/

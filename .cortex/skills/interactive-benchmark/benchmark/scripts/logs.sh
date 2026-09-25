@@ -21,5 +21,6 @@ container="${2:-$default_container}"
 
 snow spcs service logs "${DB}.${SCHEMA}.${svc}" \
   --connection "$CONNECTION" \
+  --role "$ROLE" \
   --container-name "$container" \
   --instance-id 0

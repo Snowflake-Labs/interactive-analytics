@@ -54,7 +54,7 @@ All paths below are relative to the repo root.
 │   ├── update.sh            # upload queries + restart API
 │   ├── resize-wh.sh         # resize interactive warehouse (size/MCW)
 │   ├── list.sh              # list all SPCS resources
-│   ├── teardown.sh          # drop services, compute pools, and image repo
+│   ├── teardown.sh          # drop services and compute pools
 │   └── update-progress.sh   # atomic progress.json updater
 └── spcs/
     ├── config.env           # all knobs (connection, names, resources, locust params)
@@ -62,9 +62,10 @@ All paths below are relative to the repo root.
     └── specs/               # SPCS service YAML specs
 
 interactive-benchmark/spcs-images/
-├── build-and-push.sh        # build + push both container images
-├── api/                     # benchmark API image (Dockerfile, server.py, entrypoint)
-└── locust/                  # locust image (Dockerfile, locustfile.py, entrypoint)
+├── Dockerfile               # one image containing both runtimes
+├── role-entrypoint.sh       # BENCHMARK_ROLE=api|locust dispatcher
+├── api/                     # benchmark API source
+└── locust/                  # Locust source
 ```
 
 Benchmark query `.sql` files live in `test/` locally and are uploaded to a
@@ -77,14 +78,13 @@ rebuilding images.
 ### For deploying and running benchmarks
 
 - `snow` CLI configured with the connection listed in `spcs/config.env` (`PM` by default).
-- The connection's role must be able to `CREATE COMPUTE POOL`, `CREATE IMAGE
-  REPOSITORY`, and `CREATE SERVICE`. `ACCOUNTADMIN` works.
+- Python 3 and `envsubst` (`gettext`) for image validation and spec rendering.
+- The connection's role must be able to create the benchmark
+  database/schema/stage, compute pools, services, and public service endpoints;
+  use `DEPLOY_WAREHOUSE`; and read the approved System Registry image.
+  `ACCOUNTADMIN` works.
 - The API's runtime role (`API_ROLE`) needs `USAGE` on the interactive
   warehouse and `SELECT` on the interactive schema.
-
-### For building container images (one-time)
-
-- Docker Desktop.
 
 ## Deploying
 
@@ -94,9 +94,9 @@ rebuilding images.
 
 `deploy.sh` will:
 
-1. Create `DB.SCHEMA`, **two independent compute pools** (one for the
-   API, one for Locust), the image repository, and an internal stage
-   for benchmark queries (idempotent).
+1. Verify the exact approved image/tag and architecture, then create
+   `DB.SCHEMA`, **two independent compute pools** (one for the API, one for
+   Locust), and an internal stage for benchmark queries (idempotent).
 2. Upload `.sql` files from `benchmark/test/` to the queries stage.
 3. `CREATE SERVICE` for:
    - `API_SERVICE` on `API_COMPUTE_POOL` — the benchmark API (with the
@@ -106,8 +106,10 @@ rebuilding images.
 4. Poll `SYSTEM$GET_SERVICE_STATUS` until both report `READY`.
 5. Print the public ingress URLs.
 
-**Note:** Container images must be pre-built and pushed before running `deploy.sh`.
-See `interactive-benchmark/spcs-images/build-and-push.sh`.
+Both services use the immutable approved image
+`interactive-analytics/interactive-benchmark:0.1.0` from
+`SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES`; their specs select
+`BENCHMARK_ROLE=api` or `BENCHMARK_ROLE=locust`.
 
 ## Naming convention
 
@@ -143,19 +145,10 @@ image rebuild is needed — takes seconds instead of minutes.
 
 ### Changing application code
 
-Edit the app source in `interactive-benchmark/spcs-images/`, rebuild and push:
-
-```bash
-interactive-benchmark/spcs-images/build-and-push.sh
-```
-
-Then update the running services to pick up the new images:
-
-```bash
-# Restart services to pull the new :latest image
-snow spcs service restart BENCHMARK_API --connection PM --role ACCOUNTADMIN --dbname <DB> --schema SPCS
-snow spcs service restart BENCHMARK_LOCUST --connection PM --role ACCOUNTADMIN --dbname <DB> --schema SPCS
-```
+Edit the app source in `interactive-benchmark/spcs-images/`, validate both
+roles, and publish a new immutable approved-image version through the
+maintainer release process. Update `IMAGE_TAG` only after the new tag is
+visible in the System Registry; never replace or deploy `latest`.
 
 ## Auth model inside the container
 
@@ -200,7 +193,7 @@ $SCRIPTS/status.sh --urls-only      # just the ingress URLs
 $SCRIPTS/logs.sh api                # benchmark API logs
 $SCRIPTS/logs.sh locust             # locust load-generator logs
 $SCRIPTS/resize-wh.sh --size M      # resize the interactive warehouse
-$SCRIPTS/teardown.sh                # drop services, compute pools, and image repo
+$SCRIPTS/teardown.sh                # drop services and compute pools
 ```
 
 ## Granting another role access to the ingress URLs
@@ -220,8 +213,6 @@ GRANT SERVICE ROLE <SOLUTION_NAME>_DB.SPCS.BENCHMARK_LOCUST!ALL_ENDPOINTS_USAGE
 
 ## Troubleshooting
 
-- `snow spcs image-registry login` errors: re-run manually with
-  `--connection $CONNECTION --role $ROLE`; tokens expire after ~1h.
 - Service stuck in `PENDING`: `$SCRIPTS/logs.sh api` (or `locust`)
   — usually a missing grant on the runtime warehouse.
 - Locust shows "0 requests" or logs `gaierror(-2, 'Name or service not known')`:
