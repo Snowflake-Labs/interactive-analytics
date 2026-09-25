@@ -64,5 +64,24 @@ CREATE OR REPLACE AGENT DEMO.IOT_AGENT_DEMO
 DESCRIBE AGENT DEMO.IOT_AGENT_DEMO;
 
 /*
-    Now use the agent from the "Agent Studio"
+    Query the agent from SQL using DATA_AGENT_RUN
+*/
+SELECT TRY_PARSE_JSON(
+    SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
+        'DEMODB_PGMIRROR.DEMO.IOT_AGENT_DEMO',
+        $${ "messages": [{ "role": "user", "content": [{ "type": "text", "text": "What is the average temperature reading for each device location?" }] }] }$$,
+        TRUE
+    )
+) AS resp;
+
+SELECT TRY_PARSE_JSON(
+    SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
+        'DEMODB_PGMIRROR.DEMO.IOT_AGENT_DEMO',
+        $${ "messages": [{ "role": "user", "content": [{ "type": "text", "text": "How many readings do we have for the new demo devices?" }] }] }$$,
+        TRUE
+    )
+) AS resp;
+
+/*
+    You can also use the agent from the "Agent Studio"
 */
