@@ -21,6 +21,8 @@ cd interactive-analytics
 | **`uv`** | Python package runner (used by the API and Locust) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | **`envsubst`** | Renders YAML specs from templates | Comes with `gettext` (`brew install gettext` on macOS) |
 
+> **No Docker?** You can build images directly on SPCS by setting `BUILD_METHOD=spcs` in `spcs/config.env`. This requires an External Access Integration (EAI) so the build job can reach package registries. Run `benchmark/scripts/create-eai.sh` to create the necessary network rule and EAI, then set `BUILD_EAI_NAME` in `config.env` to the integration name it prints.
+
 ## 3. Configure a Snowflake connection
 
 Make sure you have a connection in `~/.snowflake/connections.toml` with a role that can create databases, warehouses, compute pools, image repositories, and services. `ACCOUNTADMIN` or `SYSADMIN` with appropriate grants will work.
