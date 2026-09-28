@@ -7,6 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/_lib.sh"
 
+echo "==> [0/5] Verifying benchmark image and architecture"
+preflight_benchmark_image
+
 echo "==> [1/5] Setting up database, schema, compute pools, queries stage"
 snow_sql_run "prerequisites setup" <<EOF
 USE ROLE $ROLE;

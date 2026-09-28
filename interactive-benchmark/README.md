@@ -69,9 +69,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of the SPCS to
 interactive-benchmark/spcs-images/
 ├── Dockerfile            # Unified production image for both roles
 ├── role-entrypoint.sh    # Dispatches BENCHMARK_ROLE=api|locust
-├── build-and-push.sh     # Local development image helper
-├── api/                  # Benchmark API image (Dockerfile, server.py, entrypoint)
-└── locust/               # Locust image (Dockerfile, locustfile.py, entrypoint)
+├── api/                  # Benchmark API source and entrypoint
+└── locust/               # Locust source and entrypoint
 ```
 
 - **`test/`** — Place `.sql` files here — each containing a single query. During deployment, these files are uploaded to a Snowflake internal stage and mounted into the API container. Queries can be updated without rebuilding images.
@@ -86,21 +85,18 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
 
 ### Prerequisites
 
-- Docker Desktop (for building images — one-time, before the first benchmark run).
-- `snow` CLI configured with a connection that has privileges to `CREATE COMPUTE POOL`, `CREATE IMAGE REPOSITORY`, and `CREATE SERVICE`.
+- `snow` CLI configured with a role that can create the benchmark
+  database/schema/stage, compute pools, services, and public service endpoints;
+  use `DEPLOY_WAREHOUSE`; and read the approved System Registry image.
+- Python 3 and `envsubst` (`gettext`) for deployment validation and spec rendering.
 - The API's runtime role needs `USAGE` on the interactive warehouse and `SELECT` on the interactive schema.
 
-### Build and Push Container Images
+### Approved Container Image
 
-Before the first deployment, build and push the container images to the SPCS image repository:
-
-```bash
-interactive-benchmark/spcs-images/build-and-push.sh
-```
-
-The script reads image names and registry info from the skill's `config.env`. You only need to rebuild if you modify the API or Locust source code.
-Production image publishing is maintained in the internal
-`snowflake-eng/interactive-analytics-images` repository.
+Both services use
+`SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES/interactive-analytics/interactive-benchmark:0.1.0`;
+`BENCHMARK_ROLE=api|locust` selects the runtime. Benchmark users do not build
+images or need `CREATE IMAGE REPOSITORY`.
 
 ### Configuration
 
@@ -128,7 +124,7 @@ $SCRIPTS/logs.sh locust         # locust load-generator logs
 $SCRIPTS/update.sh              # upload new queries + restart API
 $SCRIPTS/upload-queries.sh      # upload .sql files to the queries stage
 $SCRIPTS/resize-wh.sh --size M  # resize the interactive warehouse
-$SCRIPTS/teardown.sh            # drop services, compute pools, and image repo
+$SCRIPTS/teardown.sh            # drop services and compute pools
 ```
 
 ## Running Locally (manual)

@@ -1,8 +1,9 @@
 spec:
   containers:
     - name: api
-      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${API_IMAGE}:${IMAGE_TAG}
+      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${BENCHMARK_IMAGE}:${IMAGE_TAG}
       env:
+        BENCHMARK_ROLE: "api"
         PORT: "${API_PORT}"
         SOLUTION_NAME: "${SOLUTION_NAME}"
         SNOWFLAKE_DATABASE: "${API_DATABASE}"
@@ -31,6 +32,9 @@ spec:
   volumes:
     - name: queries
       source: "@${DB}.${SCHEMA}.${QUERIES_STAGE}"
+      # Match the image's non-root runtime so staged SQL files are readable.
+      uid: 65532
+      gid: 65532
   endpoints:
     - name: web
       port: ${API_PORT}

@@ -2,8 +2,8 @@
 # Upload new .sql files to the stage and restart the API service so it picks
 # up the new queries.  No Docker image rebuild is performed.
 #
-# To rebuild images, use interactive-benchmark/spcs-images/build-and-push.sh
-# then ALTER SERVICE to pick up the new image tag.
+# Application releases use immutable approved image tags; this script only
+# updates benchmark queries.
 #
 # Flags:
 #   --queries-only   (default, kept for backward compatibility)

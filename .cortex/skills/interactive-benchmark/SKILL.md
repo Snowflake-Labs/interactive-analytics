@@ -12,9 +12,13 @@ Benchmarks any user-provided SQL query against a Snowflake Interactive Warehouse
 
 ## Prerequisites
 
-- `uv` installed (Python package runner)
+- `snow` CLI
+- Python 3
+- `envsubst` (`gettext`)
 - A Snowflake connection configured in `~/.snowflake/connections.toml`
-- Role with privileges to create databases, warehouses, compute pools, and services
+- Role with privileges to create the benchmark database/schema/stage,
+  warehouses, compute pools, services, and public service endpoints; use the
+  deployment warehouse; and read the approved System Registry image
 - Ability to use Snowpark Container Services (SPCS)
 
 ## Tool Usage
@@ -36,7 +40,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 ## Paths
 
-`<SKILL_DIR>` refers to the directory containing this SKILL.md file (`.cortex/skills/interactive-benchmark/`). Shell scripts (deploy, teardown, status, logs, resize, etc.) live in `<SKILL_DIR>/benchmark/scripts/`. SPCS deployment config and service specs live in `<SKILL_DIR>/benchmark/spcs/`. Container images (Dockerfiles, app source) live separately in `interactive-benchmark/spcs-images/` at the repo root — the skill does not build images; they must be pre-built via `interactive-benchmark/spcs-images/build-and-push.sh`.
+`<SKILL_DIR>` refers to the directory containing this SKILL.md file (`.cortex/skills/interactive-benchmark/`). Shell scripts (deploy, teardown, status, logs, resize, etc.) live in `<SKILL_DIR>/benchmark/scripts/`. SPCS deployment config and service specs live in `<SKILL_DIR>/benchmark/spcs/`. Image source lives separately in `interactive-benchmark/spcs-images/` for maintainers; benchmark runs consume the approved immutable image from the system repository and do not build it.
 
 ## SPCS Deployment Topology
 
@@ -170,9 +174,10 @@ Then present the SPCS resources that will be created and the shared images that 
 | API service                           | BENCHMARK_API                                |
 | Locust service                        | BENCHMARK_LOCUST                             |
 | Queries stage                         | @IWB_202609101430_DB.SPCS.BENCHMARK_QUERIES  |
-| Image repository (shared)             | IWB_SHARED.SPCS.BENCHMARK_IMAGES             |
-| API image                             | benchmark-api:latest                         |
-| Locust image                          | benchmark-locust:latest                      |
+| Image repository (shared)             | SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES            |
+| Benchmark image                       | interactive-analytics/interactive-benchmark:0.1.0 |
+| API image role                        | `BENCHMARK_ROLE=api`                         |
+| Locust image role                     | `BENCHMARK_ROLE=locust`                      |
 
 The SPCS resource names are derived from the benchmark name. The image repository and images are shared from the common repository.
 
@@ -311,7 +316,7 @@ This file is the single query executed against the interactive warehouse during 
 
 **IMPORTANT — Cache must be warm before deploy:** Locust auto-starts immediately when its container becomes READY, so the load test will begin as soon as SPCS finishes provisioning. Ensure Step 3.5 (cache warming) is complete before running this step — otherwise Locust measures cold-cache latency.
 
-**IMPORTANT — Images must already exist:** Container images must be pre-built and pushed to the SPCS image repository before running `deploy.sh`. Build them via `interactive-benchmark/spcs-images/build-and-push.sh` (one-time, outside the skill). If images are missing, `deploy.sh` will fail when creating services.
+**IMPORTANT — Image must already exist:** The exact immutable benchmark image configured in `config.env` must be visible in the system image repository before running `deploy.sh`. The deploy preflight verifies the image/tag and its declared architecture before creating compute pools. Image publishing is a maintainer workflow; benchmark users do not need Docker or `CREATE IMAGE REPOSITORY`.
 
 Use the `bash` tool with `run_in_background=true`:
 
@@ -341,7 +346,7 @@ This deploys:
 4. If a service stays in PENDING for more than 5 minutes, run `./logs.sh` and report any errors to the user. Common causes:
    - Compute pool still provisioning (normal — wait)
    - Image pull in progress (normal — wait)
-   - Image not found (ensure images were built via `interactive-benchmark/spcs-images/build-and-push.sh`)
+   - Image not found (verify the configured immutable tag is visible in `SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES`)
    - Insufficient privileges (check ROLE)
 5. If a service enters FAILED state, immediately run `./logs.sh`, show the user the output, and stop.
 6. Only proceed to the next step once both services report READY.
@@ -450,7 +455,7 @@ Each time the load test runs (Step 3.8), capture the full Locust output (via `ba
 2. **End-of-step PROGRESS UPDATE (mandatory):** After cleanup completes, run `update-progress.sh <REPORT_DIR> 13 complete` (this auto-sets top-level status to `"completed"`).
 3. **Load** `references/cleanup.md` (via the `read` tool) for the full cleanup procedure.
 
-**Summary:** Present the user with a table of all created resources (interactive warehouse, schema, tables, SPCS database/schema, compute pools, image repo, services). Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything. For full cleanup, run `./teardown.sh` then drop schemas/warehouse/database via SQL. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
+**Summary:** Present the user with a table of all created resources (interactive warehouse, schema, tables, SPCS database/schema, compute pools, and services). The shared System Registry is not created or removed by a benchmark run. Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything. For full cleanup, run `./teardown.sh` then drop schemas/warehouse/database via SQL. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
 
 ---
 

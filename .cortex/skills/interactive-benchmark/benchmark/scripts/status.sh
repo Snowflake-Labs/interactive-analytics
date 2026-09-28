@@ -16,7 +16,7 @@ MODE="${1:-full}"
 # Query SYSTEM$GET_SERVICE_STATUS which returns container-level details.
 service_info() {
   local svc="$1"
-  snow sql --connection "$CONNECTION" --format json -q \
+  snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
     "SELECT SYSTEM\$GET_SERVICE_STATUS('${DB}.${SCHEMA}.${svc}') AS info" 2>/dev/null \
     | python3 -c '
 import json, sys
@@ -57,7 +57,7 @@ service_message() {
 service_url() {
   local svc="$1"
   snow spcs service list-endpoints "${DB}.${SCHEMA}.${svc}" \
-    --connection "$CONNECTION" --format json 2>/dev/null \
+    --connection "$CONNECTION" --role "$ROLE" --format json 2>/dev/null \
     | python3 -c '
 import json, sys
 try:
