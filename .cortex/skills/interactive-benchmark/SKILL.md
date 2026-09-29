@@ -28,7 +28,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 | Action | Tool | Notes |
 |--------|------|-------|
 | Run shell commands | `bash` | For `deploy.sh`, `status.sh`, `logs.sh`, `teardown.sh`, `resize-wh.sh`, `update-progress.sh`, `cp`, `update.sh`, `upload-queries.sh`. Scripts live in `benchmark/scripts/`. Use `run_in_background=true` for `deploy.sh`. |
-| Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.7). |
+| Monitor background shell | `bash_output` | To check output of background `deploy.sh` (Step 3.6). |
 | Read files | `read` | For templates, configs, reference docs, logs. |
 | Write / create files | `write` | For `config.env`, `.env`, `benchmark-query.sql`, report HTML, log captures, and initial `progress.json`. |
 | Edit existing files | `edit` | For updating specific values in an existing config file without rewriting the whole file. |
@@ -44,7 +44,7 @@ Every step in this skill MUST use the specific tool listed below. Do NOT substit
 
 ## SPCS Deployment Topology
 
-The benchmark deploys two services to Snowpark Container Services. After deployment (Step 3.7), inform the user exactly what is running:
+The benchmark deploys two services to Snowpark Container Services. After deployment (Step 3.6), inform the user exactly what is running:
 
 | Service | Container Instances | Compute Pool Nodes | Instance Family |
 |---------|--------------------:|-------------------:|-----------------|
@@ -142,7 +142,7 @@ Collect ALL of the following from the user before proceeding. If the user's init
 | 8 | **Max warehouse size (scale-up limit)** | Maximum SKU the interactive warehouse can grow to (X-Small, Small, Medium, Large, X-Large, ...). Bounds vertical scaling. | Medium |
 | 9 | **Max cluster count (scale-out limit)** | Maximum number of clusters. Bounds horizontal scaling. This is a ceiling, not the starting value: Step 3.2 starts from the in-flight query estimate in `references/mcw-sizing.md`, which is usually well below it. | ceil(users/8) * 2 |
 | 10 | **Benchmark name** | Short alphanumeric name used as `SOLUTION_NAME` to prefix all created resources. | `IWB_YYYYMMDDHHMM` (e.g. `IWB_202608271430`) |
-| 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.12. | 5 |
+| 11 | **Max escalation iterations** | Maximum number of scale-up/scale-out iterations before stopping. Bounds the benchmark loop in Step 3.11. | 5 |
 
 **Load** `references/phase1-inputs.md` (via the `read` tool) for warehouse creation options, AUTO_SUSPEND requirements, DDL restrictions, resource transparency rules, and the autonomous execution principle that governs Phase 2 and Phase 3.
 
@@ -254,7 +254,7 @@ From this point, everything runs autonomously within the user-approved limits fr
    2. Replace the placeholder text with the user's query (or the optimized version if the `snowflake-interactive` skill produced one)
    3. Use `write` to save the result to `<SKILL_DIR>/benchmark/test/benchmark-query.sql`
 
-This file is the single query executed against the interactive warehouse during the load test. It will be uploaded to the Snowflake stage automatically during deployment (Step 3.7).
+This file is the single query executed against the interactive warehouse during the load test. It will be uploaded to the Snowflake stage automatically during deployment (Step 3.6).
 
 **Updating queries without redeploying:** If you need to change the query after the initial deployment (e.g. during escalation), save the new `.sql` file locally, then run `<SKILL_DIR>/benchmark/scripts/update.sh` to upload the new query and restart the API service.
 
@@ -296,7 +296,7 @@ This file is the single query executed against the interactive warehouse during 
 
 **If any config file creation fails** (template not found, write error, or `grep` finds leftover placeholders after writing): inform the user which config is invalid and why, then jump to Step 3.13 (cleanup) — the benchmark cannot proceed with misconfigured environment files.
 
-**Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Step 3.8 and Step 3.9 for the execution flow.
+**Note on Locust execution model:** As of this skill version, Locust runs in **non-headless mode with `--autostart` inside the container** — no external HTTP calls are needed to trigger the run. There is no `LOCUST_HEADLESS` toggle. See Steps 3.7–3.8 for the execution flow.
 
 ---
 
@@ -334,7 +334,7 @@ This deploys:
 - **Benchmark API** — FastAPI server that executes queries against the interactive warehouse
 - **Locust** — Load generator that POSTs queries to the API
 
-**Cost note:** This creates 2 compute pools (CPU_X64_M) that incur credits while running. All resources are listed in Step 3.14 where the user chooses to tear down or keep them.
+**Cost note:** This creates 2 compute pools (CPU_X64_M) that incur credits while running. All resources are listed in Step 3.13 where the user chooses to tear down or keep them.
 
 **IMPORTANT — Deployment monitoring:** SPCS deployments can take 3–10 minutes (compute pool provisioning + image pull + container start). **You MUST give the user clear, human-readable progress updates** so the deployment doesn't look stuck. Bare tool-call blocks with no text are unacceptable.
 
@@ -379,7 +379,7 @@ This deploys:
 
 1. **Baseline (Locust HTTP)** — p99 from the baseline CSV for `/api/run/baseline`. This is the infrastructure overhead floor — the minimum latency added by the API/network layer.
 2. **Client-side (Locust HTTP)** — P50, P95, P99 from the Locust CSV for the `/api/run/interactive` endpoint. This is what the end user experiences (HTTP round-trip + API pool + Snowflake).
-3. **Server-side (Snowflake)** — P50, P95, P99 computed from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` over the Locust run window, filtered to the benchmark `QUERY_TAG`, across the interactive and fallback warehouses, including failed and fallback-served queries. This is what Snowflake alone spent (compile + queue + execute).
+3. **Server-side (Snowflake)** — P50, P95, P99 computed (with the Step 3.10 queries) from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` over the Locust run window, filtered to the benchmark `QUERY_TAG`, across the interactive and fallback warehouses, including failed and fallback-served queries. This is what Snowflake alone spent (compile + queue + execute).
 
 All three sets of numbers are **mandatory**. The server-side numbers are what proves Snowflake performance; the client-side numbers are what the user's dashboard sees; the baseline numbers establish the infrastructure overhead floor. The **delta between client-side and server-side isolates the API/HTTP overhead from Snowflake's real cost**. If that delta is significantly higher than the baseline p99, there may be connection pool contention or other API-layer issues beyond simple HTTP overhead.
 

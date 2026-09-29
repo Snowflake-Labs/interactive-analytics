@@ -126,14 +126,14 @@ LIMIT 20;
 | **Remote read %** | 0% | Query is reading from remote storage instead of cache. Causes: poor clustering, undersized working-set cache, cold cache, or cache thrashing. |
 | **Bytes scanned** | Minimal (ideally <100 GB) | Partition pruning is not effective. Check clustering keys and predicate alignment. |
 | **Compile time** | Low (< 50 ms) | Query is complex or not parameterized. Consider simplifying or using prepared statements. |
-| **Queueing time** | 0 ms | Warehouse concurrency is saturated. Scale out with multi-cluster (see Step 3.3). |
+| **Queueing time** | 0 ms | Warehouse concurrency is saturated. Scale out with multi-cluster (see Step 3.2). |
 
 ## Remote Read Investigation
 
 If remote reads are > 0% for steady-state queries (after cache is warm), investigate:
-1. **Poor clustering** — predicates don't align with clustering keys (see Step 3.2)
-2. **Undersized cache** — working set doesn't fit in warehouse cache (see Step 3.2 sizing)
-3. **Cold cache** — warehouse was recently resumed or cache hasn't fully populated yet (see Step 3.6 warming)
+1. **Poor clustering** — predicates don't align with clustering keys (see Step 3.1)
+2. **Undersized cache** — working set doesn't fit in warehouse cache (see Step 3.1 sizing)
+3. **Cold cache** — warehouse was recently resumed or cache hasn't fully populated yet (see Step 3.5 warming)
 4. **Cache thrashing** — too many diverse query patterns competing for cache space; consider reducing concurrency or narrowing the hot data set
 
 Include the server-side percentile table, the side-by-side comparison table, and the profile-health verdict in the HTML report (Step 3.12) under a "Server-Side Validation" section.
