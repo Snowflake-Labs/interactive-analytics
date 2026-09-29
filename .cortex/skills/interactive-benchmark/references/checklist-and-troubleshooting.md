@@ -35,6 +35,7 @@ If any item fails, address it before drawing conclusions from benchmark numbers.
 | `No .sql files found` | Place query files in `benchmark/test/` folder |
 | Service stuck in PENDING | Run `./logs.sh` to inspect container logs |
 | Connection errors | Verify connection name in `~/.snowflake/connections.toml` |
+| `No active warehouse selected` or `Pool warmup failed` | Ensure `API_ROLE` equals the service-owner `ROLE`. Grant that role `USAGE` on both the interactive and fallback warehouses, `USAGE` on the source database/schema, and `SELECT` on referenced tables. Rerun `deploy.sh`; its access preflight prints account-specific remediation SQL before creating pools. |
 | Interactive tables not found | **Interactive-table mode:** Re-run `snowflake-interactive` skill. **Zero-copy mode:** This is expected — there are no interactive tables. Verify the source tables exist and the interactive warehouse can query them. |
 | `BENCHMARK_LOCUST` stuck in PENDING with "Readiness probe failing at /stats/requests" | Legacy `LOCUST_HEADLESS=1` config. Headless locust does not bind port 8089, so the readiness probe fails forever. Remove `LOCUST_HEADLESS` from `config.env` and `specs/locust.yaml`; use the auto-start non-headless path (default). |
 | `An interactive table must contain clustering keys` on `CREATE INTERACTIVE TABLE` | Only applies to interactive-table mode. The table has no `CLUSTER BY`. All interactive tables need one, including tiny lookup tables. Cluster on the primary key column if nothing else fits (e.g. `CLUSTER BY (N_NATIONKEY)`). |
