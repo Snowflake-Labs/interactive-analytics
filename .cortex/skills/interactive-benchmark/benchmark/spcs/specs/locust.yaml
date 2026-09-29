@@ -11,7 +11,8 @@ spec:
         LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
         API_READY_TIMEOUT_SECONDS: "${API_READY_TIMEOUT_SECONDS}"
         API_READY_POLL_SECONDS: "${API_READY_POLL_SECONDS}"
-        BASELINE_MAX_P99_MS: "40000"
+        BASELINE_MAX_P99_MS: "${BASELINE_MAX_P99_MS}"
+        BASELINE_MAX_FAILURE_PCT: "${BASELINE_MAX_FAILURE_PCT}"
       resources:
         requests:
           memory: 2Gi
@@ -19,9 +20,6 @@ spec:
         limits:
           memory: 4Gi
           cpu: "2000m"
-      readinessProbe:
-        port: ${LOCUST_WEB_PORT}
-        path: /stats/requests
   endpoints:
     - name: web
       port: ${LOCUST_WEB_PORT}
