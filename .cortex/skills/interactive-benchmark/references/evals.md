@@ -10,9 +10,8 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 
 **Expected behavior:**
 1. Phase 1 collects all 11 inputs, confirms with user
-2. `system_todo_write` called immediately after confirmation with all 14 items (step 1 `in_progress`, rest `pending`)
-   - At every subsequent step boundary, `system_todo_write` is called BEFORE `update-progress.sh`, with the transitioning step's status updated
-   - The CLI step counter increments in real time (never stuck at "0/0 steps")
+2. `progress.json` is created immediately after confirmation with all 13 steps `pending`
+   - `update-progress.sh` is called at every step boundary
 3. Phase 2 invokes `snowflake-interactive`, which determines the approach (zero-copy or interactive tables), creates the warehouse, suitability check passes
 4. Phase 3 deploys SPCS, warms cache, runs baseline + load test, collects server-side metrics
 5. P95 goal met — no escalation triggered
@@ -132,11 +131,11 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 **Verification:**
 - No `/api/run/interactive` results in Locust CSV (only baseline)
 - User receives specific remediation suggestions (increase API instances/nodes or reduce users)
-- Stopping point at Step 3.8 triggered
+- Stopping point at Step 3.7 triggered
 
 ---
 
-## E9: Zero-Copy Path — Source Tables Already Clustered
+## E8: Zero-Copy Path — Source Tables Already Clustered
 
 **Input:** TPC-H LINEITEM query filtered on `L_SHIPDATE` (the table's existing clustering key) on SF100, 50 concurrent users, P95 <= 1s, connection `PM`, Medium scale-up ceiling, 5 cluster ceiling.
 
@@ -145,7 +144,7 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 2. Phase 2 invokes `snowflake-interactive`, which detects that LINEITEM is already clustered on `L_SHIPDATE` (matching the query's WHERE predicate) and chooses **zero-copy mode**
 3. `INTERACTIVE_MODE` = `zero-copy`, `INTERACTIVE_SCHEMA` = source schema (no new schema created)
 4. No `CREATE INTERACTIVE TABLE` or CTAS executed — no data copied
-5. Step 3.2 validates via Mode A path (checks warehouse exists, clustering alignment, working set sizing)
+5. Step 3.1 validates via Mode A path (checks warehouse exists, clustering alignment, working set sizing)
 6. No `SHOW INTERACTIVE TABLES` executed (expected — zero-copy has none)
 7. Phase 3 deploys SPCS, warms cache, runs load test normally
 8. Cleanup step does NOT offer to drop `INTERACTIVE_SCHEMA` (it is the source schema)
@@ -153,14 +152,14 @@ Test scenarios to verify the interactive-benchmark skill works correctly across 
 **Verification:**
 - No interactive tables created in any schema
 - `config.env` `INTERACTIVE_SCHEMA` matches the source schema name (not a `_INT` suffixed copy)
-- Step 3.2 logs show Mode A (zero-copy) validation, not Mode B
+- Step 3.1 logs show Mode A (zero-copy) validation, not Mode B
 - Cleanup resource table does not list "Interactive schema" or "Interactive tables" rows
 - `DROP SCHEMA` for `INTERACTIVE_SCHEMA` is NOT in the cleanup SQL
 - Report correctly identifies the mode as zero-copy in the executive summary
 
 ---
 
-## E10: Template Integrity
+## E9: Template Integrity
 
 **Applies to every run.** After the HTML report is generated:
 

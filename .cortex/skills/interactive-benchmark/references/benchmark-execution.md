@@ -1,6 +1,6 @@
-# Benchmark Execution — Steps 3.8 and 3.9 Detail
+# Benchmark Execution — Steps 3.7 and 3.8 Detail
 
-## Step 3.8: Run Baseline Test (Infrastructure Validation)
+## Step 3.7: Run Baseline Test (Infrastructure Validation)
 
 The Locust container now runs a **two-phase execution model**. When the container starts, it automatically executes both phases in sequence:
 
@@ -33,14 +33,14 @@ Look for `[baseline] VERDICT: PASS` to confirm the infrastructure is healthy bef
 
 ---
 
-## Step 3.9: Run Load Test (Snowflake Benchmark)
+## Step 3.8: Run Load Test (Snowflake Benchmark)
 
-**This step runs automatically after the baseline passes (Step 3.8).** No manual trigger is needed on the first run.
+**This step runs automatically after the baseline passes (Step 3.7).** No manual trigger is needed on the first run.
 
-### 9a. Trigger the run
+### 8a. Trigger the run
 
 Depending on state:
-- **First run after `./deploy.sh`** — both phases run automatically when the container starts. No action needed. Proceed to 9b.
+- **First run after `./deploy.sh`** — both phases run automatically when the container starts. No action needed. Proceed to 8b.
 - **Subsequent runs after changing config or warehouse settings** — restart the Locust container by suspending and resuming it via `snowflake_sql_execute` (`update.sh` only re-uploads queries and restarts the API; it does not re-run Locust):
   ```sql
   ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST SUSPEND;
@@ -52,7 +52,7 @@ Depending on state:
   ```
   Note: the baseline will re-run on every restart. This is intentional — it re-validates the infrastructure after any configuration change.
 
-### 9b. Monitor the run
+### 8b. Monitor the run
 
 The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
 
@@ -60,7 +60,7 @@ The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it run
   ```sql
   SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>';
   ```
-  Look at `started_clusters` and `running`. If `queued > 0`, `MAX_CLUSTER_COUNT` from Step 3.3 is too low — abort and increase it.
+  Look at `started_clusters` and `running`. If `queued > 0`, `MAX_CLUSTER_COUNT` from Step 3.2 is too low — abort and increase it.
 
 - **Follow locust logs** using the `bash` tool:
   ```bash
@@ -68,7 +68,7 @@ The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it run
   ```
   You'll see lines like `Ramping to 50 users at a rate of 5.00 per second` and `All users spawned`.
 
-### 9c. Retrieve the results
+### 8c. Retrieve the results
 
 After `LOCUST_RUN_TIME + ~10 s` (for `--autoquit` to fire), locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV. Retrieve using the `bash` tool:
 
