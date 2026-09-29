@@ -14,7 +14,7 @@ Before considering a benchmark complete, verify all of the following are true:
   - *Interactive-table mode:* Hot tables **attached** to the interactive warehouse with ADD TABLES (verified via `SHOW INTERACTIVE TABLES`)
   - *Zero-copy mode:* Source tables accessible from the interactive warehouse (verified by running the query successfully)
 - [ ] Warehouse **sized to working set** (cache fits the data) — do NOT upsize to fix concurrency
-- [ ] **`MAX_CLUSTER_COUNT` set proportional to target concurrent users** (rule: `ceil(users / 15)`; verified via `SHOW WAREHOUSES`)
+- [ ] **`MIN/MAX_CLUSTER_COUNT` sized to in-flight queries** (rule in `references/mcw-sizing.md`; verified via `SHOW WAREHOUSES`)
 - [ ] **Fallback warehouse configured** on the interactive warehouse (verified via `SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE'`)
 - [ ] `config.env` values (INTERACTIVE_WAREHOUSE, LOCUST_USERS, schema) match Phase 1/Step 2.1 outputs — no template placeholders left
 - [ ] Query shapes are **selective, parameterized, and benchmarked after warm-up** (not cold-start measurements)
@@ -39,7 +39,7 @@ If any item fails, address it before drawing conclusions from benchmark numbers.
 | Interactive tables not found | **Interactive-table mode:** Re-run `snowflake-interactive` skill. **Zero-copy mode:** This is expected — there are no interactive tables. Verify the source tables exist and the interactive warehouse can query them. |
 | `BENCHMARK_LOCUST` stuck in PENDING with "Readiness probe failing at /stats/requests" | Stale `specs/locust.yaml` with a readiness probe. The Locust web port is only bound while a Locust run is active, so the probe fails between phases, after the run, and after a failed baseline. Remove the `readinessProbe` block from `specs/locust.yaml` and redeploy. |
 | `An interactive table must contain clustering keys` on `CREATE INTERACTIVE TABLE` | Only applies to interactive-table mode. The table has no `CLUSTER BY`. All interactive tables need one, including tiny lookup tables. Cluster on the primary key column if nothing else fits (e.g. `CLUSTER BY (N_NATIONKEY)`). |
-| Most interactive queries fail with `Statement reached its statement or warehouse timeout of 5 second(s) and was canceled` under load | Interactive warehouse is out of concurrency slots. Queries queue past the 5 s cancel. Fix: set `MAX_CLUSTER_COUNT` per Step 3.3 (`ceil(users / 15)`) — do NOT upsize the warehouse. |
+| Most interactive queries fail with `Statement reached its statement or warehouse timeout of 5 second(s) and was canceled` under load | Interactive warehouse is out of concurrency slots. Queries queue past the 5 s cancel. Fix: raise `MAX_CLUSTER_COUNT` per `references/mcw-sizing.md` (re-derive in-flight queries from the measured run) — do NOT upsize the warehouse. |
 | Small number of interactive queries fail with the 5 s cancel; the rest are fast | Long-tail outliers hitting the cancel. Fix: set `FALLBACK_WAREHOUSE` per Step 3.3. This is the expected steady-state for benchmarks — always configure fallback before load-testing. |
 | Curl to Locust `/swarm` endpoint returns an HTML auth page | SPCS public ingress requires Snowflake auth. `externalbrowser` connections cannot curl this from a laptop. Use the auto-start execution model (Step 3.8) — no `/swarm` call needed. |
 | Benchmark run used a different `LOCUST_USERS` value than requested | `config.env` had a stale value. Step 3.5 checklist requires overwriting `LOCUST_USERS` from Phase 1's answer — do not rely on template defaults. |
