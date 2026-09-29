@@ -1,6 +1,6 @@
 # Phase 1 Input Guidelines
 
-**Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_STD_WH`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_INT_WH`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.13).
+**Warehouse creation option:** If the user does not have existing warehouses or prefers dedicated benchmark resources, offer to create both a standard warehouse (e.g. `<SOLUTION_NAME>_STD_WH`) and an interactive warehouse (e.g. `<SOLUTION_NAME>_INT_WH`) specifically for this benchmark. The standard warehouse size should match a reasonable baseline (e.g. X-Small or Small). These benchmark-dedicated warehouses will be included in the cleanup list at the end (Step 3.13). Record, for each warehouse, whether the benchmark created it or the user supplied it — cleanup drops only benchmark-created warehouses.
 
 **Interactive warehouse AUTO_SUSPEND:** Interactive warehouses require `AUTO_SUSPEND` to be at least 86400 seconds (24 hours). When creating or altering an interactive warehouse, always set `AUTO_SUSPEND = 86400` to use the minimum allowed value.
 

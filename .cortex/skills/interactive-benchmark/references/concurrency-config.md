@@ -1,5 +1,7 @@
 # Concurrency and Fallback Configuration (Step 3.3)
 
+**Before changing anything, record the interactive warehouse's original settings** — cleanup (Step 3.13) restores them on a user-supplied warehouse. Capture `size`, `min_cluster_count`, and `max_cluster_count` from `SHOW WAREHOUSES LIKE '<INTERACTIVE_WAREHOUSE>'` and the value from `SHOW PARAMETERS LIKE 'FALLBACK_WAREHOUSE' IN WAREHOUSE <INTERACTIVE_WAREHOUSE>`.
+
 Compute the required cluster counts using the formula from `references/mcw-sizing.md`:
 
 ```
