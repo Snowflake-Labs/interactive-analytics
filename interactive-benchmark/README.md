@@ -89,7 +89,9 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
   database/schema/stage, compute pools, services, and public service endpoints;
   use `DEPLOY_WAREHOUSE`; and read the approved System Registry image.
 - Python 3 and `envsubst` (`gettext`) for deployment validation and spec rendering.
-- The API's runtime role needs `USAGE` on the interactive warehouse and `SELECT` on the interactive schema.
+- `API_ROLE` must match the service-owner `ROLE` and have `USAGE` on the
+  interactive and fallback warehouses, `USAGE` on the source database/schema,
+  and `SELECT` on referenced source tables.
 
 ### Approved Container Image
 

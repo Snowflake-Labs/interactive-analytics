@@ -318,6 +318,12 @@ This file is the single query executed against the interactive warehouse during 
 
 **IMPORTANT — Image must already exist:** The exact immutable benchmark image configured in `config.env` must be visible in the system image repository before running `deploy.sh`. The deploy preflight verifies the image/tag and its declared architecture before creating compute pools. Image publishing is a maintainer workflow; benchmark users do not need Docker or `CREATE IMAGE REPOSITORY`.
 
+**IMPORTANT — Runtime access must be proven before provisioning:** `deploy.sh`
+requires `API_ROLE` to equal the service-owner `ROLE`, verifies that role can
+activate both the interactive and fallback warehouses, and executes every
+benchmark query against the configured interactive schema. On failure it stops
+before creating compute pools and prints grant remediation SQL.
+
 Use the `bash` tool with `run_in_background=true`:
 
 ```bash

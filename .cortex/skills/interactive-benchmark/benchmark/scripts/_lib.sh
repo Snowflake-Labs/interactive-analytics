@@ -18,6 +18,7 @@ source "$CONFIG_ENV_FILE"
 : "${BENCHMARK_IMAGE:?BENCHMARK_IMAGE must be set}"
 : "${IMAGE_TAG:?IMAGE_TAG must be set}"
 : "${BENCHMARK_IMAGE_ARCH:?BENCHMARK_IMAGE_ARCH must be set}"
+: "${BENCHMARK_QUERY_DIR:=$REPO_DIR/benchmark/test}"
 
 export CONNECTION DB SCHEMA QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
        SOLUTION_NAME \
@@ -35,7 +36,8 @@ export CONNECTION DB SCHEMA QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
        API_MEMORY_REQUEST API_MEMORY_LIMIT \
        INTERACTIVE_WAREHOUSE INTERACTIVE_SCHEMA \
        LOCUST_HOST LOCUST_WEB_PORT LOCUST_USERS LOCUST_SPAWN \
-       LOCUST_RUN_TIME API_READY_TIMEOUT_SECONDS API_READY_POLL_SECONDS
+       LOCUST_RUN_TIME API_READY_TIMEOUT_SECONDS API_READY_POLL_SECONDS \
+       BENCHMARK_QUERY_DIR
 
 # Defaults for tuning knobs that may be missing on older config.env files.
 : "${API_WORKERS:=4}"
@@ -132,6 +134,98 @@ validate_pool_architecture() {
         ;;
     esac
   done
+}
+
+validate_unquoted_identifier() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[A-Za-z_][A-Za-z0-9_$]*$ ]]; then
+    echo "$name must be an unquoted Snowflake identifier: $value" >&2
+    return 1
+  fi
+}
+
+print_access_remediation() {
+  cat >&2 <<EOF
+Ask an administrator to grant the service-owner role access to the benchmark
+warehouses and source data, then rerun deploy.sh:
+
+USE ROLE ACCOUNTADMIN;
+GRANT USAGE ON WAREHOUSE $INTERACTIVE_WAREHOUSE TO ROLE $API_ROLE;
+GRANT USAGE ON WAREHOUSE $API_WAREHOUSE TO ROLE $API_ROLE;
+GRANT USAGE ON DATABASE $API_DATABASE TO ROLE $API_ROLE;
+GRANT USAGE ON SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA TO ROLE $API_ROLE;
+GRANT SELECT ON ALL TABLES IN SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA TO ROLE $API_ROLE;
+EOF
+}
+
+probe_warehouse_access() {
+  local label="$1"
+  local warehouse="$2"
+  local output
+
+  if ! output="$(snow sql \
+    --connection "$CONNECTION" \
+    --role "$API_ROLE" \
+    --silent \
+    --format json \
+    -q "USE WAREHOUSE $warehouse; USE DATABASE $API_DATABASE; USE SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA; SELECT CURRENT_ROLE() AS ROLE, CURRENT_WAREHOUSE() AS WAREHOUSE" \
+    2>&1)"; then
+    echo "Access preflight failed for the $label warehouse '$warehouse':" >&2
+    echo "$output" >&2
+    print_access_remediation
+    return 1
+  fi
+}
+
+probe_query_access() {
+  local query_files=("$BENCHMARK_QUERY_DIR"/*.sql)
+  local query_file query output
+
+  if [[ ! -e "${query_files[0]}" ]]; then
+    echo "No benchmark .sql files found in $BENCHMARK_QUERY_DIR." >&2
+    return 1
+  fi
+
+  for query_file in "${query_files[@]}"; do
+    query="$(<"$query_file")"
+    if ! output="$(snow sql \
+      --connection "$CONNECTION" \
+      --role "$API_ROLE" \
+      --silent \
+      --format json \
+      -q "USE WAREHOUSE $INTERACTIVE_WAREHOUSE; USE DATABASE $API_DATABASE; USE SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA; $query" \
+      2>&1)"; then
+      echo "Source-data preflight failed for $query_file:" >&2
+      echo "$output" >&2
+      print_access_remediation
+      return 1
+    fi
+  done
+}
+
+preflight_benchmark_access() {
+  local name
+
+  if [[ "$API_ROLE" != "$ROLE" ]]; then
+    cat >&2 <<EOF
+API_ROLE ($API_ROLE) must equal ROLE ($ROLE).
+SPCS OAuth tokens can use the service-owner role or PUBLIC; deploy the service
+and run the API with the same role.
+EOF
+    return 1
+  fi
+
+  for name in ROLE API_ROLE API_DATABASE INTERACTIVE_SCHEMA \
+    INTERACTIVE_WAREHOUSE API_WAREHOUSE; do
+    validate_unquoted_identifier "$name" "${!name}" || return 1
+  done
+
+  probe_warehouse_access "interactive" "$INTERACTIVE_WAREHOUSE" || return 1
+  probe_warehouse_access "fallback" "$API_WAREHOUSE" || return 1
+  probe_query_access || return 1
+
+  echo "Access preflight passed for role $API_ROLE."
 }
 
 preflight_benchmark_image() {

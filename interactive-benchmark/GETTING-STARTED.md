@@ -52,7 +52,9 @@ snow connection test -c myconn
 The benchmark uses one immutable approved image from
 `SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES` for both API and Locust roles.
 `deploy.sh` checks the exact configured image and tag before creating compute
-pools, so no Docker setup is required.
+pools. It also verifies that the service-owner role can use both warehouses
+and execute the benchmark queries against the interactive schema. No Docker setup
+is required.
 
 ## 5. Open the project in Cortex Code
 
