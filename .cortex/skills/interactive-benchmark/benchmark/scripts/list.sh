@@ -53,14 +53,15 @@ echo
 
 echo "--- Compute Pools ---"
 snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
-  "SHOW COMPUTE POOLS LIKE '${SOLUTION_NAME}_BENCH%'" 2>/dev/null \
+  "SHOW COMPUTE POOLS LIKE '${SOLUTION_NAME}%'" 2>/dev/null \
   | python3 -c '
 import json, sys
+pools = {p.upper() for p in sys.argv[1:]}
 data = sys.stdin.read().strip()
 if not data:
     print("  (none)")
 else:
-    rows = json.loads(data)
+    rows = [r for r in json.loads(data) if (r.get("name") or r.get("NAME") or "").upper() in pools]
     if not rows:
         print("  (none)")
     else:
@@ -71,5 +72,5 @@ else:
             min_n = r.get("min_nodes") or r.get("MIN_NODES") or ""
             max_n = r.get("max_nodes") or r.get("MAX_NODES") or ""
             print(f"  {name:35s} {state:12s} {family} (nodes: {min_n}-{max_n})")
-'
+' "$API_COMPUTE_POOL" "$LOCUST_COMPUTE_POOL"
 echo

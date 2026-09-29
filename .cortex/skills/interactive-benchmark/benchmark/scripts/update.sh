@@ -7,11 +7,21 @@
 #
 # Flags:
 #   --queries-only   (default, kept for backward compatibility)
+#
+# This does not re-run the load test. To re-run Locust, suspend and resume
+# the Locust service.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/_lib.sh"
+
+for arg in "$@"; do
+  case "$arg" in
+    --queries-only) ;;
+    *) echo "Unknown option: $arg" >&2; echo "Usage: update.sh [--queries-only]" >&2; exit 1 ;;
+  esac
+done
 
 echo "==> Uploading queries to stage"
 "$SCRIPT_DIR/upload-queries.sh"
