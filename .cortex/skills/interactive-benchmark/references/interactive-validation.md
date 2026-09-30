@@ -1,4 +1,4 @@
-# Interactive Setup Validation (Step 3.2)
+# Interactive Setup Validation (Step 3.1)
 
 Verify the interactive setup is correct before deploying. The validation differs depending on the `INTERACTIVE_MODE` captured in Step 2.1.
 
@@ -41,7 +41,7 @@ Compare total working set size against the interactive warehouse size:
 - L: up to ~2500 GB
 - XL+: larger working sets
 
-**If validation fails** (warehouse not found, severe clustering misalignment, or working set exceeds warehouse cache capacity): inform the user which check failed, then jump to Step 3.14 (cleanup).
+**If validation fails** (warehouse not found, severe clustering misalignment, or working set exceeds warehouse cache capacity): inform the user which check failed, then jump to Step 3.13 (cleanup).
 
 ---
 
@@ -87,4 +87,4 @@ Compare total working set size against the interactive warehouse size:
 - L: up to ~2500 GB
 - XL+: larger working sets
 
-**If any validation fails** (no interactive tables found, tables not attached to the expected warehouse, missing clustering keys, or working set exceeds warehouse cache capacity): inform the user which check failed and why, then jump to Step 3.14 (cleanup) — the benchmark cannot proceed with an invalid interactive setup.
+**If any validation fails** (no interactive tables found, tables not attached to the expected warehouse, missing clustering keys, or working set exceeds warehouse cache capacity): inform the user which check failed and why, then jump to Step 3.13 (cleanup) — the benchmark cannot proceed with an invalid interactive setup.
