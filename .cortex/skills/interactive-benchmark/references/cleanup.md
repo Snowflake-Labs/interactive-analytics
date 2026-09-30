@@ -2,11 +2,14 @@
 
 After the report is generated, present the user with a **complete list of all Snowflake resources created during this benchmark session**. The resource list depends on the `INTERACTIVE_MODE` captured in Step 2.1.
 
+**Ownership rule — only drop what this benchmark created.** Phase 1 records whether the interactive and standard warehouses were created by the benchmark or supplied by the user. List a user-supplied warehouse as "kept (pre-existing)" and never drop it. Instead, restore the settings the benchmark changed on it (captured in Step 3.2 before any change): `MIN_CLUSTER_COUNT`, `MAX_CLUSTER_COUNT`, `FALLBACK_WAREHOUSE`, and — in interactive-table mode — detach the benchmark's interactive tables.
+
 **Interactive-table mode (`INTERACTIVE_MODE = interactive-tables`):**
 
 | Resource Type | Name | Location |
 |---|---|---|
-| Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level |
+| Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level (only if created by this benchmark) |
+| Standard warehouse | `<STANDARD_WAREHOUSE>` | Account-level (only if created by this benchmark) |
 | Interactive schema | `<DATABASE>.<INTERACTIVE_SCHEMA>` | Contains interactive tables |
 | Interactive tables | `<TABLE_1>`, `<TABLE_2>`, ... | In `<INTERACTIVE_SCHEMA>` |
 | SPCS database | `<SOLUTION_NAME>_DB` | Account-level |
@@ -20,7 +23,8 @@ After the report is generated, present the user with a **complete list of all Sn
 
 | Resource Type | Name | Location |
 |---|---|---|
-| Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level |
+| Interactive warehouse | `<INTERACTIVE_WAREHOUSE>` | Account-level (only if created by this benchmark) |
+| Standard warehouse | `<STANDARD_WAREHOUSE>` | Account-level (only if created by this benchmark) |
 | SPCS database | `<SOLUTION_NAME>_DB` | Account-level |
 | SPCS schema | `<SOLUTION_NAME>_DB.SPCS` | Contains services |
 | Compute pool (API) | `<SOLUTION_NAME>_API_POOL` | Account-level |
@@ -31,24 +35,25 @@ After the report is generated, present the user with a **complete list of all Sn
 Note: In zero-copy mode, no interactive schema or interactive tables are created — `INTERACTIVE_SCHEMA` is the **source schema** and must NOT be dropped.
 
 Then use `ask_user_question` to ask the user: **"Would you like me to clean up these resources, or keep them for further benchmarking?"** with the following three options:
-1. **Full cleanup** — tear down everything (SPCS services, compute pools, interactive warehouse, and — if interactive-table mode — the interactive schema and tables)
+1. **Full cleanup** — tear down everything this benchmark created (SPCS services, compute pools, benchmark-created warehouses, and — if interactive-table mode — the interactive schema and tables)
 2. **Tear down SPCS only** — remove services and compute pools but keep the interactive warehouse (and interactive tables if applicable)
-3. **Keep everything** — leave all resources running for re-runs
+3. **Keep everything** — leave all resources running for re-runs. State the cost when offering this: the compute pools and every `MIN_CLUSTER_COUNT` cluster of the interactive warehouse keep billing (interactive warehouses auto-suspend only after 24 hours).
 
 If the user chooses **full cleanup**, use the `bash` tool:
 ```bash
 cd <SKILL_DIR>/benchmark/scripts && ./teardown.sh
 ```
 
-Then drop the schemas and warehouse via `snowflake_sql_execute`.
+Then drop the benchmark-created objects via `snowflake_sql_execute`. Drop the interactive warehouse **before** its interactive schema, because the warehouse references the attached tables. Run each `DROP WAREHOUSE` line only for warehouses this benchmark created.
 
 **Interactive-table mode** — drop the interactive schema (it contains copied data):
 
 ```sql
 USE ROLE <ROLE>;
+DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;  -- only if created by this benchmark
 DROP SCHEMA IF EXISTS <DATABASE>.<INTERACTIVE_SCHEMA>;
 DROP SCHEMA IF EXISTS <SOLUTION_NAME>_DB.SPCS;
-DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
+DROP WAREHOUSE IF EXISTS <STANDARD_WAREHOUSE>;     -- only if created by this benchmark
 ```
 
 **Zero-copy mode** — do NOT drop `INTERACTIVE_SCHEMA` (it is the source schema with production data):
@@ -56,8 +61,21 @@ DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
 ```sql
 USE ROLE <ROLE>;
 DROP SCHEMA IF EXISTS <SOLUTION_NAME>_DB.SPCS;
-DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;
+DROP WAREHOUSE IF EXISTS <INTERACTIVE_WAREHOUSE>;  -- only if created by this benchmark
+DROP WAREHOUSE IF EXISTS <STANDARD_WAREHOUSE>;     -- only if created by this benchmark
 ```
+
+**Pre-existing interactive warehouse** — restore it instead of dropping it, using the values captured in Step 3.2. In interactive-table mode, detach the benchmark's tables before dropping the interactive schema:
+
+```sql
+USE ROLE <ROLE>;
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> DROP TABLES (<DATABASE>.<INTERACTIVE_SCHEMA>.<TABLE_1>, ...);  -- interactive-table mode only
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET MIN_CLUSTER_COUNT = <ORIGINAL_MIN_CLUSTER_COUNT>;
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET MAX_CLUSTER_COUNT = <ORIGINAL_MAX_CLUSTER_COUNT>;
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> UNSET FALLBACK_WAREHOUSE;  -- or SET it back to <ORIGINAL_FALLBACK_WAREHOUSE> if it had one
+```
+
+If `resize-wh.sh --size` was used on it, its size also changed: restore the size with `resize-wh.sh --size <ORIGINAL_SIZE>`.
 
 If the SPCS database was created entirely by this benchmark and is now empty, also drop it via `snowflake_sql_execute`:
 
