@@ -5,11 +5,12 @@
 Compute the required cluster counts using the formula from `references/mcw-sizing.md`:
 
 ```
-RECOMMENDED_MIN_CLUSTER_COUNT = ceil(<CONCURRENT_USERS> / MAX_CONCURRENCY_LEVEL)
+IN_FLIGHT_QUERIES             = <CONCURRENT_USERS> * QUERY_LATENCY_S / (QUERY_LATENCY_S + 1.0)
+RECOMMENDED_MIN_CLUSTER_COUNT = max(1, ceil(IN_FLIGHT_QUERIES / MAX_CONCURRENCY_LEVEL))
 RECOMMENDED_MAX_CLUSTER_COUNT = RECOMMENDED_MIN_CLUSTER_COUNT * 2
 ```
 
-where `MAX_CONCURRENCY_LEVEL` defaults to 8.
+where `QUERY_LATENCY_S` is the warm interactive latency from the suitability check, `1.0` is Locust's mean think time, and `MAX_CONCURRENCY_LEVEL` defaults to 8.
 
 Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point.
 
