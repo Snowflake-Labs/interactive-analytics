@@ -14,7 +14,7 @@ After collecting the server-side percentiles from Step 3.11, evaluate them again
 
 **Do NOT ask for permission to scale within the defined limits.** The user already approved the scale-out limit (MAX_CLUSTER_COUNT) and scale-up limit (warehouse size) in Step 1. As long as the proposed change stays within those boundaries, proceed automatically — inform the user what you are doing (e.g. "P95 goal not met. Scaling warehouse from X-Small to Small — within your approved ceiling of Medium. Re-running benchmark.") but do NOT wait for confirmation. This keeps the benchmark moving without unnecessary interruptions.
 
-**After each escalation:** re-configure the warehouse using `resize-wh.sh` via `bash`. This script uses `CREATE OR REPLACE INTERACTIVE WAREHOUSE` (the only reliable path — `ALTER WAREHOUSE SET WAREHOUSE_SIZE` fails with 090094 on interactive warehouses with attached tables). It preserves attached tables and the fallback warehouse automatically. **Do NOT use `snowflake_sql_execute` with direct `ALTER WAREHOUSE` for size or MCW changes.**
+**After each escalation:** re-configure the warehouse using `resize-wh.sh` via `bash`. A `--mcw`-only change is an in-place `ALTER`. A `--size` change uses `CREATE OR REPLACE INTERACTIVE WAREHOUSE` (`ALTER WAREHOUSE SET WAREHOUSE_SIZE` fails with 090094 on interactive warehouses with attached tables); it preserves attached tables and the fallback warehouse, and refuses to run if other roles hold grants or a resource monitor is attached. If it refuses, stop and ask the user — do NOT pass `--force-replace` on a warehouse the user did not create for this benchmark. **Do NOT use `snowflake_sql_execute` with direct `ALTER WAREHOUSE` for size or MCW changes.**
 
 ```bash
 # Scale up only:
@@ -25,7 +25,7 @@ cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --mcw <NEW_MCW>
 cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --size <NEW_SIZE> --mcw <NEW_MCW>
 ```
 
-After `resize-wh.sh` completes, **the data cache is cold** because `CREATE OR REPLACE` resets it, and **Locust is still suspended** (the script only resumes the API service). Follow this exact sequence:
+After `resize-wh.sh` completes, **the data cache is cold** (a size change resets it; a cluster-count change adds cold clusters), and **Locust is suspended** (the script only resumes the API service). Follow this exact sequence:
 
 1. **Re-warm the cache** (Step 3.6) — run warmup queries via `snowflake_sql_execute` against the interactive warehouse.
 2. **Resume Locust** — only after warmup is complete, resume the Locust service via `snowflake_sql_execute`:

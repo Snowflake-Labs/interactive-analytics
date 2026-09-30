@@ -11,7 +11,11 @@ where `MAX_CONCURRENCY_LEVEL` defaults to 8.
 
 Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.12 will detect if queueing causes P95 misses and propose escalation at that point.
 
-**IMPORTANT — Use `resize-wh.sh` for any warehouse reconfiguration.** `ALTER WAREHOUSE ... SET WAREHOUSE_SIZE` fails with error 090094 on interactive warehouses that have attached tables — even when suspended. Direct `ALTER WAREHOUSE` via `snowflake_sql_execute` will not work. Always use the `resize-wh.sh` script instead — it reads current properties (size, MCW, fallback warehouse, attached tables), suspends SPCS services, runs `CREATE OR REPLACE INTERACTIVE WAREHOUSE` with the new settings and re-attached tables, restores the fallback warehouse, and resumes services. **Because `CREATE OR REPLACE` resets the data cache, the cache will be cold after `resize-wh.sh` completes. You MUST re-run the cache warm-up procedure (Step 3.6) before any load test.**
+**IMPORTANT — Use `resize-wh.sh` for any warehouse reconfiguration.** Do not run `ALTER WAREHOUSE ... SET WAREHOUSE_SIZE` or `MAX_CLUSTER_COUNT` directly via `snowflake_sql_execute`. The script handles two cases:
+- `--mcw` only: `ALTER WAREHOUSE ... SET MAX_CLUSTER_COUNT` in place. Grants, attached tables, fallback warehouse, and the data cache are kept.
+- `--size`: `ALTER ... SET WAREHOUSE_SIZE` fails with error 090094 on interactive warehouses with attached tables, so the script runs `CREATE OR REPLACE INTERACTIVE WAREHOUSE` with the current attached tables and restores `FALLBACK_WAREHOUSE`. It refuses to replace a warehouse that has grants to other roles or a resource monitor (both would be dropped) unless `--force-replace` is passed. Never pass `--force-replace` on a warehouse the user did not create for this benchmark; stop and ask instead.
+
+Either way, newly started clusters are cold, and a replace resets the cache of every cluster. **You MUST re-run the cache warm-up procedure (Step 3.6) before any load test.**
 
 Apply the initial cluster count via `bash`:
 
@@ -19,7 +23,7 @@ Apply the initial cluster count via `bash`:
 cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --mcw <computed_value>
 ```
 
-**IMPORTANT:** `resize-wh.sh` only resumes the API service — Locust stays suspended so it cannot start benchmarking against a cold cache. After the script completes, you MUST run the cache warm-up (Step 3.6) and THEN explicitly resume Locust via `snowflake_sql_execute`:
+**IMPORTANT:** `resize-wh.sh` suspends Locust (if deployed) and leaves it suspended so it cannot start benchmarking against a cold cache. Before deploy, it skips the service steps. After the script completes, you MUST run the cache warm-up (Step 3.6) and THEN explicitly resume Locust via `snowflake_sql_execute`:
 
 ```sql
 USE ROLE <ROLE>;
