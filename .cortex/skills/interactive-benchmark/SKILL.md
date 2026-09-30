@@ -367,7 +367,7 @@ This deploys:
 
 3. **Load** `references/benchmark-execution.md` (via the `read` tool) for the full baseline and load test procedure.
 
-**Summary:** The Locust container runs a two-phase execution model automatically on start: (1) a baseline test against the no-op `/api/run/baseline` endpoint to validate infrastructure, then (2) the real load test against `/api/run/interactive`. No external HTTP calls are needed — auto-start sidesteps SPCS auth. Monitor via `./logs.sh locust`; look for `[baseline] VERDICT: PASS` before the benchmark begins. For subsequent runs (after escalation), restart the Locust service via `./update.sh` or `ALTER SERVICE ... SUSPEND / RESUME`. Parse the `/api/run/interactive` row from the Locust CSV for P50, P95, P99 and failure counts.
+**Summary:** The Locust container runs a two-phase execution model automatically on start: (1) a baseline test against the no-op `/api/run/baseline` endpoint to validate infrastructure, then (2) the real load test against `/api/run/interactive`. No external HTTP calls are needed — auto-start sidesteps SPCS auth. Monitor via `./logs.sh locust`; look for `[baseline] VERDICT: PASS` before the benchmark begins. For subsequent runs (after escalation), restart the Locust service with `ALTER SERVICE ... SUSPEND / RESUME` (`update.sh` only restarts the API). Parse the `/api/run/interactive` row from the Locust CSV for P50, P95, P99 and failure counts.
 
 ---
 

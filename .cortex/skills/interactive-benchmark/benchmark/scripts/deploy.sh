@@ -76,6 +76,11 @@ $rendered
   MAX_INSTANCES = ${max_instances}
   COMMENT = 'Managed by benchmark/scripts/';
 
+-- CREATE ... IF NOT EXISTS does not update an existing service.
+ALTER SERVICE $svc SET
+  MIN_INSTANCES = ${min_instances}
+  MAX_INSTANCES = ${max_instances};
+
 ALTER SERVICE $svc FROM SPECIFICATION \$\$
 $rendered
 \$\$;

@@ -32,26 +32,32 @@ except Exception as e:
 '
 }
 
-# Summarize: READY when all containers are READY, otherwise report actual state.
-service_status() {
+# Summarize across all instances/containers: FAILED if any failed, READY only
+# when all are READY, otherwise the first non-READY status and its message.
+service_summary() {
   local svc="$1"
   local info
-  info="$(service_info "$svc" 2>/dev/null)" || info="UNKNOWN\tservice not found"
+  info="$(service_info "$svc" 2>/dev/null)" || info=$'UNKNOWN\tservice not found'
   if [[ -z "$info" ]]; then
-    echo "NOT_FOUND"
+    printf 'NOT_FOUND\t\n'
     return
   fi
-  # Take the first container's status (single-container services)
-  echo "$info" | head -1 | cut -f1
+  python3 -c '
+import sys
+rows = [line.split("\t", 1) + [""] for line in sys.stdin.read().splitlines() if line]
+failed = [r for r in rows if r[0] == "FAILED"]
+pending = [r for r in rows if r[0] != "READY"]
+status, msg = (failed or pending or [["READY", ""]])[0][:2]
+print(f"{status}\t{msg}")
+' <<<"$info"
+}
+
+service_status() {
+  service_summary "$1" | cut -f1
 }
 
 service_message() {
-  local svc="$1"
-  local info
-  info="$(service_info "$svc" 2>/dev/null)" || true
-  if [[ -n "$info" ]]; then
-    echo "$info" | head -1 | cut -f2
-  fi
+  service_summary "$1" | cut -f2
 }
 
 service_url() {

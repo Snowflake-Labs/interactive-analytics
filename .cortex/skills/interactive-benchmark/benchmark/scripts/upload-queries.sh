@@ -2,8 +2,8 @@
 # Upload benchmark .sql files to the Snowflake stage.
 #
 # Usage:
-#   upload-queries.sh              # uploads benchmark/test/*.sql
-#   upload-queries.sh /path/to/*.sql   # uploads specified files
+#   upload-queries.sh              # replaces the stage's .sql files with $BENCHMARK_QUERY_DIR/*.sql
+#   upload-queries.sh /path/to/*.sql   # adds/overwrites the specified files
 #
 # After uploading, restart the API service so it picks up the new queries:
 #   snow spcs service restart $API_SERVICE --connection $CONNECTION \
@@ -15,9 +15,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_lib.sh"
 
 STAGE_PATH="@${DB}.${SCHEMA}.${QUERIES_STAGE}"
-TEST_DIR="$REPO_DIR/benchmark/test"
+TEST_DIR="$BENCHMARK_QUERY_DIR"
 
-# Accept explicit file list or default to benchmark/test/*.sql
+# Accept explicit file list or default to $BENCHMARK_QUERY_DIR/*.sql (benchmark/test/)
 if (( $# > 0 )); then
   files=("$@")
 else
@@ -29,6 +29,14 @@ fi
 if (( ${#files[@]} == 0 )); then
   echo "No .sql files found to upload." >&2
   exit 1
+fi
+
+# The API benchmarks every .sql file on the stage, so a full upload must not
+# leave files from a previous run behind.
+if (( $# == 0 )); then
+  echo "Removing existing .sql files from ${STAGE_PATH}"
+  snow sql --connection "$CONNECTION" --role "$ROLE" --silent -q \
+    "REMOVE ${STAGE_PATH} PATTERN = '.*[.]sql'" >/dev/null
 fi
 
 echo "Uploading ${#files[@]} query file(s) to ${STAGE_PATH}:"
