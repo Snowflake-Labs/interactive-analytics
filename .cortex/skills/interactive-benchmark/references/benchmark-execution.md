@@ -14,7 +14,7 @@ If either threshold is exceeded, the container logs an error with remediation su
 
 **Phase 2 — Snowflake Benchmark:** Only runs if Phase 1 passes. This is the real load test against `POST /api/run/interactive`.
 
-Baseline env vars (all have sensible defaults — no SPCS spec changes required):
+Baseline thresholds are set in `config.env` and passed through `specs/locust.yaml`:
 
 | Variable | Default | Description |
 |---|---|---|
