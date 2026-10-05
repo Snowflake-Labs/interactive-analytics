@@ -379,13 +379,13 @@ This deploys:
 
 1. **Baseline (Locust HTTP)** — p99 from the baseline CSV for `/api/run/baseline`. This is the infrastructure overhead floor — the minimum latency added by the API/network layer.
 2. **Client-side (Locust HTTP)** — P50, P95, P99 from the Locust CSV for the `/api/run/interactive` endpoint. This is what the end user experiences (HTTP round-trip + API pool + Snowflake).
-3. **Server-side (Snowflake)** — P50, P95, P99 computed from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` for the interactive warehouse. This is what Snowflake alone spent (compile + queue + execute).
+3. **Server-side (Snowflake)** — P50, P95, P99 computed from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` over the Locust run window, filtered to the benchmark `QUERY_TAG`, across the interactive and fallback warehouses, including failed and fallback-served queries. This is what Snowflake alone spent (compile + queue + execute).
 
 All three sets of numbers are **mandatory**. The server-side numbers are what proves Snowflake performance; the client-side numbers are what the user's dashboard sees; the baseline numbers establish the infrastructure overhead floor. The **delta between client-side and server-side isolates the API/HTTP overhead from Snowflake's real cost**. If that delta is significantly higher than the baseline p99, there may be connection pool contention or other API-layer issues beyond simple HTTP overhead.
 
 Also collect:
 - Throughput (requests/sec) from Locust
-- Error rates (Locust) and count of fallback-served queries (server-side query count on the fallback WH)
+- Error rates (Locust) and server-side `N_FAILED` / `N_FALLBACK` (see `references/server-side-validation.md`)
 
 **Latency goal convention:** When the user specifies a latency target (e.g. "queries must complete within 2 seconds"), interpret that as a **P95 target** unless they explicitly state otherwise. Evaluate the goal against **both** client-side and server-side P95 — if server-side meets the goal but client-side does not, the API is the bottleneck; if both fail, the warehouse configuration needs work.
 
@@ -406,7 +406,7 @@ Capture these recommendations for the report.
 
 **Important — use `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE`, not `ACCOUNT_USAGE.QUERY_HISTORY`.** The `ACCOUNT_USAGE` view has a 45-minute to 3-hour latency and will return zero rows immediately after the benchmark. `INFORMATION_SCHEMA` is fresh within seconds. Run these diagnostic queries via `snowflake_sql_execute` from a **non-interactive** warehouse (e.g. `USE WAREHOUSE COMPUTE_WH`) — running them on the interactive WH will hit the 5-second cancel.
 
-The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every request. This allows isolating benchmark traffic in `QUERY_HISTORY` queries. Because the default benchmark name includes a `YYYYMMDDHHMM` timestamp, each benchmark run produces a unique tag. If the user provides a custom name without a timestamp pattern, append `_YYYYMMDDHHMM` to the tag value so that queries from different runs of the same benchmark can be distinguished.
+The API sets `QUERY_TAG` to the `SOLUTION_NAME` (benchmark name) on every request, which excludes warm-up, suitability, and preflight queries from the numbers. The tag is the same for every escalation iteration, so each iteration is isolated by its Locust run window. Collect each iteration into its own `QH_RUN_<N>` table and check that its row count matches the Locust request count.
 
 **Load** `references/server-side-validation.md` (via the `read` tool) for the exact SQL queries, delta interpretation rules, and query profile health metrics.
 

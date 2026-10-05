@@ -19,7 +19,7 @@ Before considering a benchmark complete, verify all of the following are true:
 - [ ] `config.env` values (INTERACTIVE_WAREHOUSE, LOCUST_USERS, schema) match Phase 1/Step 2.1 outputs — no template placeholders left
 - [ ] Query shapes are **selective, parameterized, and benchmarked after warm-up** (not cold-start measurements)
 - [ ] Query Profile shows **low remote reads** (0% ideal), **low compile time** (< 50 ms), and **low queueing** (0 ms) for steady-state traffic
-- [ ] **Server-side P50/P95/P99 collected** from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` and reported **alongside** the Locust client-side percentiles
+- [ ] **Server-side P50/P95/P99 collected** from `INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE` for the Locust run window and benchmark `QUERY_TAG`, including failed and fallback-served queries, with a row count that matches the Locust request count, and reported **alongside** the Locust client-side percentiles
 - [ ] **Client-vs-server delta analyzed** and the bottleneck (API/HTTP vs Snowflake) explicitly named in the report — never rely on Locust numbers alone
 - [ ] **Step 3.11 goal check performed** — if server-side P95 missed the goal, escalation was performed automatically within limits, or the limit-bound verdict was recorded
 - [ ] **HTML report generated from `templates/benchmark-report.html.template`** — no `{{PLACEHOLDER}}` tokens remain in the output file, and all 12 mandatory sections are present
