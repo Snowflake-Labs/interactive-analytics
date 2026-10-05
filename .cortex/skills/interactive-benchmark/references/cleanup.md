@@ -101,7 +101,7 @@ SPCS_API_INGRESS_URL=<the ingress URL>
 SPCS_LOCUST_INGRESS_URL=<the locust ingress URL>
 ```
 
-On future invocations of this skill, use `read` to check `benchmark/.env` for `SPCS_DEPLOYED=true`. If set, skip Step 3.6 (Deploy to SPCS) and reuse the saved ingress URLs for cache warming and load testing. If the user later wants to tear down, use `bash` to run `./teardown.sh` and `edit` to remove the `SPCS_*` lines from `.env`.
+On future invocations of this skill, use `read` to check `benchmark/.env` for `SPCS_DEPLOYED=true`. If set, skip Step 3.6 (Deploy to SPCS) and reuse the existing services; warm the cache with `snowflake_sql_execute` (Step 3.5) and re-run the load test by suspending and resuming Locust. If the user later wants to tear down, use `bash` to run `./teardown.sh` and `edit` to remove the `SPCS_*` lines from `.env`.
 
 Verify final service state using the `bash` tool:
 
