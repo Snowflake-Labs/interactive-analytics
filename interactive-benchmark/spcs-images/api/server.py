@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from queue import Empty, Queue
@@ -194,6 +195,11 @@ def execute_query(sql: str) -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # asyncio.to_thread's default executor caps at min(32, cpu + 4) threads,
+    # which would queue requests inside the API below POOL_SIZE.
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=POOL_SIZE, thread_name_prefix="query")
+    )
     log.info("Benchmark API running at http://localhost:%s", PORT)
     log.info("Pool size: %d, workers: %d", POOL_SIZE, WORKERS)
     log.info("Database: %s", DATABASE)
