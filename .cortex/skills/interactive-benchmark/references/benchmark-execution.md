@@ -41,11 +41,7 @@ Look for `[baseline] VERDICT: PASS` to confirm the infrastructure is healthy bef
 
 Depending on state:
 - **First run after `./deploy.sh`** — both phases run automatically when the container starts. No action needed. Proceed to 9b.
-- **Subsequent runs after changing config or warehouse settings** — force a container restart using the `bash` tool:
-  ```bash
-  cd <SKILL_DIR>/benchmark/scripts && ./update.sh
-  ```
-  Or suspend+resume directly via `snowflake_sql_execute`:
+- **Subsequent runs after changing config or warehouse settings** — restart the Locust container by suspending and resuming it via `snowflake_sql_execute` (`update.sh` only re-uploads queries and restarts the API; it does not re-run Locust):
   ```sql
   ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST SUSPEND;
   ALTER SERVICE <DATABASE>.SPCS.BENCHMARK_LOCUST RESUME;
