@@ -283,7 +283,7 @@ This file is the single query executed against the interactive warehouse during 
    | Variable | Source | Example |
    |---|---|---|
    | `CONNECTION` | Phase 1 answer | `PM` |
-   | `ROLE` | Phase 1 or `ACCOUNTADMIN` | `ACCOUNTADMIN` |
+   | `ROLE` | Phase 1 or `SYSADMIN` (use a role with only the privileges listed in Prerequisites; not `ACCOUNTADMIN`) | `SYSADMIN` |
    | `INTERACTIVE_WAREHOUSE` | **Step 2.1 output** — the exact name `snowflake-interactive` created | `DM_TESTTPCH_INT_WH` |
    | `INTERACTIVE_SCHEMA` | **Step 2.1 output** | `TPCH_SF100_INT` |
    | `API_DATABASE` | **Phase 1 answer** | `DM_TESTTPCH_DB` |
@@ -461,7 +461,7 @@ Each time the load test runs (Step 3.8), capture the full Locust output (via `ba
 2. **End-of-step PROGRESS UPDATE (mandatory):** After cleanup completes, run `update-progress.sh <REPORT_DIR> 13 complete` (this auto-sets top-level status to `"completed"`).
 3. **Load** `references/cleanup.md` (via the `read` tool) for the full cleanup procedure.
 
-**Summary:** Present the user with a table of all created resources (interactive warehouse, schema, tables, SPCS database/schema, compute pools, and services). The shared System Registry is not created or removed by a benchmark run. Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything. For full cleanup, run `./teardown.sh` then drop schemas/warehouse/database via SQL. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
+**Summary:** Present the user with a table of all created resources (benchmark-created warehouses, schema, tables, SPCS database/schema, compute pools, and services). The shared System Registry is not created or removed by a benchmark run. Use `ask_user_question` with three options: (1) Full cleanup, (2) SPCS only, (3) Keep everything (state that pools and minimum clusters keep billing). For full cleanup, run `./teardown.sh` then drop the benchmark-created schemas/warehouses/database via SQL. Never drop a user-supplied warehouse — restore its original settings instead. For "keep everything", save `SPCS_DEPLOYED=true` to `.env` so future runs skip redeployment.
 
 ---
 
