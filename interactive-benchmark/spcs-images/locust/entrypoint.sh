@@ -172,6 +172,16 @@ parse_stats() {
   echo "$result"
 }
 
+# A CPU-bound Locust inflates client-side latency; server-side numbers are
+# unaffected.
+warn_if_cpu_bound() {
+  local label="$1" log="$2"
+  if grep -q "CPU usage above" "$log"; then
+    echo "[$label] WARNING: Locust was CPU-bound during this run; client-side" \
+      "percentiles are inflated. Reduce LOCUST_USERS or raise the Locust CPU limit."
+  fi
+}
+
 # Returns 0 if pass, 1 if fail.
 check_baseline() {
   local result fail_pct p99 requests failures
@@ -263,6 +273,7 @@ fi
   -r "$SPAWN" 2>&1 | tee "${RESULTS_DIR}/baseline_run.log"
 
 print_results "BASELINE" "${RESULTS_DIR}/baseline_stats"
+warn_if_cpu_bound baseline "${RESULTS_DIR}/baseline_run.log"
 
 if ! check_baseline "${RESULTS_DIR}/baseline_stats_stats.csv"; then
   echo ""
@@ -299,6 +310,7 @@ echo "[benchmark] Running BenchmarkUser for $RUN_TIME with $USERS users..."
   -r "$SPAWN" 2>&1 | tee "${RESULTS_DIR}/locust_run.log"
 
 print_results "BENCHMARK" "${RESULTS_DIR}/locust_stats"
+warn_if_cpu_bound benchmark "${RESULTS_DIR}/locust_run.log"
 
 BENCHMARK_STATUS=COMPLETED
 if ! check_benchmark "${RESULTS_DIR}/locust_stats_stats.csv"; then
