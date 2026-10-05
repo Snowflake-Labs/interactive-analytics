@@ -47,6 +47,9 @@ case "$args" in
   *"SHOW IMAGES"*|*"SHOW SERVICES"*) echo '[]' ;;
   *"SHOW COMPUTE POOLS"*)
     echo '[{"name":"TEST_API_POOL","state":"ACTIVE"},{"name":"TEST_OTHER_POOL","state":"ACTIVE"},{"name":"TEST_LOCUST_POOL","state":"IDLE"}]' ;;
+  *"sql --connection test -i"*)
+    cat >>"$fixtures/calls.log"
+    echo '[]' ;;
   *"REMOVE @TEST_DB.SPCS.BENCHMARK_QUERIES PATTERN = '.*[.]sql'"*|*"stage copy"*) ;;
   *) echo "unexpected snow call: $args" >&2; exit 1 ;;
 esac
@@ -79,6 +82,13 @@ copy_line="$(grep -n "stage copy" "$TMP_DIR/calls.log" | cut -d: -f1)"
 : >"$TMP_DIR/calls.log"
 run "$SCRIPTS_DIR/upload-queries.sh" "$TMP_DIR/queries/benchmark-query.sql" >/dev/null
 ! grep -q "REMOVE" "$TMP_DIR/calls.log" || fail "explicit upload removed other queries"
+
+# update.sh: restart the API through supported SQL, not a removed CLI command.
+: >"$TMP_DIR/calls.log"
+run "$SCRIPTS_DIR/update.sh" >/dev/null
+grep -q "ALTER SERVICE IF EXISTS BENCHMARK_API SUSPEND" "$TMP_DIR/calls.log" || fail "API suspend SQL missing"
+grep -q "ALTER SERVICE IF EXISTS BENCHMARK_API RESUME" "$TMP_DIR/calls.log" || fail "API resume SQL missing"
+! grep -q "spcs service restart" "$TMP_DIR/calls.log" || fail "unsupported CLI restart still used"
 
 # list.sh: only the two benchmark pools are listed.
 listing="$(run "$SCRIPTS_DIR/list.sh")"

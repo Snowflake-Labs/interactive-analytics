@@ -27,8 +27,12 @@ echo "==> Uploading queries to stage"
 "$SCRIPT_DIR/upload-queries.sh"
 
 echo "==> Restarting API service to pick up new queries"
-snow spcs service restart "$API_SERVICE" \
-  --connection "$CONNECTION" --role "$ROLE" \
-  --dbname "$DB" --schema "$SCHEMA"
+snow_sql_run "restart API service" <<EOF
+USE ROLE $ROLE;
+USE DATABASE $DB;
+USE SCHEMA $SCHEMA;
+ALTER SERVICE IF EXISTS $API_SERVICE SUSPEND;
+ALTER SERVICE IF EXISTS $API_SERVICE RESUME;
+EOF
 
 echo "Done. API service is restarting with the new queries."
