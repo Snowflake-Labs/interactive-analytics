@@ -8,6 +8,7 @@ ARG OWNER_SLACK=local-build
 ARG OWNER_TEAM=local-build
 ARG JIRA_AREA=local-build
 ARG JIRA_COMPONENT=local-build
+ARG UV_VERSION=0.12.17
 
 LABEL org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
@@ -28,14 +29,17 @@ RUN if ! command -v uv >/dev/null 2>&1; then \
       if command -v apt-get >/dev/null 2>&1; then \
         apt-get update \
         && apt-get install -y --no-install-recommends curl ca-certificates \
+        && curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh \
+        && apt-get purge -y --auto-remove curl \
         && rm -rf /var/lib/apt/lists/*; \
       elif command -v apk >/dev/null 2>&1; then \
-        apk add --no-cache curl ca-certificates; \
+        apk add --no-cache --virtual .uv-install curl ca-certificates \
+        && curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh \
+        && apk del .uv-install; \
       else \
         echo "Base image must provide uv, apt-get, or apk" >&2; \
         exit 1; \
       fi; \
-      curl -LsSf https://astral.sh/uv/install.sh | sh; \
     fi
 
 WORKDIR /app
@@ -57,6 +61,8 @@ RUN chmod +x \
       /app/locust/entrypoint.sh \
       /usr/local/bin/benchmark-entrypoint
 
+# UID 65532 has no passwd entry in some bases, which leaves HOME=/ (read-only).
+ENV HOME=/tmp
 USER 65532:65532
 
 EXPOSE 3000 8089

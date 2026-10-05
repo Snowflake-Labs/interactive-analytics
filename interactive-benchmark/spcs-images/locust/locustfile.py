@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import random
 
-from locust import HttpUser, between, task
+from locust import between, task
+from locust.contrib.fasthttp import FastHttpUser
 
 
-class BenchmarkUser(HttpUser):
+class BenchmarkUser(FastHttpUser):
     """Sends benchmark queries to the interactive warehouse API endpoint."""
 
     wait_time = between(0.5, 1.5)
@@ -52,7 +53,7 @@ class BenchmarkUser(HttpUser):
                 response.failure(f"{endpoint} status {response.status_code}: {response.text}")
 
 
-class BaselineUser(HttpUser):
+class BaselineUser(FastHttpUser):
     """Hits the no-op baseline endpoint to measure pure API/infra throughput."""
 
     wait_time = between(0.5, 1.5)
