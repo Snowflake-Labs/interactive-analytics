@@ -54,7 +54,7 @@ Depending on state:
 
 ### 8b. Monitor the run
 
-The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it runs:
+Both phases first ramp up to `LOCUST_USERS` at `LOCUST_SPAWN` users/s (about `LOCUST_USERS / LOCUST_SPAWN` seconds), then reset their stats (`Resetting stats` in the log) and measure full load: `BASELINE_RUN_TIME` (default 1 minute) for the baseline, `LOCUST_RUN_TIME` (default 3 minutes) for the benchmark. Ramp-up requests are not in the results. While the benchmark phase runs:
 
 - **Watch cluster scaling** on the interactive warehouse via `snowflake_sql_execute`:
   ```sql
@@ -70,11 +70,14 @@ The benchmark phase runs for `LOCUST_RUN_TIME` (default 3 minutes). While it run
 
 ### 8c. Retrieve the results
 
-After `LOCUST_RUN_TIME + ~10 s` (for `--autoquit` to fire), locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV. Retrieve using the `bash` tool:
+About `LOCUST_USERS / LOCUST_SPAWN + LOCUST_RUN_TIME` seconds after the benchmark phase starts, locust exits and the entrypoint prints a `======================== BENCHMARK RESULTS ========================` banner followed by the stats CSV and a verdict line. Retrieve using the `bash` tool:
 
 ```bash
-cd <SKILL_DIR>/benchmark/scripts && ./logs.sh locust | tail -80
+cd <SKILL_DIR>/benchmark/scripts && ./logs.sh locust \
+  | awk '/=+ BENCHMARK RESULTS =+/ {p = 1} p; p && /^\[benchmark\] VERDICT/ {exit}'
 ```
+
+This prints from the results banner through the verdict line, however many heartbeats have been logged since.
 
 The `locust_stats_stats.csv` block contains a row for `/api/run/interactive` (plus Aggregated) with columns:
 
@@ -85,6 +88,15 @@ Min, Max, Avg Content Size, Requests/s, Failures/s, 50%, 66%, 75%, 80%, 90%, 95%
 
 Parse the `/api/run/interactive` row for P50, P95, P99 and failure counts.
 
+Then read the verdict printed after the results:
+- `[benchmark] VERDICT: PASS` — the numbers are a valid measurement.
+- `[benchmark] VERDICT: FAIL — no /api/run/interactive requests were recorded.` or `[benchmark] VERDICT: FAIL — no requests completed.` — no query ran (e.g. the queries stage is empty). Fix and re-run; there is nothing to report.
+- `[benchmark] VERDICT: FAIL — failure rate ...` — more than `BENCHMARK_MAX_FAILURE_PCT` (default 1%) of requests failed. The percentiles are not a valid measurement. Read the `locust_stats_failures.csv` block and `./logs.sh api`, fix the cause, and re-run instead of reporting the numbers.
+- Any other line starting with `[benchmark] VERDICT: FAIL` — treat it the same way: do not report the run.
+- `[benchmark] WARNING: Locust was CPU-bound` (printed before the verdict) — Locust runs as a single process, so client-side percentiles are inflated by the load generator itself. Use the server-side numbers (Step 3.10) for the goal check and state in the report that client-side numbers are an upper bound.
+
+The heartbeat's `[status]` line repeats the outcome (`benchmark=COMPLETED` or `benchmark=FAILED`).
+
 The baseline results are also available in the logs under the `======================== BASELINE RESULTS ========================` banner. The baseline p99 establishes the infrastructure overhead floor.
 
-If you need results before the test finishes, the container also emits a HEARTBEAT block every 2 minutes with both baseline and benchmark CSVs — grep for `HEARTBEAT` in the logs.
+After both phases finish, the container emits a HEARTBEAT block every 2 minutes with its `[status]` line and the baseline and benchmark stats CSVs (not the failures CSV), so the outcome stays visible in later log reads.

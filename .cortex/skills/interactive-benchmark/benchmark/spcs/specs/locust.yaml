@@ -13,6 +13,7 @@ spec:
         API_READY_POLL_SECONDS: "${API_READY_POLL_SECONDS}"
         BASELINE_MAX_P99_MS: "${BASELINE_MAX_P99_MS}"
         BASELINE_MAX_FAILURE_PCT: "${BASELINE_MAX_FAILURE_PCT}"
+        BENCHMARK_MAX_FAILURE_PCT: "${BENCHMARK_MAX_FAILURE_PCT}"
       resources:
         requests:
           memory: 2Gi

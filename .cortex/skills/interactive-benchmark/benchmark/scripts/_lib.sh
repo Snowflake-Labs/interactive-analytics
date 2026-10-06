@@ -51,10 +51,11 @@ export CONNECTION DB SCHEMA QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
 : "${API_READY_POLL_SECONDS:=2}"
 : "${BASELINE_MAX_P99_MS:=500}"
 : "${BASELINE_MAX_FAILURE_PCT:=1}"
+: "${BENCHMARK_MAX_FAILURE_PCT:=1}"
 export API_WORKERS API_POOL_WARMUP API_POOL_ACQUIRE_TIMEOUT \
        API_CPU_REQUEST API_CPU_LIMIT API_MEMORY_REQUEST API_MEMORY_LIMIT \
        API_READY_TIMEOUT_SECONDS API_READY_POLL_SECONDS \
-       BASELINE_MAX_P99_MS BASELINE_MAX_FAILURE_PCT
+       BASELINE_MAX_P99_MS BASELINE_MAX_FAILURE_PCT BENCHMARK_MAX_FAILURE_PCT
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -113,8 +114,13 @@ validate_image_config() {
     echo "Invalid BENCHMARK_IMAGE: $BENCHMARK_IMAGE" >&2
     return 1
   fi
-  if [[ ! "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "Invalid IMAGE_TAG: $IMAGE_TAG" >&2
+  if [[ ! "$IMAGE_TAG" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    echo "IMAGE_TAG must be an immutable release version (e.g. 0.2.0): $IMAGE_TAG" >&2
+    return 1
+  fi
+  # The skill reads [benchmark] VERDICT, which images before 0.2.0 never print.
+  if (( BASH_REMATCH[1] == 0 && BASH_REMATCH[2] < 2 )); then
+    echo "IMAGE_TAG $IMAGE_TAG is too old: this skill requires image 0.2.0 or later." >&2
     return 1
   fi
   case "$BENCHMARK_IMAGE_ARCH" in
@@ -262,6 +268,9 @@ for row in rows:
 else:
     sys.stderr.write(
         f"Image {image_name}:{expected_tag} was not found in the configured repository.\n"
+        "Check IMAGE_TAG. A newly released tag does not reach every deployment's System\n"
+        "Registry at once; if it is not here yet, wait for the rollout. Do not pin a tag\n"
+        "older than 0.2.0.\n"
     )
     raise SystemExit(1)
 PY

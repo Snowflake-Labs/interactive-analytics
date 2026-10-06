@@ -175,7 +175,7 @@ Then present the SPCS resources that will be created and the shared images that 
 | Locust service                        | BENCHMARK_LOCUST                             |
 | Queries stage                         | @IWB_202609101430_DB.SPCS.BENCHMARK_QUERIES  |
 | Image repository (shared)             | SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES            |
-| Benchmark image                       | interactive-analytics/interactive-benchmark:0.1.0 |
+| Benchmark image                       | interactive-analytics/interactive-benchmark:0.2.0 |
 | API image role                        | `BENCHMARK_ROLE=api`                         |
 | Locust image role                     | `BENCHMARK_ROLE=locust`                      |
 
@@ -367,7 +367,7 @@ This deploys:
 
 3. **Load** `references/benchmark-execution.md` (via the `read` tool) for the full baseline and load test procedure.
 
-**Summary:** The Locust container runs a two-phase execution model automatically on start: (1) a baseline test against the no-op `/api/run/baseline` endpoint to validate infrastructure, then (2) the real load test against `/api/run/interactive`. No external HTTP calls are needed — auto-start sidesteps SPCS auth. Monitor via `./logs.sh locust`; look for `[baseline] VERDICT: PASS` before the benchmark begins. For subsequent runs (after escalation), restart the Locust service with `ALTER SERVICE ... SUSPEND / RESUME` (`update.sh` only restarts the API). Parse the `/api/run/interactive` row from the Locust CSV for P50, P95, P99 and failure counts.
+**Summary:** The Locust container runs a two-phase execution model automatically on start: (1) a baseline test against the no-op `/api/run/baseline` endpoint to validate infrastructure, then (2) the real load test against `/api/run/interactive`. No external HTTP calls are needed — auto-start sidesteps SPCS auth. Monitor via `./logs.sh locust`; look for `[baseline] VERDICT: PASS` before the benchmark begins. For subsequent runs (after escalation), restart the Locust service with `ALTER SERVICE ... SUSPEND / RESUME` (`update.sh` only restarts the API). Parse the `/api/run/interactive` row from the Locust CSV for P50, P95, P99 and failure counts, and only use them if the run printed `[benchmark] VERDICT: PASS`.
 
 ---
 
@@ -484,6 +484,7 @@ Request body: `{"query_id": "<id>"}`. Response includes `elapsed_ms`, `row_count
 - ⚠️ **Phase 2 (Suitability Check)** — STOP if query exceeds 10s on standard, 5s on interactive, or shows no speedup. Do not enter Phase 3.
 - ⚠️ **Step 3.6** — STOP if any SPCS service enters FAILED state. Show logs and do not proceed.
 - ⚠️ **Step 3.7** — STOP if baseline test fails (high failure rate or p99). Infrastructure is not healthy.
+- ⚠️ **Step 3.8** — If the run prints `[benchmark] VERDICT: FAIL`, do not report or escalate on its numbers. Diagnose the failures, fix, and re-run.
 - ⚠️ **Step 3.11** — STOP and ask the user only when both scale-out and scale-up limits are exhausted and the P95 goal is still not met.
 - ⚠️ **Step 3.13** — Confirm cleanup choice before dropping any resources.
 
