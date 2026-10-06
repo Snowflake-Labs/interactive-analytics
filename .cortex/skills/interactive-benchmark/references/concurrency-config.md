@@ -14,19 +14,27 @@ where `QUERY_LATENCY_S` is the warm interactive latency from the suitability che
 
 Use the user's scale-out limit from Phase 1 as the ceiling. If the recommended value exceeds the user's limit, use the user's limit — the autonomous execution principle means we proceed with what was approved, and Step 3.11 will detect if queueing causes P95 misses and propose escalation at that point.
 
-**IMPORTANT — Use `resize-wh.sh` for any warehouse reconfiguration.** Do not run `ALTER WAREHOUSE ... SET WAREHOUSE_SIZE` or `MAX_CLUSTER_COUNT` directly via `snowflake_sql_execute`. The script handles two cases:
+After `config.env` is created in Step 3.4, use `resize-wh.sh` for warehouse
+reconfiguration. The script handles two cases:
 - `--mcw` only: `ALTER WAREHOUSE ... SET MAX_CLUSTER_COUNT` in place. Grants, attached tables, fallback warehouse, and the data cache are kept.
 - `--size`: `ALTER ... SET WAREHOUSE_SIZE` fails with error 090094 on interactive warehouses with attached tables, so the script runs `CREATE OR REPLACE INTERACTIVE WAREHOUSE` with the current attached tables and restores `FALLBACK_WAREHOUSE`. It refuses to replace a warehouse that has grants to other roles or a resource monitor (both would be dropped) unless `--force-replace` is passed. Never pass `--force-replace` on a warehouse the user did not create for this benchmark; stop and ask instead.
 
 Either way, newly started clusters are cold, and a replace resets the cache of every cluster. **You MUST re-run the cache warm-up procedure (Step 3.5) before any load test.**
 
-Apply the initial cluster count via `bash`:
+For the initial pre-deploy configuration, `config.env` does not exist yet.
+Apply the computed cluster counts directly via `snowflake_sql_execute`:
 
-```bash
-cd <SKILL_DIR>/benchmark/scripts && ./resize-wh.sh --mcw <computed_value>
+```sql
+ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
+  MIN_CLUSTER_COUNT = <RECOMMENDED_MIN_CLUSTER_COUNT>,
+  MAX_CLUSTER_COUNT = <RECOMMENDED_MAX_CLUSTER_COUNT>,
+  SCALING_POLICY = 'STANDARD';
 ```
 
-**IMPORTANT:** `resize-wh.sh` suspends Locust (if deployed) and leaves it suspended so it cannot start benchmarking against a cold cache. Before deploy, it skips the service steps. After the script completes, you MUST run the cache warm-up (Step 3.5) and THEN explicitly resume Locust via `snowflake_sql_execute`:
+For later changes during escalation, run `resize-wh.sh`; it suspends Locust and
+leaves it suspended so benchmarking cannot start against a cold cache. After
+the script completes, run the cache warm-up (Step 3.5) and THEN explicitly
+resume Locust via `snowflake_sql_execute`:
 
 ```sql
 USE ROLE <ROLE>;
@@ -35,15 +43,7 @@ USE SCHEMA <SCHEMA>;
 ALTER SERVICE <LOCUST_SERVICE> RESUME;
 ```
 
-This guarantees warmup queries always execute before any benchmark traffic. **If this is the initial deploy (Step 3.6 has not run yet), skip the Locust resume — Locust will be started by `deploy.sh` after cache warming in Step 3.5.**
-
-Then configure `MIN_CLUSTER_COUNT` and `SCALING_POLICY` via `snowflake_sql_execute` (these do not require service suspension):
-
-```sql
-ALTER WAREHOUSE <INTERACTIVE_WAREHOUSE> SET
-  MIN_CLUSTER_COUNT = <RECOMMENDED_MIN_CLUSTER_COUNT>,
-  SCALING_POLICY = 'STANDARD';
-```
+This guarantees warmup queries always execute before any benchmark traffic.
 
 Configure the fallback warehouse via `snowflake_sql_execute` (uses the standard warehouse from Phase 1):
 

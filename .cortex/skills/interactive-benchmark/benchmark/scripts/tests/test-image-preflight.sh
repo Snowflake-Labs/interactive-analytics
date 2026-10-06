@@ -19,7 +19,7 @@ IMAGE_DB=SNOWFLAKE
 IMAGE_SCHEMA=IMAGES
 IMAGE_REPO=SNOWFLAKE_IMAGES
 BENCHMARK_IMAGE=interactive-analytics/interactive-benchmark
-IMAGE_TAG=0.1.0
+IMAGE_TAG=0.2.0
 BENCHMARK_IMAGE_ARCH=amd64
 API_INSTANCE_FAMILY=CPU_X64_M
 LOCUST_INSTANCE_FAMILY=CPU_X64_M
@@ -32,7 +32,7 @@ args="$*"
 [[ "$args" == *"--role SYSADMIN"* ]]
 [[ "$args" == *"SHOW IMAGES LIKE 'interactive-analytics/interactive-benchmark' IN IMAGE REPOSITORY SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES"* ]]
 cat <<'JSON'
-[{"image_name":"interactive-analytics/interactive-benchmark","tags":"0.1.0","digest":"sha256:test","image_path":"snowflake/images/snowflake_images/interactive-analytics/interactive-benchmark:0.1.0"}]
+[{"image_name":"interactive-analytics/interactive-benchmark","tags":"0.2.0","digest":"sha256:test","image_path":"snowflake/images/snowflake_images/interactive-analytics/interactive-benchmark:0.2.0"}]
 JSON
 EOF
 chmod +x "$TMP_DIR/snow"
@@ -50,12 +50,25 @@ fi
 output="$(preflight_benchmark_image)"
 grep -q 'sha256:test' <<<"$output"
 
-IMAGE_TAG=missing
+IMAGE_TAG=0.2.1
 if preflight_benchmark_image >/dev/null 2>&1; then
   echo "Missing immutable tag unexpectedly passed preflight." >&2
   exit 1
 fi
+
+for tag in 0.1.0 latest 0.2; do
+  IMAGE_TAG=$tag
+  if validate_image_config >/dev/null 2>&1; then
+    echo "IMAGE_TAG=$tag unexpectedly passed validation." >&2
+    exit 1
+  fi
+done
 IMAGE_TAG=0.1.0
+old_tag_error="$(validate_image_config 2>&1 || true)"
+grep -q "requires image 0.2.0 or later" <<<"$old_tag_error"
+IMAGE_TAG=1.0.0
+validate_image_config
+IMAGE_TAG=0.2.0
 
 BENCHMARK_IMAGE_ARCH=arm64
 if validate_pool_architecture >/dev/null 2>&1; then

@@ -6,6 +6,10 @@ Three rules make the server-side numbers comparable to the Locust numbers:
 
 - **Filter on `QUERY_TAG`.** The API tags every benchmark query with `SOLUTION_NAME`. Warm-up, suitability, and deploy-preflight queries run on the same interactive warehouse without that tag and must not be counted.
 - **Use the Locust run window, not "the last N minutes".** The tag is the same for every escalation iteration, so the time window is what separates iterations. The `BENCHMARK RESULTS` banner prints the last rows of `locust_stats_stats_history.csv`; its first column is a Unix timestamp. `RUN_END` = the last row's timestamp, `RUN_START` = `RUN_END` − `LOCUST_RUN_TIME` in seconds.
+- **Keep the run window as Unix epoch seconds.** Pass those numeric values
+  directly to `TO_TIMESTAMP_LTZ` as shown below. Do not copy UTC clock strings
+  from the Locust logs or manually offset them to the Snowflake session
+  timezone; epoch values identify the same instant in every session timezone.
 - **Keep failed and fallback-served queries.** Locust's percentiles include failed requests, so success-only server percentiles make the client-server delta look like API overhead. A query that hits the 5 s interactive timeout is retried on the fallback warehouse under the **same query ID**; whether history attributes it to the interactive or the fallback warehouse is not guaranteed, so collect both warehouses and de-duplicate by `QUERY_ID`. A successful query with `TOTAL_ELAPSED_TIME` above 5000 ms can only have been served by the fallback.
 
 `QUERY_HISTORY_BY_WAREHOUSE` returns at most 10,000 rows per call and returns the newest rows first, so a single call over a 3-minute run can silently drop the beginning of the run. Collect the window in 60-second slices into a table.
