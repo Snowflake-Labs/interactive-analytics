@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_lib.sh"
 
 echo "==> [0/6] Verifying benchmark image and architecture"
+echo "    System Registry lookup can take up to two minutes; leave this process running."
 preflight_benchmark_image
 
 echo "==> [1/6] Verifying service-role, warehouse, and source-data access"
