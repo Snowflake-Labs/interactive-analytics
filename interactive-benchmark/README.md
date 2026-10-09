@@ -23,10 +23,11 @@ ORDER BY N_NAME NULLS LAST;
 
 and I want understand how it can benefit from interactive analytics. The query is
 used in Dashboard along with other queries. The query must answer in less than a
-second. The database with the table used by the query is DM_TESTTPCH_BENCH_DB and
+second. The database with the table used by the query is DM_TESTTPCH_DB and
 the schema is TPCH_SF100. The filter on order date will be different and also it
 might happen that users filter data for specific nation or region or even market.
-How can I make sure that I can obtain the performance I need?
+How can I make sure that I can obtain the performance I need? Use the "PM"
+connection to connect to Snowflake.
 
 Please also run a benchmark so that I can see how it performs when there are 50
 concurrent users
@@ -54,9 +55,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of the SPCS to
 │   └── benchmark-report.html.template
 └── benchmark/
     ├── .env.template     # Project-level env config template
-    ├── api/              # Python FastAPI backend (endpoint: /api/run/interactive)
     ├── test/             # SQL query files to benchmark (place your .sql files here)
-    ├── locust/           # Locust load test that POSTs queries to the API
     ├── reports/          # Generated benchmark reports (one subfolder per run)
     │   └── <SOLUTION_NAME>/
     │       ├── benchmark-report.html
@@ -65,14 +64,18 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of the SPCS to
     │       ├── locust-run-2.txt   (if escalation triggered re-runs)
     │       └── ...               (additional runs as needed)
     ├── scripts/          # Deployment and management shell scripts
-    └── spcs/             # SPCS deployment (Dockerfiles, specs, scripts)
+    └── spcs/             # SPCS deployment config and service specs
+
+interactive-benchmark/spcs-images/
+├── Dockerfile            # Unified production image for both roles
+├── role-entrypoint.sh    # Dispatches BENCHMARK_ROLE=api|locust
+├── api/                  # Benchmark API source and entrypoint
+└── locust/               # Locust source and entrypoint
 ```
 
-- **`api/`** — FastAPI server that connects to Snowflake and exposes a POST endpoint. The endpoint executes the provided query against the interactive warehouse and returns timing metrics.
-- **`test/`** — Place `.sql` files here — each containing a single query. During deployment, these files are uploaded to a Snowflake internal stage and mounted into the API container. Queries can be updated without rebuilding Docker images.
-- **`locust/`** — Locust workload that fetches available query IDs from the API server (`GET /api/queries`) and POSTs them to `/api/run/interactive`.
+- **`test/`** — Place `.sql` files here — each containing a single query. During deployment, these files are uploaded to a Snowflake internal stage and mounted into the API container. Queries can be updated without rebuilding images.
 - **`reports/`** — Generated benchmark reports. Each run creates a subfolder (e.g. `reports/IWB_202608271430/`) containing the final HTML report and Locust execution logs.
-- **`spcs/`** — Everything needed to deploy the benchmark API and load test to Snowpark Container Services: Dockerfiles, service specs, and shell scripts for build, deploy, update, status, logs, and teardown.
+- **`spcs/`** — SPCS deployment config (`config.env`) and service specs (`specs/api.yaml`, `specs/locust.yaml`). Dockerfiles and app source code live separately in `interactive-benchmark/spcs-images/`.
 
 ## Running on SPCS (manual)
 
@@ -82,9 +85,20 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
 
 ### Prerequisites
 
-- Docker Desktop (recommended). If Docker is not available, images can be built server-side with `snow spcs service build-image` — see [Building without Docker](#building-without-docker) below.
-- `snow` CLI configured with a connection that has privileges to `CREATE COMPUTE POOL`, `CREATE IMAGE REPOSITORY`, and `CREATE SERVICE`.
-- The API's runtime role needs `USAGE` on the interactive warehouse and `SELECT` on the interactive schema.
+- `snow` CLI configured with a role that can create the benchmark
+  database/schema/stage, compute pools, services, and public service endpoints;
+  use `DEPLOY_WAREHOUSE`; and read the approved System Registry image.
+- Python 3 and `envsubst` (`gettext`) for deployment validation and spec rendering.
+- `API_ROLE` must match the service-owner `ROLE` and have `USAGE` on the
+  interactive and fallback warehouses, `USAGE` on the source database/schema,
+  and `SELECT` on referenced source tables.
+
+### Approved Container Image
+
+Both services use
+`SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES/interactive-analytics/interactive-benchmark:0.2.0`;
+`BENCHMARK_ROLE=api|locust` selects the runtime. Benchmark users do not build
+images or need `CREATE IMAGE REPOSITORY`.
 
 ### Configuration
 
@@ -98,7 +112,7 @@ The benchmark runs on [Snowpark Container Services](https://docs.snowflake.com/e
 .cortex/skills/interactive-benchmark/benchmark/scripts/deploy.sh
 ```
 
-This will create the database/schema, two compute pools (one for the API, one for Locust), upload benchmark queries to a Snowflake stage, build and push both Docker images, create the services, and print the public ingress URLs once ready.
+This will create the database/schema, two compute pools (one for the API, one for Locust), upload benchmark queries to a Snowflake stage, create the services (using pre-built images), and print the public ingress URLs once ready.
 
 ### Common operations
 
@@ -109,26 +123,10 @@ $SCRIPTS/status.sh              # show state + endpoints for both services
 $SCRIPTS/status.sh --urls-only  # just the ingress URLs
 $SCRIPTS/logs.sh api            # benchmark API logs
 $SCRIPTS/logs.sh locust         # locust load-generator logs
-$SCRIPTS/update.sh              # rebuild + ALTER SERVICE (preserves ingress URLs)
-$SCRIPTS/update.sh --queries-only  # upload new queries + restart API (no image rebuild)
+$SCRIPTS/update.sh              # upload new queries + restart API
 $SCRIPTS/upload-queries.sh      # upload .sql files to the queries stage
 $SCRIPTS/resize-wh.sh --size M  # resize the interactive warehouse
-$SCRIPTS/teardown.sh            # drop services, compute pools, and image repo
-```
-
-### Building without Docker
-
-If you don't have Docker Desktop installed, you can build images directly on SPCS by setting `BUILD_METHOD=spcs` in `spcs/config.env`. Server-side builds require an External Access Integration (EAI) so the build job can reach package registries (PyPI, Docker Hub, Ubuntu apt). A helper script is provided to create the necessary network rule and EAI:
-
-```bash
-$SCRIPTS/create-eai.sh
-```
-
-The script prints the integration name to add to `config.env`:
-
-```
-BUILD_EAI_NAME=<integration_name>
-BUILD_METHOD=spcs
+$SCRIPTS/teardown.sh            # drop services and compute pools
 ```
 
 ## Running Locally (manual)
@@ -148,8 +146,8 @@ As with SPCS deployment, the skill manages local execution automatically. These 
 
    | Object | Name |
    |---|---|
-   | Database | `<SOLUTION_NAME>_BENCH_DB` |
-   | Interactive warehouse | `<SOLUTION_NAME>_BENCH_WH_INT` |
+   | Database | `<SOLUTION_NAME>_DB` |
+   | Interactive warehouse | `<SOLUTION_NAME>_INT_WH` |
    | Interactive schema | `<SOLUTION_NAME>_IT` |
 
    Override any of these with env vars: `INTERACTIVE_WAREHOUSE`, `INTERACTIVE_SCHEMA`.
@@ -157,7 +155,7 @@ As with SPCS deployment, the skill manages local execution automatically. These 
 2. Start the API server:
 
    ```bash
-   cd .cortex/skills/interactive-benchmark/benchmark/api
+   cd interactive-benchmark/spcs-images/api
    uv run python server.py
    ```
 

@@ -1,14 +1,19 @@
 spec:
   containers:
     - name: locust
-      image: /${DB}/${SCHEMA}/${IMAGE_REPO}/${LOCUST_IMAGE}:${IMAGE_TAG}
+      image: /${IMAGE_DB}/${IMAGE_SCHEMA}/${IMAGE_REPO}/${BENCHMARK_IMAGE}:${IMAGE_TAG}
       env:
+        BENCHMARK_ROLE: "locust"
         LOCUST_HOST: "${LOCUST_HOST}"
         LOCUST_WEB_PORT: "${LOCUST_WEB_PORT}"
         LOCUST_USERS: "${LOCUST_USERS}"
         LOCUST_SPAWN: "${LOCUST_SPAWN}"
         LOCUST_RUN_TIME: "${LOCUST_RUN_TIME}"
-        BASELINE_MAX_P99_MS: "40000"
+        API_READY_TIMEOUT_SECONDS: "${API_READY_TIMEOUT_SECONDS}"
+        API_READY_POLL_SECONDS: "${API_READY_POLL_SECONDS}"
+        BASELINE_MAX_P99_MS: "${BASELINE_MAX_P99_MS}"
+        BASELINE_MAX_FAILURE_PCT: "${BASELINE_MAX_FAILURE_PCT}"
+        BENCHMARK_MAX_FAILURE_PCT: "${BENCHMARK_MAX_FAILURE_PCT}"
       resources:
         requests:
           memory: 2Gi
@@ -16,9 +21,6 @@ spec:
         limits:
           memory: 4Gi
           cpu: "2000m"
-      readinessProbe:
-        port: ${LOCUST_WEB_PORT}
-        path: /stats/requests
   endpoints:
     - name: web
       port: ${LOCUST_WEB_PORT}

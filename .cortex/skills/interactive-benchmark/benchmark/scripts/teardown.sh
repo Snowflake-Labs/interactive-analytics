@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
-# Drop the benchmark API + Locust services, compute pools, and image repository.
+# Drop the benchmark API + Locust services and compute pools.
+# Does NOT drop the shared image repository (lives in $IMAGE_DB).
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/_lib.sh"
 
-spcs service drop "$LOCUST_SERVICE" --if-exists
-spcs service drop "$API_SERVICE" --if-exists
+cat <<EOF | snow_sql_run "teardown services"
+USE ROLE $ROLE;
+USE DATABASE $DB;
+USE SCHEMA $SCHEMA;
+DROP SERVICE IF EXISTS $LOCUST_SERVICE;
+DROP SERVICE IF EXISTS $API_SERVICE;
+EOF
 
-spcs compute-pool stop-all "$API_COMPUTE_POOL" 2>/dev/null || true
-spcs compute-pool stop-all "$LOCUST_COMPUTE_POOL" 2>/dev/null || true
-spcs compute-pool drop "$API_COMPUTE_POOL" --if-exists
-spcs compute-pool drop "$LOCUST_COMPUTE_POOL" --if-exists
+cat <<EOF | snow_sql_run "teardown compute pools"
+USE ROLE $ROLE;
+ALTER COMPUTE POOL IF EXISTS $API_COMPUTE_POOL STOP ALL;
+ALTER COMPUTE POOL IF EXISTS $LOCUST_COMPUTE_POOL STOP ALL;
+DROP COMPUTE POOL IF EXISTS $API_COMPUTE_POOL;
+DROP COMPUTE POOL IF EXISTS $LOCUST_COMPUTE_POOL;
+EOF
 
-spcs image-repository drop "$IMAGE_REPO" --if-exists
-
-echo "Dropped services, compute pools ('$API_COMPUTE_POOL', '$LOCUST_COMPUTE_POOL'), and image repo '$IMAGE_REPO'."
-
+echo "Dropped services and compute pools ('$API_COMPUTE_POOL', '$LOCUST_COMPUTE_POOL')."

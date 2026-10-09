@@ -8,29 +8,36 @@ SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPCS_DIR="$(cd "$SCRIPTS_DIR/../spcs" && pwd)"
 REPO_DIR="$(cd "$SPCS_DIR/../.." && pwd)"
 
-# shellcheck disable=SC1091
-source "$SPCS_DIR/config.env"
+CONFIG_ENV_FILE="${BENCHMARK_CONFIG_ENV:-$SPCS_DIR/config.env}"
+# shellcheck disable=SC1090
+source "$CONFIG_ENV_FILE"
 
 : "${CONNECTION:?CONNECTION must be set in config.env}"
 : "${DB:?DB must be set}"
 : "${SCHEMA:?SCHEMA must be set}"
+: "${BENCHMARK_IMAGE:?BENCHMARK_IMAGE must be set}"
+: "${IMAGE_TAG:?IMAGE_TAG must be set}"
+: "${BENCHMARK_IMAGE_ARCH:?BENCHMARK_IMAGE_ARCH must be set}"
+: "${BENCHMARK_QUERY_DIR:=$REPO_DIR/benchmark/test}"
 
-export CONNECTION DB SCHEMA IMAGE_REPO QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
+export CONNECTION DB SCHEMA QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
        SOLUTION_NAME \
+       IMAGE_DB IMAGE_SCHEMA IMAGE_REPO \
        API_COMPUTE_POOL API_INSTANCE_FAMILY \
        API_MIN_NODES API_MAX_NODES \
        API_MIN_INSTANCES API_MAX_INSTANCES \
        LOCUST_COMPUTE_POOL LOCUST_INSTANCE_FAMILY \
        LOCUST_MIN_NODES LOCUST_MAX_NODES \
        API_SERVICE LOCUST_SERVICE \
-       API_IMAGE LOCUST_IMAGE IMAGE_TAG \
+       BENCHMARK_IMAGE IMAGE_TAG BENCHMARK_IMAGE_ARCH \
        API_DATABASE API_ROLE API_WAREHOUSE API_PORT POOL_SIZE \
        API_WORKERS API_POOL_WARMUP API_POOL_ACQUIRE_TIMEOUT \
        API_CPU_REQUEST API_CPU_LIMIT \
        API_MEMORY_REQUEST API_MEMORY_LIMIT \
        INTERACTIVE_WAREHOUSE INTERACTIVE_SCHEMA \
        LOCUST_HOST LOCUST_WEB_PORT LOCUST_USERS LOCUST_SPAWN \
-       LOCUST_RUN_TIME BUILD_METHOD BUILD_COMPUTE_POOL BUILD_EAI_NAME
+       LOCUST_RUN_TIME API_READY_TIMEOUT_SECONDS API_READY_POLL_SECONDS \
+       BENCHMARK_QUERY_DIR
 
 # Defaults for tuning knobs that may be missing on older config.env files.
 : "${API_WORKERS:=4}"
@@ -40,25 +47,15 @@ export CONNECTION DB SCHEMA IMAGE_REPO QUERIES_STAGE ROLE DEPLOY_WAREHOUSE \
 : "${API_CPU_LIMIT:=4000m}"
 : "${API_MEMORY_REQUEST:=2Gi}"
 : "${API_MEMORY_LIMIT:=4Gi}"
+: "${API_READY_TIMEOUT_SECONDS:=600}"
+: "${API_READY_POLL_SECONDS:=2}"
+: "${BASELINE_MAX_P99_MS:=500}"
+: "${BASELINE_MAX_FAILURE_PCT:=1}"
+: "${BENCHMARK_MAX_FAILURE_PCT:=1}"
 export API_WORKERS API_POOL_WARMUP API_POOL_ACQUIRE_TIMEOUT \
-       API_CPU_REQUEST API_CPU_LIMIT API_MEMORY_REQUEST API_MEMORY_LIMIT
-# BUILD_METHOD=spcs (default) builds images server-side via
-# `snow spcs service build-image`, no local Docker daemon required.
-# BUILD_METHOD=docker uses local `docker build`/`docker push` instead.
-: "${BUILD_METHOD:=docker}"
-: "${BUILD_COMPUTE_POOL:=$API_COMPUTE_POOL}"
-# Space-separated external access integration names the build-image job
-# needs for network egress (uv/pip install, apt-get, curl). Required in
-# practice for BUILD_METHOD=spcs — the build job has no internet access
-# without one. Leave empty only if your account allows unrestricted egress.
-: "${BUILD_EAI_NAME:=}"
-
-if [[ "$BUILD_METHOD" == "spcs" && -z "$BUILD_EAI_NAME" ]]; then
-  echo "Warning: BUILD_EAI_NAME is empty while BUILD_METHOD=spcs." >&2
-  echo "The SPCS build job will have no network access and will likely fail" >&2
-  echo "if the Dockerfile needs to fetch packages (apt-get, pip, uv, curl)." >&2
-  echo "Set BUILD_EAI_NAME in config.env or switch to BUILD_METHOD=docker." >&2
-fi
+       API_CPU_REQUEST API_CPU_LIMIT API_MEMORY_REQUEST API_MEMORY_LIMIT \
+       API_READY_TIMEOUT_SECONDS API_READY_POLL_SECONDS \
+       BASELINE_MAX_P99_MS BASELINE_MAX_FAILURE_PCT BENCHMARK_MAX_FAILURE_PCT
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -67,58 +64,9 @@ require_cmd() {
   }
 }
 
-# Compares two X.Y.Z version strings. Returns 0 (true) if $1 >= $2.
-version_ge() {
-  local v1="$1" v2="$2"
-  [[ "$v1" == "$v2" ]] && return 0
-  local IFS=.
-  local -a a=($v1) b=($v2)
-  local i
-  for i in 0 1 2; do
-    local ai="${a[$i]:-0}" bi="${b[$i]:-0}"
-    if (( 10#$ai > 10#$bi )); then return 0; fi
-    if (( 10#$ai < 10#$bi )); then return 1; fi
-  done
-  return 0
-}
-
-# `snow spcs service build-image` was added (experimental) in 3.16.0; below
-# that the subcommand doesn't exist at all, so hard-require it for
-# BUILD_METHOD=spcs. 3.18.0 additionally fixed a SQL-injection bug in
-# `service create/execute-job/upgrade` when a spec YAML contains a `$$`
-# sequence (we call create/upgrade on every deploy regardless of
-# BUILD_METHOD) and a build-image bug on Azure accounts using
-# SNOWFLAKE_FULL stage encryption — recommend it unconditionally.
-check_snow_cli_version() {
-  local min="3.16.0" recommended="3.18.0"
-  local version
-  version="$(snow --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-  if [[ -z "$version" ]]; then
-    echo "Warning: could not parse snow CLI version from 'snow --version'; skipping version check." >&2
-    return
-  fi
-  if [[ "$BUILD_METHOD" == "spcs" ]] && ! version_ge "$version" "$min"; then
-    echo "Error: snow CLI $version is too old. 'snow spcs service build-image' (BUILD_METHOD=spcs) requires >= $min." >&2
-    echo "Upgrade: https://docs.snowflake.com/en/developer-guide/snowflake-cli/installation/installation" >&2
-    exit 1
-  fi
-  if ! version_ge "$version" "$recommended"; then
-    echo "Warning: snow CLI $version works, but $recommended+ is recommended (fixes a spec-YAML SQL-injection edge case in service create/upgrade, and a build-image bug on Azure accounts)." >&2
-  fi
-}
-
 require_cmd snow
-check_snow_cli_version
 require_cmd envsubst
-
-if [[ "$BUILD_METHOD" == "docker" ]]; then
-  require_cmd docker
-fi
-
-# snow spcs service build-image is experimental and hidden unless the feature
-# flag is enabled. Enable it for the duration of this process rather than
-# requiring every user to edit config.toml.
-export SNOWFLAKE_CLI_FEATURES_ENABLE_SPCS_BUILD_IMAGE=true
+require_cmd python3
 
 # Run a SQL statement against $CONNECTION and print JSON output.
 snow_sql() {
@@ -161,125 +109,175 @@ snow_sql_run() {
   return 0
 }
 
-# Fetch the registry hostname for this account.
-registry_url() {
-  snow spcs image-registry url --connection "$CONNECTION" --role "$ROLE" 2>/dev/null | tr -d '"'
+validate_image_config() {
+  if [[ ! "$BENCHMARK_IMAGE" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "Invalid BENCHMARK_IMAGE: $BENCHMARK_IMAGE" >&2
+    return 1
+  fi
+  if [[ ! "$IMAGE_TAG" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    echo "IMAGE_TAG must be an immutable release version (e.g. 0.2.0): $IMAGE_TAG" >&2
+    return 1
+  fi
+  # The skill reads [benchmark] VERDICT, which images before 0.2.0 never print.
+  if (( BASH_REMATCH[1] == 0 && BASH_REMATCH[2] < 2 )); then
+    echo "IMAGE_TAG $IMAGE_TAG is too old: this skill requires image 0.2.0 or later." >&2
+    return 1
+  fi
+  case "$BENCHMARK_IMAGE_ARCH" in
+    amd64|arm64) ;;
+    *)
+      echo "BENCHMARK_IMAGE_ARCH must be amd64 or arm64." >&2
+      return 1
+      ;;
+  esac
 }
 
-# Full image reference including registry.
-image_ref() {
-  local image_name="$1"
-  local reg
-  reg="$(registry_url)"
-  local db_lower schema_lower repo_lower
-  db_lower="$(echo "$DB" | tr '[:upper:]' '[:lower:]')"
-  schema_lower="$(echo "$SCHEMA" | tr '[:upper:]' '[:lower:]')"
-  repo_lower="$(echo "$IMAGE_REPO" | tr '[:upper:]' '[:lower:]')"
-  echo "${reg}/${db_lower}/${schema_lower}/${repo_lower}/${image_name}:${IMAGE_TAG}"
+validate_pool_architecture() {
+  local family
+  for family in "$API_INSTANCE_FAMILY" "$LOCUST_INSTANCE_FAMILY"; do
+    case "$BENCHMARK_IMAGE_ARCH:$family" in
+      amd64:CPU_X64_*|arm64:GEN_ARM_*) ;;
+      *)
+        echo "Image architecture $BENCHMARK_IMAGE_ARCH is incompatible with instance family $family." >&2
+        return 1
+        ;;
+    esac
+  done
+}
+
+validate_unquoted_identifier() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[A-Za-z_][A-Za-z0-9_$]*$ ]]; then
+    echo "$name must be an unquoted Snowflake identifier: $value" >&2
+    return 1
+  fi
+}
+
+print_access_remediation() {
+  cat >&2 <<EOF
+Ask an administrator to grant the service-owner role access to the benchmark
+warehouses and source data, then rerun deploy.sh:
+
+USE ROLE ACCOUNTADMIN;
+GRANT USAGE ON WAREHOUSE $INTERACTIVE_WAREHOUSE TO ROLE $API_ROLE;
+GRANT USAGE ON WAREHOUSE $API_WAREHOUSE TO ROLE $API_ROLE;
+GRANT USAGE ON DATABASE $API_DATABASE TO ROLE $API_ROLE;
+GRANT USAGE ON SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA TO ROLE $API_ROLE;
+GRANT SELECT ON ALL TABLES IN SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA TO ROLE $API_ROLE;
+EOF
+}
+
+probe_warehouse_access() {
+  local label="$1"
+  local warehouse="$2"
+  local output
+
+  if ! output="$(snow sql \
+    --connection "$CONNECTION" \
+    --role "$API_ROLE" \
+    --silent \
+    --format json \
+    -q "USE WAREHOUSE $warehouse; USE DATABASE $API_DATABASE; USE SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA; SELECT CURRENT_ROLE() AS ROLE, CURRENT_WAREHOUSE() AS WAREHOUSE" \
+    2>&1)"; then
+    echo "Access preflight failed for the $label warehouse '$warehouse':" >&2
+    echo "$output" >&2
+    print_access_remediation
+    return 1
+  fi
+}
+
+probe_query_access() {
+  local query_files=("$BENCHMARK_QUERY_DIR"/*.sql)
+  local query_file query output
+
+  if [[ ! -e "${query_files[0]}" ]]; then
+    echo "No benchmark .sql files found in $BENCHMARK_QUERY_DIR." >&2
+    return 1
+  fi
+
+  for query_file in "${query_files[@]}"; do
+    query="$(<"$query_file")"
+    if ! output="$(snow sql \
+      --connection "$CONNECTION" \
+      --role "$API_ROLE" \
+      --silent \
+      --format json \
+      -q "USE WAREHOUSE $INTERACTIVE_WAREHOUSE; USE DATABASE $API_DATABASE; USE SCHEMA $API_DATABASE.$INTERACTIVE_SCHEMA; $query" \
+      2>&1)"; then
+      echo "Source-data preflight failed for $query_file:" >&2
+      echo "$output" >&2
+      print_access_remediation
+      return 1
+    fi
+  done
+}
+
+preflight_benchmark_access() {
+  local name
+
+  if [[ "$API_ROLE" != "$ROLE" ]]; then
+    cat >&2 <<EOF
+API_ROLE ($API_ROLE) must equal ROLE ($ROLE).
+SPCS OAuth tokens can use the service-owner role or PUBLIC; deploy the service
+and run the API with the same role.
+EOF
+    return 1
+  fi
+
+  for name in ROLE API_ROLE API_DATABASE INTERACTIVE_SCHEMA \
+    INTERACTIVE_WAREHOUSE API_WAREHOUSE; do
+    validate_unquoted_identifier "$name" "${!name}" || return 1
+  done
+
+  probe_warehouse_access "interactive" "$INTERACTIVE_WAREHOUSE" || return 1
+  probe_warehouse_access "fallback" "$API_WAREHOUSE" || return 1
+  probe_query_access || return 1
+
+  echo "Access preflight passed for role $API_ROLE."
+}
+
+preflight_benchmark_image() {
+  local rows
+  validate_image_config
+  validate_pool_architecture
+
+  rows="$(snow sql --connection "$CONNECTION" --role "$ROLE" --silent --format json -q \
+    "SHOW IMAGES LIKE '${BENCHMARK_IMAGE}' IN IMAGE REPOSITORY ${IMAGE_DB}.${IMAGE_SCHEMA}.${IMAGE_REPO}")"
+
+  IMAGE_ROWS="$rows" python3 - "$BENCHMARK_IMAGE" "$IMAGE_TAG" <<'PY'
+import json
+import os
+import sys
+
+image_name, expected_tag = sys.argv[1:]
+rows = json.loads(os.environ["IMAGE_ROWS"])
+for row in rows:
+    if row.get("image_name") != image_name:
+        continue
+    tags = row.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tag.strip() for tag in tags.split(",")]
+    if expected_tag in tags:
+        print(
+            "Using image "
+            f"{row.get('image_path', image_name + ':' + expected_tag)} "
+            f"(digest {row.get('digest', 'unknown')})"
+        )
+        break
+else:
+    sys.stderr.write(
+        f"Image {image_name}:{expected_tag} was not found in the configured repository.\n"
+        "Check IMAGE_TAG. A newly released tag does not reach every deployment's System\n"
+        "Registry at once; if it is not here yet, wait for the rollout. Do not pin a tag\n"
+        "older than 0.2.0.\n"
+    )
+    raise SystemExit(1)
+PY
 }
 
 # Render a spec yaml with env vars substituted.
 render_spec() {
   local spec="$1"
   envsubst < "$spec"
-}
-
-# Thin wrapper around `snow spcs ...` with connection/role/database/schema
-# pre-filled so every call is unambiguous about which schema it targets.
-spcs() {
-  snow spcs "$@" --connection "$CONNECTION" --role "$ROLE" \
-    --database "$DB" --schema "$SCHEMA"
-}
-
-# Create a compute pool if it doesn't exist (idempotent).
-spcs_compute_pool_create() {
-  local pool="$1" family="$2" min_nodes="$3" max_nodes="$4"
-  spcs compute-pool create "$pool" \
-    --family "$family" \
-    --min-nodes "$min_nodes" \
-    --max-nodes "$max_nodes" \
-    --auto-resume \
-    --if-not-exists
-  spcs compute-pool resume "$pool" 2>/dev/null || true
-}
-
-# Create an image repository if it doesn't exist (idempotent).
-spcs_image_repo_create() {
-  local repo="$1"
-  spcs image-repository create "$repo" --if-not-exists
-}
-
-# Run `snow spcs service <create|upgrade>` with --spec-path pointed at a
-# temporary file that is cleaned up automatically on exit.
-spcs_apply_spec() {
-  local action="$1" svc="$2" spec_content="$3"
-  shift 3
-  local tmpspec rc
-  tmpspec="$(mktemp)"
-  printf '%s\n' "$spec_content" > "$tmpspec"
-  rc=0
-  snow spcs service "$action" "$svc" --spec-path "$tmpspec" \
-    --connection "$CONNECTION" --role "$ROLE" --database "$DB" --schema "$SCHEMA" "$@" || rc=$?
-  rm -f -- "$tmpspec"
-  return "$rc"
-}
-
-# Create-or-upgrade a service in place: create if missing, otherwise upgrade
-# the running service's spec, then reconcile min/max instances.
-spcs_service_upsert() {
-  local svc="$1" pool="$2" spec_file="$3" min_inst="${4:-1}" max_inst="${5:-1}"
-  local rendered
-  rendered="$(render_spec "$spec_file")"
-
-  spcs_apply_spec create "$svc" "$rendered" \
-    --compute-pool "$pool" \
-    --min-instances "$min_inst" \
-    --max-instances "$max_inst" \
-    --comment 'Managed by benchmark/scripts/' \
-    --if-not-exists
-
-  spcs_apply_spec upgrade "$svc" "$rendered"
-
-  spcs service set "$svc" --min-instances "$min_inst" --max-instances "$max_inst"
-}
-
-# Build one image server-side with `snow spcs service build-image` and push it
-# to $IMAGE_REPO. `--build-context-dir` requires a file literally named
-# `Dockerfile` at its root, so stage a scoped temp context: the image's
-# Dockerfile plus only the repo-root-relative paths it COPYs.
-#
-# extra_paths: repo-root-relative files/dirs the Dockerfile COPYs besides its
-# own benchmark/spcs/<image>/ directory (e.g. "benchmark/api" "benchmark/test").
-spcs_build_image() {
-  local image_name="$1" dockerfile_dir="$2"
-  shift 2
-  local extra_paths=("$@")
-
-  local ctx
-  ctx="$(mktemp -d)"
-  trap 'rm -rf "$ctx"' RETURN
-
-  cp "$REPO_DIR/$dockerfile_dir/Dockerfile" "$ctx/Dockerfile"
-  mkdir -p "$ctx/$dockerfile_dir"
-  cp "$REPO_DIR/$dockerfile_dir/entrypoint.sh" "$ctx/$dockerfile_dir/"
-  local p
-  for p in "${extra_paths[@]}"; do
-    mkdir -p "$(dirname "$ctx/$p")"
-    cp -r "$REPO_DIR/$p" "$ctx/$p"
-  done
-
-  local eai_args=()
-  local eai
-  for eai in $BUILD_EAI_NAME; do
-    eai_args+=(--eai-name "$eai")
-  done
-
-  echo "==> Building $image_name server-side via snow spcs service build-image"
-  spcs service build-image \
-    --compute-pool "$BUILD_COMPUTE_POOL" \
-    --image-repository "${DB}.${SCHEMA}.${IMAGE_REPO}" \
-    --image-name "$image_name" \
-    --image-tag "$IMAGE_TAG" \
-    --build-context-dir "$ctx" \
-    "${eai_args[@]+"${eai_args[@]}"}"
 }

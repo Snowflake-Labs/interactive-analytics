@@ -13,19 +13,23 @@ cd interactive-analytics
 
 ## 2. Install prerequisites
 
+### For running the benchmark (via the CoCo skill)
+
 | Tool | Purpose | Install |
 |------|---------|---------|
 | **Cortex Code** (Desktop or CLI) | Runs the skill | [Docs](https://docs.snowflake.com/en/user-guide/ui-snowsight/cortex-code) |
-| **Docker Desktop** | Builds and pushes SPCS container images | [docker.com](https://www.docker.com/get-started) |
 | **`snow` CLI** | Snowflake CLI for SPCS operations | `pip install snowflake-cli` or `brew install snowflake-cli` |
-| **`uv`** | Python package runner (used by the API and Locust) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| **Python 3** | Validates image metadata returned by Snowflake | [python.org](https://www.python.org/downloads/) |
 | **`envsubst`** | Renders YAML specs from templates | Comes with `gettext` (`brew install gettext` on macOS) |
-
-> **No Docker?** You can build images directly on SPCS by setting `BUILD_METHOD=spcs` in `spcs/config.env`. This requires an External Access Integration (EAI) so the build job can reach package registries. Run `benchmark/scripts/create-eai.sh` to create the necessary network rule and EAI, then set `BUILD_EAI_NAME` in `config.env` to the integration name it prints.
 
 ## 3. Configure a Snowflake connection
 
-Make sure you have a connection in `~/.snowflake/connections.toml` with a role that can create databases, warehouses, compute pools, image repositories, and services. `ACCOUNTADMIN` or `SYSADMIN` with appropriate grants will work.
+Make sure you have a connection in `~/.snowflake/connections.toml` with a role
+that can create the benchmark database/schema/stage, warehouses, compute pools,
+services, and public service endpoints; use `DEPLOY_WAREHOUSE`; and read the
+approved System Registry image. `ACCOUNTADMIN` or `SYSADMIN` with appropriate
+grants will work. `deploy.sh` verifies image access before creating resources.
+Benchmark users do not need Docker or `CREATE IMAGE REPOSITORY`.
 
 ```toml
 # ~/.snowflake/connections.toml
@@ -43,11 +47,20 @@ Verify the connection:
 snow connection test -c myconn
 ```
 
-## 4. Open the project in Cortex Code
+## 4. Verify the approved image
+
+The benchmark uses one immutable approved image from
+`SNOWFLAKE.IMAGES.SNOWFLAKE_IMAGES` for both API and Locust roles.
+`deploy.sh` checks the exact configured image and tag before creating compute
+pools. It also verifies that the service-owner role can use both warehouses
+and execute the benchmark queries against the interactive schema. No Docker setup
+is required.
+
+## 5. Open the project in Cortex Code
 
 Open the cloned `interactive-analytics` folder in Cortex Code Desktop, or `cd` into it in Cortex Code CLI. The skill is auto-discovered from `.cortex/skills/interactive-benchmark/SKILL.md`.
 
-## 5. Run the benchmark
+## 6. Run the benchmark
 
 In the Cortex Code chat panel, type something like:
 
@@ -70,7 +83,7 @@ The skill takes over from here. It will:
 1. **Collect inputs** -- ask you to confirm the database, schema, connection name, P95 latency goal, concurrency level, warehouse size limits, and benchmark name.
 2. **Create interactive tables** -- invoke the `snowflake-interactive` sub-skill to set up the interactive warehouse and tables for your query.
 3. **Validate suitability** -- run the query on both standard and interactive warehouses to confirm the interactive warehouse provides a meaningful speedup.
-4. **Deploy SPCS infrastructure** -- upload benchmark queries to a Snowflake stage, build Docker images, push them to the SPCS image registry, create compute pools, and deploy the API and Locust services.
+4. **Deploy SPCS infrastructure** -- upload benchmark queries to a Snowflake stage, create compute pools, and deploy the API and Locust services (using pre-built container images).
 5. **Run the benchmark** -- Locust auto-starts inside SPCS, runs a baseline test, then the actual load test at your target concurrency.
 6. **Auto-escalate** -- if the P95 goal is not met, the skill scales the warehouse (out or up) and re-runs, repeating until the goal is met or limits are reached.
 7. **Generate a report** -- produce an HTML report with latency percentiles, throughput, and warehouse configuration for each iteration.
@@ -82,12 +95,12 @@ All object names derive from the `SOLUTION_NAME` you choose (default: `IWB_<YYYY
 
 | Object | Name Pattern |
 |--------|-------------|
-| Database | `<SOLUTION_NAME>_BENCH_DB` |
-| Interactive warehouse | `<SOLUTION_NAME>_BENCH_WH_INT` |
-| Standard warehouse (fallback) | `<SOLUTION_NAME>_BENCH_WH_STD` |
-| API compute pool | `<SOLUTION_NAME>_BENCH_API_POOL` |
-| Locust compute pool | `<SOLUTION_NAME>_BENCH_LOCUST_POOL` |
-| Image repository | `<SOLUTION_NAME>_BENCH_IMAGES` |
+| Database | `<SOLUTION_NAME>_DB` |
+| Interactive warehouse | `<SOLUTION_NAME>_INT_WH` |
+| Standard warehouse (fallback) | `<SOLUTION_NAME>_STD_WH` |
+| API compute pool | `<SOLUTION_NAME>_API_POOL` |
+| Locust compute pool | `<SOLUTION_NAME>_LOCUST_POOL` |
+
 | API service | `BENCHMARK_API` |
 | Locust service | `BENCHMARK_LOCUST` |
 | Queries stage | `BENCHMARK_QUERIES` |
@@ -96,7 +109,7 @@ All object names derive from the `SOLUTION_NAME` you choose (default: `IWB_<YYYY
 
 Each run stores artifacts in `.cortex/skills/interactive-benchmark/benchmark/reports/<SOLUTION_NAME>/`:
 
-- `progress.json` -- step-by-step progress tracker (14 steps)
+- `progress.json` -- step-by-step progress tracker (13 steps)
 - `benchmark-report.html` -- the final HTML report
 - `locust-run-N.txt` -- raw Locust output for each iteration
 
@@ -125,11 +138,8 @@ $SCRIPTS/resize-wh.sh --size MEDIUM --mcw 5
 $SCRIPTS/logs.sh api
 $SCRIPTS/logs.sh locust
 
-# Rebuild and redeploy in-place
+# Upload new queries and restart the API
 $SCRIPTS/update.sh
-
-# Upload new queries without rebuilding images
-$SCRIPTS/update.sh --queries-only
 
 # Upload .sql files to the queries stage
 $SCRIPTS/upload-queries.sh
@@ -137,6 +147,6 @@ $SCRIPTS/upload-queries.sh
 # List all SPCS resources
 $SCRIPTS/list.sh
 
-# Tear everything down
+# Drop benchmark services and compute pools
 $SCRIPTS/teardown.sh
 ```

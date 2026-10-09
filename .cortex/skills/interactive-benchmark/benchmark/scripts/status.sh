@@ -13,48 +13,57 @@ source "$SCRIPT_DIR/_lib.sh"
 
 MODE="${1:-full}"
 
-# Fetch per-container status via `snow spcs service list-containers`.
+# Query SYSTEM$GET_SERVICE_STATUS which returns container-level details.
 service_info() {
   local svc="$1"
-  spcs service list-containers "$svc" --format json 2>/dev/null \
+  snow sql --connection "$CONNECTION" --role "$ROLE" --format json -q \
+    "SELECT SYSTEM\$GET_SERVICE_STATUS('${DB}.${SCHEMA}.${svc}') AS info" 2>/dev/null \
     | python3 -c '
 import json, sys
 try:
     rows = json.load(sys.stdin)
-except Exception:
-    rows = []
-for r in rows or []:
-    status = r.get("status") or "UNKNOWN"
-    msg = r.get("message") or ""
-    print(f"{status}\t{msg}")
+    info = json.loads(rows[0]["INFO"] if "INFO" in rows[0] else rows[0].get("info","[]"))
+    for inst in info:
+        status = inst.get("status","UNKNOWN")
+        msg = inst.get("message","")
+        print(f"{status}\t{msg}")
+except Exception as e:
+    print(f"UNKNOWN\t{e}")
 '
 }
 
-# Summarize: READY when all containers are READY, otherwise report actual state.
-service_status() {
+# Summarize across all instances/containers: FAILED if any failed, READY only
+# when all are READY, otherwise the first non-READY status and its message.
+service_summary() {
   local svc="$1"
   local info
-  info="$(service_info "$svc" 2>/dev/null)" || info="UNKNOWN\tservice not found"
+  info="$(service_info "$svc" 2>/dev/null)" || info=$'UNKNOWN\tservice not found'
   if [[ -z "$info" ]]; then
-    echo "NOT_FOUND"
+    printf 'NOT_FOUND\t\n'
     return
   fi
-  # Take the first container's status (single-container services)
-  echo "$info" | head -1 | cut -f1
+  python3 -c '
+import sys
+rows = [line.split("\t", 1) + [""] for line in sys.stdin.read().splitlines() if line]
+failed = [r for r in rows if r[0] == "FAILED"]
+pending = [r for r in rows if r[0] != "READY"]
+status, msg = (failed or pending or [["READY", ""]])[0][:2]
+print(f"{status}\t{msg}")
+' <<<"$info"
+}
+
+service_status() {
+  service_summary "$1" | cut -f1
 }
 
 service_message() {
-  local svc="$1"
-  local info
-  info="$(service_info "$svc" 2>/dev/null)" || true
-  if [[ -n "$info" ]]; then
-    echo "$info" | head -1 | cut -f2
-  fi
+  service_summary "$1" | cut -f2
 }
 
 service_url() {
   local svc="$1"
-  spcs service list-endpoints "$svc" --format json 2>/dev/null \
+  snow spcs service list-endpoints "${DB}.${SCHEMA}.${svc}" \
+    --connection "$CONNECTION" --role "$ROLE" --format json 2>/dev/null \
     | python3 -c '
 import json, sys
 try:

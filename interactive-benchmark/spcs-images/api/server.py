@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from queue import Empty, Queue
@@ -25,9 +26,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
 
 SOLUTION_NAME = os.environ.get("SOLUTION_NAME", "IW_TPCH")
-DATABASE = os.environ.get("SNOWFLAKE_DATABASE", f"{SOLUTION_NAME}_BENCH_DB")
+DATABASE = os.environ.get("SNOWFLAKE_DATABASE", f"{SOLUTION_NAME}_DB")
 CONNECTION_NAME = os.environ.get("CONNECTION_NAME")
-INTERACTIVE_WAREHOUSE = os.environ.get("INTERACTIVE_WAREHOUSE", f"{SOLUTION_NAME}_BENCH_WH_INT")
+INTERACTIVE_WAREHOUSE = os.environ.get("INTERACTIVE_WAREHOUSE", f"{SOLUTION_NAME}_INT_WH")
 INTERACTIVE_SCHEMA = os.environ.get("INTERACTIVE_SCHEMA", f"{SOLUTION_NAME}_IT")
 QUERY_TAG = os.environ.get("QUERY_TAG", SOLUTION_NAME)
 POOL_SIZE = int(os.environ.get("POOL_SIZE", "40"))
@@ -131,8 +132,9 @@ class ConnectionPool:
                 conn = self._new_connection()
             except Exception as exc:
                 self._sem.release()
-                log.warning("Pool warmup failed after %d/%d: %s", opened, want, exc)
-                break
+                raise RuntimeError(
+                    f"Pool warmup failed after {opened}/{want}: {exc}"
+                ) from exc
             self._idle.put_nowait(conn)
             opened += 1
         return opened
@@ -152,6 +154,7 @@ class ConnectionPool:
 
 pool = ConnectionPool()
 pool_ready = asyncio.Event()
+pool_warmup_error: str | None = None
 
 
 def load_query_registry(directory: str) -> dict[str, str]:
@@ -192,6 +195,11 @@ def execute_query(sql: str) -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # asyncio.to_thread's default executor caps at min(32, cpu + 4) threads,
+    # which would queue requests inside the API below POOL_SIZE.
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=POOL_SIZE, thread_name_prefix="query")
+    )
     log.info("Benchmark API running at http://localhost:%s", PORT)
     log.info("Pool size: %d, workers: %d", POOL_SIZE, WORKERS)
     log.info("Database: %s", DATABASE)
@@ -202,13 +210,24 @@ async def lifespan(_app: FastAPI):
 
     if POOL_WARMUP > 0:
         async def _warmup() -> None:
+            global pool_warmup_error
             try:
                 opened = await asyncio.to_thread(pool.warmup, POOL_WARMUP)
-                log.info("Prewarmed %d/%d connections", opened, POOL_WARMUP)
             except Exception as exc:  # noqa: BLE001
-                log.warning("Warmup failed: %s", exc)
-            finally:
-                pool_ready.set()
+                pool_warmup_error = str(exc)
+                log.exception("Connection pool warmup failed: %s", exc)
+                return
+
+            expected = min(POOL_WARMUP, POOL_SIZE)
+            if opened != expected:
+                pool_warmup_error = (
+                    f"Connection pool warmup opened {opened}/{expected} connections"
+                )
+                log.error(pool_warmup_error)
+                return
+
+            log.info("Prewarmed %d/%d connections", opened, expected)
+            pool_ready.set()
 
         warmup_task = asyncio.create_task(_warmup())
     else:
@@ -242,6 +261,11 @@ async def health() -> dict[str, str]:
 
 @app.get("/api/ready")
 async def ready() -> dict[str, str]:
+    if pool_warmup_error is not None:
+        raise HTTPException(
+            status_code=503,
+            detail="Connection pool warmup failed; inspect API logs",
+        )
     if not pool_ready.is_set():
         raise HTTPException(status_code=503, detail="Pool warming up")
     return {"status": "ready"}
